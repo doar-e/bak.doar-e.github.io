@@ -1,15 +1,17 @@
 function getNav() {
-  var mainNav = $('ul.main-navigation, ul[role=main-navigation]').before('<fieldset class="mobile-nav">')
-  var mobileNav = $('fieldset.mobile-nav').append('<select>');
-  mobileNav.find('select').append('<option value="">Navigate&hellip;</option>');
-  var addOption = function(i, option) {
-    mobileNav.find('select').append('<option value="' + this.href + '">&raquo; ' + $(this).text() + '</option>');
-  }
-  mainNav.find('a').each(addOption);
-  $('ul.subscription a').each(addOption);
-  mobileNav.find('select').bind('change', function(event) {
+  var mobileNav = $('nav[role=navigation] fieldset[role=search]').after('<fieldset class="mobile-nav"></fieldset>').next().append('<select></select>');
+  mobileNav.children('select').append('<option value="">Navigate&hellip;</option>');
+  $('ul[role=main-navigation]').addClass('main-navigation');
+  $('ul.main-navigation a').each(function(i, link) {
+    mobileNav.children('select').append('<option value="'+link.href+'">&raquo; '+link.text+'</option>');
+  });
+  $('ul.subscription a').each(function(i, link) {
+    mobileNav.children('select').append('<option value="'+link.href+'">&raquo; '+link.text+'</option>');
+  });
+  mobileNav.children('select').bind('change', function(event) {
     if (event.target.value) { window.location.href = event.target.value; }
   });
+  mobileNav.children('select').val('');
 }
 
 function addSidebarToggler() {
@@ -26,7 +28,7 @@ function addSidebarToggler() {
   }
   var sections = $('aside.sidebar > section');
   if (sections.length > 1) {
-    sections.each(function(index, section){
+    sections.each(function(section, index){
       if ((sections.length >= 3) && index % 3 === 0) {
         $(section).addClass("first");
       }
@@ -35,6 +37,19 @@ function addSidebarToggler() {
     });
   }
   if (sections.length >= 3){ $('aside.sidebar').addClass('thirds'); }
+}
+
+function openLinksInNewWindow() {
+  $('a').each(function() {
+    var a = new RegExp('/' + window.location.host + '/');
+    if(!a.test(this.href)) {
+      $(this).click(function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.open(this.href, '_blank');
+      });
+    }
+  });
 }
 
 function testFeatures() {
@@ -72,10 +87,10 @@ function addCodeLineNumbers() {
 function flashVideoFallback(){
   var flashplayerlocation = "/assets/jwplayer/player.swf",
       flashplayerskin = "/assets/jwplayer/glow/glow.xml";
-  $('video').each(function(i, video){
+  $('video').each(function(video){
     video = $(video);
     if (!Modernizr.video.h264 && swfobject.getFlashPlayerVersion() || window.location.hash.indexOf("flash-test") !== -1){
-      video.children('source[src$=mp4]').first().map(i, function(source){
+      video.children('source[src$=mp4]').first().map(function(i, source){
         var src = $(source).attr('src'),
             id = 'video_'+Math.round(1 + Math.random()*(100000)),
             width = video.attr('width'),
@@ -92,12 +107,18 @@ function flashVideoFallback(){
 }
 
 function wrapFlashVideos() {
-  $('object').each(function(i, object) {
-    if( $(object).find('param[name=movie]').length ){
-      $(object).wrap('<div class="flash-video">')
+  $('object').each(function(object) {
+    object = $(object);
+    if ( $('param[name=movie]', object).length ) {
+      var wrapper = object.before('<div class="flash-video"><div>').previous();
+      $(wrapper).children().append(object);
     }
   });
-  $('iframe[src*=vimeo],iframe[src*=youtube]').wrap('<div class="flash-video">')
+  $('iframe[src*=vimeo],iframe[src*=youtube]').each(function(iframe) {
+    iframe = $(iframe);
+    var wrapper = iframe.before('<div class="flash-video"><div>').previous();
+    $(wrapper).children().append(iframe);
+  });
 }
 
 function renderDeliciousLinks(items) {
@@ -116,6 +137,7 @@ $('document').ready(function() {
   addCodeLineNumbers();
   getNav();
   addSidebarToggler();
+  openLinksInNewWindow(); 
 });
 
 // iOS scaling bug fix
