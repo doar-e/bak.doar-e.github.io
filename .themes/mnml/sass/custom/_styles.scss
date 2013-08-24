@@ -1,0 +1,283 @@
+// This File is imported last, and will override other styles in the cascade
+// Add styles here to make changes without digging in too much
+
+html {
+	background: #FFFFFF;
+}
+
+body {
+	font-family: 'Helvetica Neue', sans-serif;
+	font-size: 16px;
+	font-weight: lighter;
+	color: #333;
+	max-width: 750px;
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+	
+	h1, h2, h3, h4, h5 {
+		font-family: 'Helvetica Neue', sans-serif;
+		font-weight: 100;
+	}
+
+	a:hover {
+		color: #3a8acc !important;
+		background: #FFFFFF;
+	}
+
+	> header {
+		background: #ffffff;
+		padding-top: 2em;
+		padding-bottom: 2em;
+		font-family: 'Helvetica Neue', sans-serif;
+		font-weight: 100;
+		text-align: center;
+		
+		.header-title {
+			font-size: 2em;
+			text-transform: lowercase;
+			letter-spacing: 1px;
+			color: #222;
+			a {
+				color: #222;
+				text-decoration: none;
+			}
+			
+			a:hover {
+				color: #3a8acc;
+			};
+		}
+		
+		.header-subtitle {
+			font-size: 1em;
+			text-transform: uppercase;
+			letter-spacing: 4px;
+			color: #3a8acc;
+		}
+		
+		h1 {
+			a, a:visited, a:hover {
+				color: #8c8c8c;
+			}
+		}
+	}
+
+	> nav {
+		background: #FFFFFF;
+		font-size: 20px;
+		font-weight: 100;
+		border-bottom: 1px solid #b0b0b0;
+		border-top: 1px solid #b0b0b0;
+		padding-left: 0px;
+		padding-right: 0px;
+
+		a {
+				font-family: 'Helvetica Neue', sans-serif;
+           		text-decoration: none;
+				text-shadow: none;
+           		font-size: 22px;
+           		padding-left: 10px;
+           		padding-right: 10px;
+        	}
+		form .search {
+			font-family: 'Helvetica Neue', sans-serif;
+			font-weight: 100;
+			border-radius: 0.2em 0.2em 0.2em 0.2em;
+			box-shadow: none;
+			border: 0px;
+			padding-top: 0.3em;
+			padding-bottom: 0.3em;
+			padding-left: 0.5em;
+			padding-right: 0.5em;
+			background: #f8f8f8;
+		}
+
+		li + li {
+			border-left: 0px;
+			a {
+				border: 0px;
+			}
+		}
+	}
+
+	> div {
+		background: #FFFFFF;
+		border-bottom: 0px;
+
+		> div {
+			background: #FFFFFF;
+			border-right-width: 0px;
+		}
+	}
+
+	> footer {
+		text-align: center;
+		background: #FFFFFF;
+		text-shadow: none;
+		color: #BBB;
+	  	padding-left: 0;
+	  	padding-right: 0;
+		border-top: 0px;
+		padding-left: 0px;
+		padding-right: 0px;
+		font-size: 14px;
+		font-family: 'Helvetica Neue', sans-serif;
+		font-weight: 100;
+	}
+
+	#content {
+		> article {
+			padding-top: 2em;
+			padding-left: 0px;
+			padding-right: 0px;
+		}
+
+		> div {
+			> article {
+				padding-left: 0px;
+				padding-right: 0px;
+				padding-top: 2.3em;
+				h1, h2, h3, h4, h5 {
+					font-family: 'Helvetica Neue', sans-serif;
+					font-weight: 100;
+				}
+			}	
+		}
+	}
+}
+
+article {
+
+	.entry-content {
+		h3 {
+			font-style: italic;
+		}
+	}
+
+	ul, ol {
+		margin-left: 2em;
+	}
+
+	a, a:visited {
+		color: #1863A1;
+	}
+}
+
+#content {
+	div.pagination {
+		margin: 0 10px;  
+		padding-bottom: 1.5em;
+		margin-top: 4em;
+		position: relative;
+		text-align: center;
+		border-top: solid 1px #b0b0b0;
+		border-bottom: solid 1px #b0b0b0;
+		color: #888;
+		font-weight: 100;
+		background-image: none;
+	}
+
+	div.pagination a {
+		color: #888;
+	}	
+
+	.blog-index {
+		article {
+			padding-top: 4em;
+
+			header {
+				padding-top: 2em;
+				padding-left: 0;
+  				padding-right: 0;
+			}
+		}
+
+		h1 { // Post Title
+			a {
+				font-family: 'Helvetica Neue', sans-serif;
+				font-weight: 100;
+				font-size: 1.25em;
+				line-height: 1.2em;
+			}
+
+			a:hover {
+				text-decoration: none;
+			}
+		}
+
+		time {
+			font-family: 'Helvetica Neue', sans-serif;
+			font-weight: 100;
+			letter-spacing: 1px;
+			text-transform: none;
+		}
+}
+
+	.hentry {
+		h1.entry-title {
+			font-family: 'Helvetica Neue', sans-serif;
+			font-weight: 100;
+			font-size: 2.75em;		
+		}
+
+		time {
+			font-family: 'Helvetica Neue', sans-serif;
+			font-weight: 100;
+			letter-spacing: 1px;
+			text-transform: none;
+		}
+	}
+}
+
+figure.code {
+	.highlight {
+		.gutter {
+			.line-numbers {
+				background: #ffffff !important;
+				text-shadow: none;
+				border-right: 1px solid #ccc !important;
+			}
+		}
+	}
+}
+
+.highlight {
+	border: 1px solid #ccc !important;
+}
+
+.pre-code, html .gist .gist-file .gist-syntax .highlight pre, .highlight code {
+	background: #fafafa !important;
+}
+
+
+aside {
+	display: none;
+}
+
+h1.entry-title {
+	font-family: 'Helvetica Neue', sans-serif;
+	font-weight: 100;
+}
+
+#blog-archives {
+	h2 {
+		font-family: 'Helvetica Neue', sans-serif;
+		font-weight: 100;
+	}
+
+	article {
+		h1 {
+			a, a:hover {
+				margin-left: 2.0em;	
+				font-family: 'Helvetica Neue', sans-serif;
+				font-weight: 100;
+				text-decoration: none;
+			}
+		}
+
+		time {
+			font-family: 'Helvetica Neue', sans-serif;
+			font-weight: 100;
+			font-size: 0.9em;
+		}
+	}
+}

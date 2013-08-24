@@ -1,0 +1,8 @@
+<p>
+  Copyright &copy; {{ site.time | date: "%Y" }} - {% if site.mnml_mailto %}<a href="mailto:{{ site.mnml_mailto }}">{{ site.author }}</a>{% else %} {{ site.author }} {% endif %}<br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  {% if site.mnml_host_name and site.mnml_host_url %}
+	  Hosted by <a href="{{ site.mnml_host_url }}">{{ site.mnml_host_name }}</a>. 
+	  {% endif %}
+  </span>
+</p>
