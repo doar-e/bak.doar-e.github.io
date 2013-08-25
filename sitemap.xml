@@ -1,16 +1,22 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>
     <url>
+        <loc>
+            http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/
+        </loc>
+        <lastmod>2013-08-25T17:18:28+02:00</lastmod>
+    </url>
+    <url>
         <loc>http://doar-e.github.io/about/</loc>
-        <lastmod>2013-08-18T19:22:51+02:00</lastmod>
+        <lastmod>2013-08-25T15:58:14+02:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/blog/archives/</loc>
-        <lastmod>2013-08-18T18:11:20+02:00</lastmod>
+        <lastmod>2013-08-25T17:18:28+02:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/</loc>
-        <lastmod>2013-08-18T18:11:20+02:00</lastmod>
+        <lastmod>2013-08-25T17:18:28+02:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/robots.txt</loc>

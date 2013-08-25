@@ -1,27 +1,116 @@
-<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
 
-  <title><![CDATA[Diary of a reverse-engineer]]></title>
-  <link href="http://doar-e.github.io/atom.xml" rel="self"/>
-  <link href="http://doar-e.github.io/"/>
-  <updated>2013-08-25T17:22:36+02:00</updated>
-  <id>http://doar-e.github.io/</id>
-  <author>
-    <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
-    
-  </author>
-  <generator uri="http://octopress.org/">Octopress</generator>
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Regular expressions obfuscation under the microscope - Diary of a reverse-engineer</title>
+  <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <entry>
+  <meta name="description" content="Introduction Some months ago I came across a strange couple of functions that was kind of playing with a finite-state automaton to validate an input &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet' type='text/css'>
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-43481215-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+
+  <style>
+    p { text-align: justify; }
+  </style>
+
+</head>
+<body   class="collapse-sidebar sidebar-footer" >
+  <header role="banner">
+	<div class="header-title"><a href="/">Diary of a reverse-engineer</a></div>
+
+
+	<br><div class="header-subtitle">Because we like to play with weird things.</div>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:doar-e.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/about">About</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+  
     
-    <title type="html"><![CDATA[Regular expressions obfuscation under the microscope]]></title>
-    <link href="http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/"/>
+      <h1 class="entry-title">Regular Expressions Obfuscation Under the Microscope</h1>
     
-    <updated>2013-08-24T12:35:00+02:00</updated>
-    <id>http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope</id>
+  
     
-    <content type="html"><![CDATA[<h1>Introduction</h1>
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-24T12:35:00+02:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>Introduction</h1>
 
 <p>Some months ago I came across a strange couple of functions that was kind of playing with a <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automaton</a> to validate an input. At first glance, I didn&rsquo;t really notice it was in fact a regex being processed, that&rsquo;s exactly why I spent quite some time to understand those routines. You are right to ask yourself: &ldquo;Hmm but the regex string representation should be in the binary shouldn&rsquo;t it?&rdquo;, the thing is it wasn&rsquo;t. The purpose of this post is to focus on those kind of &ldquo;compiled&rdquo; regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.</p>
 
@@ -37,11 +126,11 @@
 <p>Before automating things, let&rsquo;s see how we can implement a simple regex in C. It&rsquo;s always easier to reverse-engineer something you have, at least once in your life, implemented. Even if the actual implementation is slightly different from the one you did.
 Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdquo;. Now, if from that string representation we extract an FSM, we can have that one:</p>
 
-<p><img class="center" src="http://doar-e.github.io/images/regular_expressions_obfuscation_under_the_microscope/FSM_example.png"></p>
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/FSM_example.png"></p>
 
 <p>Here is this automaton implemented in C:</p>
 
-<figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='http://doar-e.github.io/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
+<figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
  <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
 <span class='line-number'>3</span>
@@ -215,11 +304,11 @@ Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdq
 
 <p>The purpose of that trivial example was just to show you how a regex string representation can be compiled into something harder to analyze but also more efficient (it doesn&rsquo;t need a compilation step, that&rsquo;s the reason why you may encounter that kind of thing in real (?) softwares). Even if the code seems trivial at the first sight, when you look at it at the assembly level, it takes a bit of time to figure out it&rsquo;s a simple &ldquo;Hi-[0-9]{4}&rdquo; regex.</p>
 
-<p><img class="center" src="http://doar-e.github.io/images/regular_expressions_obfuscation_under_the_microscope/cfg.png"></p>
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/cfg.png"></p>
 
 <p>In that kind of analysis, it&rsquo;s really important to find the &ldquo;state&rdquo; variable that allows the program to pass through the different nodes of the FSM. Then, you have also to figure out how you can reach a specific node, and all the nodes reachable from a specific one. To make it short, at the end of your analysis you really want to have a clean FSM like the one we did earlier. And once you have it, you want to eliminate unreachable nodes, and to minimize it in order to remove some potential automaton obfuscation.</p>
 
-<figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='http://doar-e.github.io/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
+<figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
  <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
 <span class='line-number'>3</span>
@@ -373,7 +462,7 @@ Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdq
 
 <p><a href="http://re2c.org/manual.html">re2c</a> is a cool and simple tool that allows you to describe your regex in a C comment, then it will generate the code of the scanner. As an example, here is the source code to generate the scanner for the previous regex:</p>
 
-<figure class='code'><figcaption><span> (fsm_re2c_example.c)</span> <a href='http://doar-e.github.io/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_example.c'>download</a></figcaption>
+<figure class='code'><figcaption><span> (fsm_re2c_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_example.c'>download</a></figcaption>
  <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
 <span class='line-number'>3</span>
@@ -445,7 +534,7 @@ Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdq
 
 <p>Once you feed that source to re2c, it gives you that scanner ready to be compiled:</p>
 
-<figure class='code'><figcaption><span> (fsm_re2c_generated_non_optimized.c)</span> <a href='http://doar-e.github.io/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_generated_non_optimized.c'>download</a></figcaption>
+<figure class='code'><figcaption><span> (fsm_re2c_generated_non_optimized.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_generated_non_optimized.c'>download</a></figcaption>
  <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
 <span class='line-number'>3</span>
@@ -687,14 +776,14 @@ Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdq
 
 <p>Cool isn&rsquo;t it ? But in fact, if you try to compile and Hexrays it (even with optimizations disabled) you will be completely disappointed: it gets simplified like <strong>really</strong> ; not cool for us (cool for the reverse-engineer though!).</p>
 
-<p><img class="center" src="http://doar-e.github.io/images/regular_expressions_obfuscation_under_the_microscope/hexrays.png"></p>
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/hexrays.png"></p>
 
 <h3>By hand</h3>
 
 <p>That&rsquo;s why I tried to generate myself the C code of the scanner. The first thing you need is a <a href="http://osteele.com/software/python/fsa/reCompiler.html">&ldquo;regular-expression string&rdquo; to FSM Python library</a>: a sort-of regex compiler. Then, once you are able to generate a FSM from a regular expression string, you are totally free to do whatever you want with the automaton. You can obfuscate it, try to optimize it, etc. You are also free to generate the C code you want.
 Here is the ugly-buggy-PoC code I wrote to generate the scanner for the regex used previously:</p>
 
-<figure class='code'><figcaption><span> (generate_c_fsm.py)</span> <a href='http://doar-e.github.io/downloads/code/regular_expressions_obfuscation_under_the_microscope/generate_c_fsm.py'>download</a></figcaption>
+<figure class='code'><figcaption><span> (generate_c_fsm.py)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/generate_c_fsm.py'>download</a></figcaption>
  <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
 <span class='line-number'>3</span>
@@ -840,9 +929,9 @@ Here is the ugly-buggy-PoC code I wrote to generate the scanner for the regex us
 
 <p>Now, if you open it in IDA the CFG will look like this:</p>
 
-<p><img class="center" src="http://doar-e.github.io/images/regular_expressions_obfuscation_under_the_microscope/hell_yeah.png"></p>
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/hell_yeah.png"></p>
 
-<p>Not that fun to reverse-engineer I guess. If you are enough curious to look at the complete source, here it is: <a href="http://doar-e.github.io/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_generated_by_hand_example.c">fsm_generated_by_hand_example.c</a>.</p>
+<p>Not that fun to reverse-engineer I guess. If you are enough curious to look at the complete source, here it is: <a href="/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_generated_by_hand_example.c">fsm_generated_by_hand_example.c</a>.</p>
 
 <h2>Thoughts to be more evil: one input to bind all the regex in the darkness</h2>
 
@@ -855,8 +944,98 @@ Here is the ugly-buggy-PoC code I wrote to generate the scanner for the regex us
 <p>If you are interested by the subject, a cool resource I&rsquo;ve seen recently that does similar things was in a CTF task write-up written by <a href="https://plus.google.com/111956453297829313313">Michal Kowalczyk</a>: read <a href="http://blog.dragonsector.pl/2013/07/sigint-ctf-2013-task-fenster-400-pts.html">it</a>, it&rsquo;s awesome.</p>
 
 <p>Messing with automata is good for you.</p>
-]]></content>
-    
-  </entry>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
   
-</feed>
+
+<span class="byline author vcard">Posted by <span class="fn">Axel "0vercl0k" Souchet</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-24T12:35:00+02:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/obfuscation/'>obfuscation</a>, <a class='category' href='/blog/categories/reverse-engineering/'>reverse-engineering</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Regular expressions obfuscation under the microscope</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2013 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  
+  </span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>

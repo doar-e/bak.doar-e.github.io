@@ -5,11 +5,11 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>Diary of a reverse-engineer</title>
+  <title>Category: obfuscation - Diary of a reverse-engineer</title>
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction Some months ago I came across a strange couple of functions that was kind of playing with a finite-state automaton to validate an input &hellip;">
+  <meta name="description" content="Category: obfuscation">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -18,7 +18,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   
-  <link rel="canonical" href="http://doar-e.github.io">
+  <link rel="canonical" href="http://doar-e.github.ioblog/categories/obfuscation">
   <link href="/favicon.png" rel="icon">
   <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
   <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
@@ -80,62 +80,35 @@
 </nav>
   <div id="main">
     <div id="content">
-      <div class="blog-index">
+      <div>
+<article role="article">
   
-  
-  
-    <article>
-      
   <header>
-  
-    
-      <h1 class="entry-title"><a href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Regular Expressions Obfuscation Under the Microscope</a></h1>
-      
-      
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2013-08-24T12:35:00+02:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
-        
-      </p>
+    <h1 class="entry-title">Category: Obfuscation</h1>
     
   </header>
+  
+  <div id="blog-archives" class="category">
 
 
-  <div class="entry-content"><h1>Introduction</h1>
 
-<p>Some months ago I came across a strange couple of functions that was kind of playing with a <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automaton</a> to validate an input. At first glance, I didn&rsquo;t really notice it was in fact a regex being processed, that&rsquo;s exactly why I spent quite some time to understand those routines. You are right to ask yourself: &ldquo;Hmm but the regex string representation should be in the binary shouldn&rsquo;t it?&rdquo;, the thing is it wasn&rsquo;t. The purpose of this post is to focus on those kind of &ldquo;compiled&rdquo; regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.</p>
+  
+  <h2>2013</h2>
 
-<p>In this short post, we are going to see how a regular expression looks like in assembly/C, and how you can hide/obfuscate it. I hope you will enjoy the read, and you will both be able to recognize a regular expression compiled in your future reverse-engineering tasks and to obfuscate heavily your regex!</p>
+<article>
+  
+<h1><a href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Regular expressions obfuscation under the microscope</a></h1>
+<time datetime="2013-08-24T12:35:00+02:00" pubdate><span class='month'>August</span> <span class='day'>24</span> <span class='year'>2013</span></time>
+
+</article>
 
 </div>
-  
-  
-    <footer>
-      <a rel="full-article" href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Read on &rarr;</a>
-    </footer>
-  
 
-
-    </article>
   
-  <div class="pagination">
-    
-    <a href="/blog/archives">Blog Archives</a>
-    
-  </div>
+</article>
+
 </div>
+
 <aside class="sidebar">
   
     <section>
@@ -155,6 +128,7 @@
 
   
 </aside>
+
 
     </div>
   </div>
