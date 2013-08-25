@@ -15,6 +15,7 @@ You can also contact the owners:
   - Jonathan Salwan: [twitter][3], [github][4]
   - Jérémy Fetiveau: [twitter][5], [github][6]
 
+We are also hanging out on IRC: [#doar-e@irc.w3challs.com](irc://#doar-e@irc.w3challs.com).
 
 [1]: https://twitter.com/0vercl0k
 [2]: https://github.com/0vercl0k

@@ -68,17 +68,6 @@ github_repo_count: 0
 github_show_profile_link: true
 github_skip_forks: true
 
-# Twitter
-twitter_user: 0vercl0k
-twitter_tweet_button: false
-
-twitter_user: Jonathansalwan
-twitter_tweet_button: false
-
-twitter_user: __x86
-twitter_tweet_button: false
-
-
 # Pinboard
 pinboard_user:
 pinboard_count: 3
@@ -89,4 +78,4 @@ disqus_short_name:
 disqus_show_comment_count: false
 
 # Google Analytics
-google_analytics_tracking_id:
+google_analytics_tracking_id: UA-43481215-1
