@@ -22,7 +22,7 @@ In this post, I will explain briefly how you can build that kind of tool using P
 If you have never heard about Intel's DBI framework Pin, I have made a selection of links for you, read them and understand them ; you won't be able of using correctly Pin, if you don't know a bit how it works:
 
 * [Pin 2.12 User Guide](http://software.intel.com/sites/landingpage/pintool/docs/58423/Pin/html/index.html)
-* [Introduction to Pin - Aamer Jaleel](www.jaleels.org/ajaleel/Pin/slides/1_Intro.ppt‎)
+* [Introduction to Pin - Aamer Jaleel](http://www.jaleels.org/ajaleel/Pin/slides/)
 
 Concerning my setup, I'm using Pin 2.12 on Windows 7 x64 with VC2010 and I'm building x86 Pintools (works great with Wow64). If you want to build easily your Pintool outside of the Pin tool kit directory I've made a handy little python script: [setup_pintool_project.py](https://github.com/0vercl0k/stuffz/blob/master/setup_pintool_project.py).
 
