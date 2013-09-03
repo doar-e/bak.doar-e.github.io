@@ -17,7 +17,11 @@ In this short post, we are going to see how a regular expression looks like in a
 # Bring out the FSM
 ## Manually
 Before automating things, let's see how we can implement a simple regex in C. It's always easier to reverse-engineer something you have, at least once in your life, implemented. Even if the actual implementation is slightly different from the one you did.
-Let's say we want to have an automaton that matches "Hi-[0-9]{4}". Now, if from that string representation we extract an FSM, we can have that one:
+Let's say we want to have an automaton that matches "Hi-[0-9]{4}".
+
+**NOTE**: I just had the chance to have a conversation with [Michal](https://plus.google.com/111956453297829313313), and he is totally right saying that automata ins't *really* the regex we said it was. Here is an example of what the regex should match: 'Hi-GARBAGEGARBAGE_Hi-1234'. We don't allow our regex to like rewind the state to zero if the input doesn't match the regex. To do so, we could replace the return statements by a "state = 0" statement :). Thank you to [Michal](https://plus.google.com/111956453297829313313) for the remark.
+
+Now, if from that string representation we extract an FSM, we can have that one:
 
 {% img center /images/regular_expressions_obfuscation_under_the_microscope/FSM_example.png %}
 
