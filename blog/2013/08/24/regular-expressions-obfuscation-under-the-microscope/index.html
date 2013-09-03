@@ -124,7 +124,11 @@
 <h2>Manually</h2>
 
 <p>Before automating things, let&rsquo;s see how we can implement a simple regex in C. It&rsquo;s always easier to reverse-engineer something you have, at least once in your life, implemented. Even if the actual implementation is slightly different from the one you did.
-Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdquo;. Now, if from that string representation we extract an FSM, we can have that one:</p>
+Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdquo;.</p>
+
+<p><strong>NOTE</strong>: I just had the chance to have a conversation with <a href="https://plus.google.com/111956453297829313313">Michal</a>, and he is totally right saying that automata ins&rsquo;t <em>really</em> the regex we said it was. Here is an example of what the regex should match: &lsquo;Hi-GARBAGEGARBAGE_Hi-1234&rsquo;. We don&rsquo;t allow our regex to like rewind the state to zero if the input doesn&rsquo;t match the regex. To do so, we could replace the return statements by a &ldquo;state = 0&rdquo; statement :). Thank you to <a href="https://plus.google.com/111956453297829313313">Michal</a> for the remark.</p>
+
+<p>Now, if from that string representation we extract an FSM, we can have that one:</p>
 
 <p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/FSM_example.png"></p>
 
