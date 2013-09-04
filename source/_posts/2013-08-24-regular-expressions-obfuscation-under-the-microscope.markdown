@@ -89,4 +89,6 @@ In that case, the reverse-engineer **has to** analyze all the different regex. A
 
 If you are interested by the subject, a cool resource I've seen recently that does similar things was in a CTF task write-up written by [Michal Kowalczyk](https://plus.google.com/111956453297829313313): read [it](http://blog.dragonsector.pl/2013/07/sigint-ctf-2013-task-fenster-400-pts.html), it's awesome.
 
+**UPDATE**: You should also read the follow-up made by [@fdfalcon](https://twitter.com/fdfalcon) "[A black-box approach against obfuscated regular expressions using Pin](http://sysexit.wordpress.com/2013/09/04/a-black-box-approach-against-obfuscated-regular-expressions-using-pin/)". Using Pin to defeat the FSM obfuscation, and to prove my obfuscation was a bit buggy: two birds, one stone :)).
+
 Messing with automata is good for you.
