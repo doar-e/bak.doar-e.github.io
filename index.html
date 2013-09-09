@@ -9,7 +9,8 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction Sometimes, when you are reverse-engineering binaries you need somehow to measure, or just to have an idea about how much &ldquo;that& &hellip;">
+  <meta name="description" content="Introduction Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
+As usual, in those type of &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -82,6 +83,65 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Pinpointing Heap-related Issues: OllyDbg2 Off-by-one Story</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-09-09T09:53:00+02:00" pubdate data-updated="true">Sep 9<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
+As usual, in those type of situations you fire up your debugger in order to understand what is going on under the hood.
+That was a bit weird, to give you a bit of context I was doing some inline x86 assembly, and I&rsquo;ve put on purpose an <em>int3</em> just
+before the piece of assembly code I thought was buggy. Once my file loaded in <a href="http://ollydbg.de/version2.html">OllyDbg2</a>, I hit <em>F9</em> in order to reach quickly the <em>int3</em> I&rsquo;ve slipped into the inline assembly code. A bit of single-stepping, and <strong>BOOM</strong> I got a nasty crash. It happens sometimes, and that&rsquo;s uncool.
+Then, I relaunch my binary and try to reproduce the bug: same actions and <strong>BOOM</strong> again. OK, this time it&rsquo;s cool, I got a reproducible crash in OllyDbg2.</p>
+
+<p>I like when things like that happens to me (remember the crashes I&rsquo;ve found in OllyDbg/IDA here: <a href="http://download.tuxfamily.org/overclokblog/PDB%20ain%27t%20PDD/0vercl0k_pdb_aint_pdd.pdf">PDB Ain&rsquo;t PDD</a>), it&rsquo;s always a nice exercise for me where I&rsquo;ve to:</p>
+
+<ul>
+<li>pinpoint the bug in the application: usually not trivial when it&rsquo;s a real/big application</li>
+<li>reverse-engineer the codes involved in the bug in order to figure out why it&rsquo;s happening (sometimes I got the sources, sometimes I don&rsquo;t like this time)</li>
+</ul>
+
+
+<p>In this post, I will show you how I&rsquo;ve manage to pinpoint where the bug was, using <a href="http://msdn.microsoft.com/en-us/library/windows/hardware/ff549561(v=vs.85).aspx">GFlags, PageHeap</a> and <a href="http://www.windbg.info/">WinDbg</a>. Then, we will reverse-engineer the buggy code in order to understand why the bug is happening, and how we can code a clean trigger.</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
   
   
     <article>
@@ -192,6 +252,10 @@
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Pinpointing heap-related issues: OllyDbg2 off-by-one story</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/">Some thoughts about code-coverage measurement with Pin</a>

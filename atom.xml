@@ -4,7 +4,7 @@
   <title><![CDATA[Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2013-09-04T17:45:16+02:00</updated>
+  <updated>2013-09-09T11:28:35+02:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -12,6 +12,417 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    
+    <title type="html"><![CDATA[Pinpointing heap-related issues: OllyDbg2 off-by-one story]]></title>
+    <link href="http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/"/>
+    
+    <updated>2013-09-09T09:53:00+02:00</updated>
+    <id>http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story</id>
+    
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
+As usual, in those type of situations you fire up your debugger in order to understand what is going on under the hood.
+That was a bit weird, to give you a bit of context I was doing some inline x86 assembly, and I&rsquo;ve put on purpose an <em>int3</em> just
+before the piece of assembly code I thought was buggy. Once my file loaded in <a href="http://ollydbg.de/version2.html">OllyDbg2</a>, I hit <em>F9</em> in order to reach quickly the <em>int3</em> I&rsquo;ve slipped into the inline assembly code. A bit of single-stepping, and <strong>BOOM</strong> I got a nasty crash. It happens sometimes, and that&rsquo;s uncool.
+Then, I relaunch my binary and try to reproduce the bug: same actions and <strong>BOOM</strong> again. OK, this time it&rsquo;s cool, I got a reproducible crash in OllyDbg2.</p>
+
+<p>I like when things like that happens to me (remember the crashes I&rsquo;ve found in OllyDbg/IDA here: <a href="http://download.tuxfamily.org/overclokblog/PDB%20ain%27t%20PDD/0vercl0k_pdb_aint_pdd.pdf">PDB Ain&rsquo;t PDD</a>), it&rsquo;s always a nice exercise for me where I&rsquo;ve to:</p>
+
+<ul>
+<li>pinpoint the bug in the application: usually not trivial when it&rsquo;s a real/big application</li>
+<li>reverse-engineer the codes involved in the bug in order to figure out why it&rsquo;s happening (sometimes I got the sources, sometimes I don&rsquo;t like this time)</li>
+</ul>
+
+
+<p>In this post, I will show you how I&rsquo;ve manage to pinpoint where the bug was, using <a href="http://msdn.microsoft.com/en-us/library/windows/hardware/ff549561(v=vs.85).aspx">GFlags, PageHeap</a> and <a href="http://www.windbg.info/">WinDbg</a>. Then, we will reverse-engineer the buggy code in order to understand why the bug is happening, and how we can code a clean trigger.</p>
+
+<!--more-->
+
+
+<h1>The crash</h1>
+
+<p>The first thing I did was to launch WinDbg to debug OllyDbg2 to debug my binary (yeah.). Once OllyDbg2 has been started up, I reproduced exactly the same steps as previously to trigger the bug and here is what WinDbg was telling me:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>HEAP[ollydbg.exe]: Heap block at 00987AB0 modified at 00987D88 past
+</span><span class='line'>requested size of 2d0
+</span><span class='line'>
+</span><span class='line'>(a60.12ac): Break instruction exception - code 80000003 (first chance)
+</span><span class='line'>eax=00987ab0 ebx=00987d88 ecx=76f30b42 edx=001898a5 esi=00987ab0 edi=000002d0
+</span><span class='line'>eip=76f90574 esp=00189aec ebp=00189aec iopl=0         nv up ei pl nz na po nc
+</span><span class='line'>cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200202
+</span><span class='line'>ntdll!RtlpBreakPointHeap+0x23:
+</span><span class='line'>76f90574 cc              int     3
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We got a debug message from the heap allocator informing us the process has written outside of its heap buffer. The thing is, this message and the breakpoint are not triggered when the faulty write is done but triggered like <em>after</em>, when another call to the allocator has been made. At this moment, the allocator is checking the chunks are OK and if it sees something weird, it outputs a message and breaks. The stack-trace should confirm that:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>0:000&gt; k
+</span><span class='line'>ChildEBP RetAddr
+</span><span class='line'>00189aec 76f757c2 ntdll!RtlpBreakPointHeap+0x23
+</span><span class='line'>00189b04 76f52a8a ntdll!RtlpCheckBusyBlockTail+0x171
+</span><span class='line'>00189b24 76f915cf ntdll!RtlpValidateHeapEntry+0x116
+</span><span class='line'>00189b6c 76f4ac29 ntdll!RtlDebugFreeHeap+0x9a
+</span><span class='line'>00189c60 76ef34a2 ntdll!RtlpFreeHeap+0x5d
+</span><span class='line'>00189c80 75d8537d ntdll!RtlFreeHeap+0x142
+</span><span class='line'>00189cc8 00403cfc KERNELBASE!GlobalFree+0x27
+</span><span class='line'>00189cd4 004cefc0 ollydbg!Memfree+0x3c
+</span><span class='line'>...
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>As we said just above, the message from the heap allocator has been probably triggered when OllyDbg2 wanted to free a chunk of memory.</p>
+
+<p>Basically, the problem with our issue is the fact we don&rsquo;t know:</p>
+
+<ul>
+<li>where the heap chunk has been allocated</li>
+<li>where the faulty write has been made</li>
+</ul>
+
+
+<p>That&rsquo;s what makes our bug not trivial to debug without the suitable tools. If you want to have more information about debugging heap issues efficiently, you should definitely read the heap chapter in <a href="http://advancedwindowsdebugging.com/">Advanced Windows Debugging</a> (cheers <a href="https://twitter.com/Ivanlef0u">`Ivan</a>).</p>
+
+<h1>Pinpointing the heap issue: introducing full PageHeap</h1>
+
+<p>In a nutshell, the full PageHeap option is really powerful to diagnostic heap issues, here are at least two reasons why:</p>
+
+<ul>
+<li>it will save where each heap chunk has been allocated</li>
+<li>it will allocate a guard page at the end of our chunk (thus when the faulty write occurs, we might have a write access exception)</li>
+</ul>
+
+
+<p>To do so, this option changes a bit how the allocator works (it adds more meta-data for each heap chunk, etc.) ; if you want more information, try at home allocating stuff with/without page heap and compare the allocated memory. Here is how looks like a heap chunk when PageHeap full is enabled:</p>
+
+<p><img class="center" src="http://doar-e.github.io/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/heapchunk.gif"></p>
+
+<p>To enable it for <em>ollydbg.exe</em>, it&rsquo;s trivial. We just launch the <em>gflags.exe</em> binary (it&rsquo;s in Windbg&rsquo;s directory) and you tick the features you want to enable.</p>
+
+<p><img class="center" src="http://doar-e.github.io/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/gflags.png"></p>
+
+<p>Now, you just have to relaunch your target in WinDbg, reproduce the bug and here is what I get now:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>(f48.1140): Access violation - code c0000005 (first chance)
+</span><span class='line'>First chance exceptions are reported before any exception handling.
+</span><span class='line'>This exception may be expected and handled.
+</span><span class='line'>
+</span><span class='line'>eax=000000b4 ebx=0f919abc ecx=0f00ed30 edx=00000b73 esi=00188694 edi=005d203c
+</span><span class='line'>eip=004ce769 esp=00187d60 ebp=00187d80 iopl=0         nv up ei pl zr na pe nc
+</span><span class='line'>cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010246
+</span><span class='line'>ollydbg!Findfreehardbreakslot+0x21d9:
+</span><span class='line'>004ce769 891481          mov     dword ptr [ecx+eax*4],edx ds:002b:0f00f000=????????
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Woot, this is very cool, because now we know <strong>exactly</strong> where something is going wrong. Let&rsquo;s get more information about the heap chunk now:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>0:000&gt; !heap -p -a ecx
+</span><span class='line'>    address 0f00ed30 found in
+</span><span class='line'>    _DPH_HEAP_ROOT @ 4f11000
+</span><span class='line'>    in busy allocation
+</span><span class='line'>    (  DPH_HEAP_BLOCK:  UserAddr  UserSize -  VirtAddr VirtSize)
+</span><span class='line'>              f6f1b2c:  f00ed30        2d0 -  f00e000  2000
+</span><span class='line'>
+</span><span class='line'>    6e858e89 verifier!AVrfDebugPageHeapAllocate+0x00000229
+</span><span class='line'>    76f90d96 ntdll!RtlDebugAllocateHeap+0x00000030
+</span><span class='line'>    76f4af0d ntdll!RtlpAllocateHeap+0x000000c4
+</span><span class='line'>    76ef3cfe ntdll!RtlAllocateHeap+0x0000023a
+</span><span class='line'>    75d84e55 KERNELBASE!GlobalAlloc+0x0000006e
+</span><span class='line'>    00403bef ollydbg!Memalloc+0x00000033
+</span><span class='line'>    004ce5ec ollydbg!Findfreehardbreakslot+0x0000205c
+</span><span class='line'>    004cf1df ollydbg!Getsourceline+0x0000007f
+</span><span class='line'>    00479e1b ollydbg!Getactivetab+0x0000241b
+</span><span class='line'>    0047b341 ollydbg!Setcpu+0x000006e1
+</span><span class='line'>    004570f4 ollydbg!Checkfordebugevent+0x00003f38
+</span><span class='line'>    0040fc51 ollydbg!Setstatus+0x00006441
+</span><span class='line'>    004ef9ef ollydbg!Pluginshowoptions+0x0001214f
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>With this really handy command we got a lot of relevant information:</p>
+
+<ul>
+<li>This chunk has a size of 0x2d0 bytes. Thus, starting from 0xf00ed30 to 0xf00efff.</li>
+<li>The faulty write now makes sense: the application tries to write 4 bytes outside of its heap buffer (off-by-one on an unsigned array I guess).</li>
+<li>The memory has been allocated in <em>ollydbg!Memalloc</em> (called by <em>ollydbg!Getsourceline</em>, PDB related ?). We will study that routine later in the post.</li>
+<li>The faulty write occurs at address 0x4ce769.</li>
+</ul>
+
+
+<h1>Looking inside OllyDbg2</h1>
+
+<p>We are kind of lucky, the routines involved with this bug are quite simple to reverse-engineer, and Hexrays works just like a charm. Here is the C code (the interesting part at least) of the buggy function:</p>
+
+<figure class='code'><figcaption><span>ollydbg!buggy @ 0x004CE424</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">signed</span> <span class="kt">int</span> <span class="nf">buggy</span><span class="p">(</span><span class="n">struct_a1</span> <span class="o">*</span><span class="n">u</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="kt">int</span> <span class="n">file_size</span><span class="p">;</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">nbchar</span><span class="p">;</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kr">__int8</span> <span class="o">*</span><span class="n">file_content</span><span class="p">;</span>
+</span><span class='line'>  <span class="kt">int</span> <span class="n">nb_lines</span><span class="p">;</span>
+</span><span class='line'>  <span class="kt">int</span> <span class="n">idx</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="c1">// ...</span>
+</span><span class='line'>  <span class="n">file_content</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kr">__int8</span> <span class="o">*</span><span class="p">)</span><span class="n">Readfile</span><span class="p">(</span><span class="o">&amp;</span><span class="n">u</span><span class="o">-&gt;</span><span class="n">sourcefile</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">file_size</span><span class="p">);</span>
+</span><span class='line'>  <span class="c1">// ...</span>
+</span><span class='line'>  <span class="n">nbchar</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>  <span class="n">nb_lines</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>  <span class="k">while</span><span class="p">(</span><span class="n">nbchar</span> <span class="o">&lt;</span> <span class="n">file_size</span><span class="p">)</span>
+</span><span class='line'>  <span class="p">{</span>
+</span><span class='line'>    <span class="c1">// doing stuff to count all the char, and all the lines in the file</span>
+</span><span class='line'>    <span class="c1">// ...</span>
+</span><span class='line'>  <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="n">u</span><span class="o">-&gt;</span><span class="n">mem1_ov</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">Memalloc</span><span class="p">(</span><span class="mi">12</span> <span class="o">*</span> <span class="p">(</span><span class="n">nb_lines</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="mi">3</span><span class="p">);</span>
+</span><span class='line'>  <span class="n">u</span><span class="o">-&gt;</span><span class="n">mem2</span> <span class="o">=</span> <span class="n">Memalloc</span><span class="p">(</span><span class="mi">8</span> <span class="o">*</span> <span class="p">(</span><span class="n">nb_lines</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="mi">3</span><span class="p">);</span>
+</span><span class='line'>  <span class="k">if</span> <span class="p">(</span> <span class="n">u</span><span class="o">-&gt;</span><span class="n">mem1_ov</span> <span class="o">&amp;&amp;</span> <span class="n">u</span><span class="o">-&gt;</span><span class="n">mem2</span> <span class="p">)</span>
+</span><span class='line'>  <span class="p">{</span>
+</span><span class='line'>    <span class="n">nbchar</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">nb_lines2</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">while</span> <span class="p">(</span> <span class="n">nbchar</span> <span class="o">&lt;</span> <span class="n">file_size</span> <span class="o">&amp;&amp;</span> <span class="n">file_content</span><span class="p">[</span><span class="n">nbchar</span><span class="p">]</span> <span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>      <span class="n">u</span><span class="o">-&gt;</span><span class="n">mem1_ov</span><span class="p">[</span><span class="mi">3</span> <span class="o">*</span> <span class="n">nb_lines2</span><span class="p">]</span> <span class="o">=</span> <span class="n">nbchar</span><span class="p">;</span>
+</span><span class='line'>      <span class="n">u</span><span class="o">-&gt;</span><span class="n">mem1_ov</span><span class="p">[</span><span class="mi">3</span> <span class="o">*</span> <span class="n">nb_lines2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>      <span class="k">if</span> <span class="p">(</span> <span class="n">nbchar</span> <span class="o">&lt;</span> <span class="n">file_size</span> <span class="p">)</span>
+</span><span class='line'>      <span class="p">{</span>
+</span><span class='line'>        <span class="k">while</span> <span class="p">(</span> <span class="n">file_content</span><span class="p">[</span><span class="n">nbchar</span><span class="p">]</span> <span class="p">)</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'>            <span class="c1">// Consume a line, increment stuff until finding a &#39;\r&#39; or &#39;\n&#39; sequence</span>
+</span><span class='line'>            <span class="c1">// ..</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>      <span class="p">}</span>
+</span><span class='line'>      <span class="o">++</span><span class="n">nb_lines2</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="c1">// BOOM!</span>
+</span><span class='line'>    <span class="n">u</span><span class="o">-&gt;</span><span class="n">mem1_ov</span><span class="p">[</span><span class="mi">3</span> <span class="o">*</span> <span class="n">nb_lines2</span><span class="p">]</span> <span class="o">=</span> <span class="n">nbchar</span><span class="p">;</span>
+</span><span class='line'>    <span class="c1">// ...</span>
+</span><span class='line'>  <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>So, let me explain what this routine does:</p>
+
+<ul>
+<li>This routine is called by OllyDbg2 when it finds a PDB database for your binary and, more precisely, when in this database it finds the path of your application&rsquo;s source codes. It&rsquo;s useful to have those kind of information when you are debugging, OllyDbg2 is able to tell you at which line of your C code you&rsquo;re currently at.</li>
+</ul>
+
+
+<p><img class="center" src="http://doar-e.github.io/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/source.png"></p>
+
+<ul>
+<li>At line 10: &ldquo;u->Sourcefile&rdquo; is a string pointer on the path of your source code (found in the PDB database). The routine is just reading the whole file, giving you its size, and a pointer on the file content now stored memory.</li>
+<li>From line 12 to 18: we have a loop counting the total number of lines in your source code.</li>
+<li>At line 20: we have the allocation of our chunk. It allocates 12*(nb_lines + 1) bytes. We saw previously in WinDbg that the size of the chunk was 0x2d0: it should means we have exactly ((0x2d0 / 12) &ndash; 1) = 59 lines in our source code:</li>
+</ul>
+
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>D:\TODO\crashes\odb2-OOB-write-heap&gt;wc -l OOB-write-heap-OllyDbg2h-trigger.c
+</span><span class='line'>59 OOB-write-heap-OllyDbg2h-trigger.c
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Good.</p>
+
+<ul>
+<li>From line 24 to 39: we have a loop similar to previous one. It&rsquo;s basically counting lines again and initializing the memory we just allocated with some information.</li>
+<li>At line 41: we have our bug. Somehow, we can manage to get out of the loop with &ldquo;nb_lines2 = nb_lines + 1&rdquo;. That means the line 41 will try to write one cell outside of our buffer. In our case, if we have &ldquo;nb_lines2 = 60&rdquo; and our heap buffer starting at 0xf00ed30, it means we&rsquo;re going to try to write at (0xf00ed30+60<em>3</em>4)=0xf00f000. That&rsquo;s exactly what we saw earlier.</li>
+</ul>
+
+
+<p>At this point, we have fully explained the bug. If you want to do some dynamic analysis in order to follow important routines, I&rsquo;ve made several breakpoints, here they are:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>bp 004CF1BF &quot;.printf \&quot;[Getsourceline] %mu\\n[Getsourceline] struct: 0x%x\&quot;, poi(esp + 4), eax ; .if(eax != 0){ .if(poi(eax + 0x218) == 0){ .printf \&quot; field: 0x%x\\n\&quot;, poi(eax + 0x218); gc }; } .else { .printf \&quot;\\n\\n\&quot; ; gc; };&quot;
+</span><span class='line'>bp 004CE5DD &quot;.printf \&quot;[buggy] Nbline: 0x%x \\n\&quot;, eax ; gc&quot;
+</span><span class='line'>bp 004CE5E7 &quot;.printf \&quot;[buggy] Nbbytes to alloc: 0x%x \\n\&quot;, poi(esp) ; gc&quot;
+</span><span class='line'>bp 004CE742 &quot;.printf \&quot;[buggy] NbChar: 0x%x / 0x%x - Idx: 0x%x\\n\&quot;, eax, poi(ebp - 1C), poi(ebp - 8) ; gc&quot;
+</span><span class='line'>bp 004CE769 &quot;.printf \&quot;[buggy] mov [0x%x + 0x%x], 0x%x\\n\&quot;, ecx, eax * 4, edx&quot;
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>On my environment, it gives me something like:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>[Getsourceline] f:\dd\vctools\crt_bld\self_x86\crt\src\crt0.c
+</span><span class='line'>[Getsourceline] struct: 0x0
+</span><span class='line'>[...]
+</span><span class='line'>[Getsourceline] oob-write-heap-ollydbg2h-trigger.c
+</span><span class='line'>[Getsourceline] struct: 0xaf00238 field: 0x0
+</span><span class='line'>[buggy] Nbline: 0x3b
+</span><span class='line'>[buggy] Nbbytes to alloc: 0x2d0
+</span><span class='line'>[buggy] NbChar: 0x0 / 0xb73 - Idx: 0x0
+</span><span class='line'>[buggy] NbChar: 0x4 / 0xb73 - Idx: 0x1
+</span><span class='line'>[buggy] NbChar: 0x5a / 0xb73 - Idx: 0x2
+</span><span class='line'>[buggy] NbChar: 0xa4 / 0xb73 - Idx: 0x3
+</span><span class='line'>[buggy] NbChar: 0xee / 0xb73 - Idx: 0x4
+</span><span class='line'>[...]
+</span><span class='line'>[buggy] NbChar: 0xb73 / 0xb73 - Idx: 0x3c
+</span><span class='line'>[buggy] mov [0xb031d30 + 0x2d0], 0xb73
+</span><span class='line'>
+</span><span class='line'>eax=000000b4 ebx=12dfed04 ecx=0b031d30 edx=00000b73 esi=00188694 edi=005d203c
+</span><span class='line'>eip=004ce769 esp=00187d60 ebp=00187d80 iopl=0         nv up ei pl zr na pe nc
+</span><span class='line'>cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+</span><span class='line'>ollydbg!Findfreehardbreakslot+0x21d9:
+</span><span class='line'>004ce769 891481          mov     dword ptr [ecx+eax*4],edx ds:002b:0b032000=????????
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h1>Repro@home</h1>
+
+<ol>
+<li>Download the last version of OllyDbg2 <a href="http://ollydbg.de/odbg201h.zip">here</a>, extract the files</li>
+<li>Download the three files from <a href="https://github.com/0vercl0k/stuffz/tree/master/odb2-OOB-write-heap">odb2-oob-write-heap</a>, put them in the same directory than <em>ollydbg.exe</em> is</li>
+<li>Launch WinDbg and open the last version of OllyDbg2</li>
+<li>Set your breakpoints (or not), F5 to launch</li>
+<li>Open the trigger in OllyDbg2</li>
+<li>Press F9 when the binary is fully loaded</li>
+<li><strong>BOOM</strong> :). Note that you may not have a visible crash (remember, that&rsquo;s what made our bug not trivial to debug without full pageheap). Try to poke around with the debugger: restarting the binary or closing OllyDbg2 should be enough to get the message from the heap allocator in your debugger.</li>
+</ol>
+
+
+<p><img class="center" src="http://doar-e.github.io/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/woot.png"></p>
+
+<h1>Fun fact</h1>
+
+<p>You can even trigger the bug with only the binary and the PDB database. The trick is to tamper the PDB, and more precisely where it keeps the path to your source code. That way, when OllyDbg2 will load the PDB database, it will read that same database like it&rsquo;s the source code of the application. Awesome.</p>
+
+<p><img class="center" src="http://doar-e.github.io/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/fun.png"></p>
+
+<h1>Conclusion</h1>
+
+<p>Those kind of crashes are always an occasion to learn new things. Either it&rsquo;s trivial to debug/repro and you won&rsquo;t waste much of your time, or it&rsquo;s not and you will improve your debugger/reverse-engineer-fu on a <strong>real</strong> example. So do it!</p>
+
+<p>By the way, I doubt the bug is exploitable and I didn&rsquo;t even try to exploit it ; but if you succeed I would be really glad to read your write-up! But if we assume it&rsquo;s exploitable for a second, you would still have to distribute the PDB file, the source file (I guess it would give you more control than with the PDB) and the binary to your victim. So no big deal.</p>
+
+<p>If you are too lazy to debug your crashes, send them to me, I may have a look at it!</p>
+
+<p>Oh, I almost forgot: <a href="http://doar-e.github.io/about/">we are still looking for motivated contributors to write cool posts</a>, spread the world.</p>
+]]></content>
+    
+  </entry>
   
   <entry>
     
