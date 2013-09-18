@@ -9,8 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
-As usual, in those type of &hellip;">
+  <meta name="description" content="Introduction Kryptonite was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -83,6 +82,55 @@ As usual, in those type of &hellip;">
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite&#8217;s Obfuscation: A Static Analysis Approach Relying on Symbolic Execution</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-09-16T11:47:00+02:00" pubdate data-updated="true">Sep 16<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p><em>Kryptonite</em> was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic-preserving transformations in order to not break the original program. One of the main idea was for example to build a home-made 32 bits adder to replace the <em>add</em> LLVM instruction. Instead of having a single asm instruction generated at the end of the pipeline, you will end up with a ton of assembly codes doing only an addition. If you never read my article, and you are interested in it here it is: <a href="http://0vercl0k.tuxfamily.org/bl0g/?p=260">Obfuscation of steel: meet my Kryptonite</a>.</p>
+
+<p><img class="center" src="/images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png"></p>
+
+<p>In this post I wanted to show you how we can manage to break that obfuscation with symbolic execution. We are going to write a really tiny symbolic execution engine with IDAPy, and we will use Z3Py to simplify all our equations. Note that a friend of mine <a href="https://twitter.com/elvanderb">@elvanderb</a> used a similar approach (more generic though) to simplify some parts of the <a href="http://download.tuxfamily.org/overclokblog/Obfuscation%20of%20steel%3a%20meet%20my%20Kryptonite/binaries/">crackme</a> ; but he didn&rsquo;t wanted to publish it, so here is my blog post about it!</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
   
   
     <article>
@@ -252,6 +300,10 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite&#8217;s obfuscation: a static analysis approach relying on symbolic execution</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Pinpointing heap-related issues: OllyDbg2 off-by-one story</a>
