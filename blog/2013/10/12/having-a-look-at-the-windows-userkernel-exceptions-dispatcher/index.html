@@ -183,7 +183,7 @@
 
 <h1>Lights on <em>ntdll!KiUserExceptionDispatcher</em></h1>
 
-<p>The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85">SEH</a>.aspx)/<a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85">UEF</a>.aspx) mechanisms ; though I&rsquo;m going to focus on Windows 7 x86 because that&rsquo;s the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too much details, just enough to write a working exception sentinel PoC later.</p>
+<p>The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85">SEH</a>.aspx)/<a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85">UEF</a>.aspx) mechanisms ; though I&rsquo;m going to focus on Windows 7 x86 because that&rsquo;s the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too many details, just enough to write a working exception sentinel PoC later.</p>
 
 <h2>nt!KiTrap*</h2>
 
@@ -462,7 +462,7 @@
 </span></code></pre></td></tr></table></div></figure>
 
 
-<p>The idea now is to track the modification of the <em>nt!_KTRAP_FRAME.Eip</em> field as we discussed earlier (BTW, don&rsquo;t try to put directly a breakpoint on <em>nt!KiDispatchException</em> with VMware, it justs blow my guest virtual machine) via a hardware-breakpoint:</p>
+<p>The idea now is to track the modification of the <em>nt!_KTRAP_FRAME.Eip</em> field as we discussed earlier (BTW, don&rsquo;t try to put directly a breakpoint on <em>nt!KiDispatchException</em> with VMware, it just blows my guest virtual machine) via a hardware-breakpoint:</p>
 
 <figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -493,7 +493,7 @@
 
 <h1>Serial Detourer</h1>
 
-<p>In this part we are going to talk about Detours, what looks like the API and how you can use it to build a userland exceptions sentinel without too many lines of codes. Here are the list of the features we want:</p>
+<p>In this part we are going to talk about Detours, what looks like the API and how you can use it to build a userland exceptions sentinel without too many lines of codes. Here is the list of the features we want:</p>
 
 <ul>
 <li>To hook <em>ntdll!KiUserExceptionDispatcher</em>: we will use Detours for that,</li>
