@@ -48,7 +48,7 @@ That's why I divided this post in two big parts:
 <!--more-->
 
 # Lights on *ntdll!KiUserExceptionDispatcher*
-The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the [SEH](http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85).aspx)/[UEF](http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85).aspx) mechanisms ; though I'm going to focus on Windows 7 x86 because that's the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too much details, just enough to write a working exception sentinel PoC later.
+The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the [SEH](http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85).aspx)/[UEF](http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85).aspx) mechanisms ; though I'm going to focus on Windows 7 x86 because that's the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too many details, just enough to write a working exception sentinel PoC later.
 
 
 ## nt!KiTrap*
@@ -206,7 +206,7 @@ kd> .trap
 Resetting default scope
 ```
 
-The idea now is to track the modification of the *nt!_KTRAP_FRAME.Eip* field as we discussed earlier (BTW, don't try to put directly a breakpoint on *nt!KiDispatchException* with VMware, it justs blow my guest virtual machine) via a hardware-breakpoint:
+The idea now is to track the modification of the *nt!_KTRAP_FRAME.Eip* field as we discussed earlier (BTW, don't try to put directly a breakpoint on *nt!KiDispatchException* with VMware, it just blows my guest virtual machine) via a hardware-breakpoint:
 
 ```text
 kd> ba w4 esp+68
@@ -226,7 +226,7 @@ OK, so here we can clearly see the trap frame has been modified (keep in mind Wi
 Great, I think we have now enough understanding to move on the second part of the article.
 
 # Serial Detourer
-In this part we are going to talk about Detours, what looks like the API and how you can use it to build a userland exceptions sentinel without too many lines of codes. Here are the list of the features we want:
+In this part we are going to talk about Detours, what looks like the API and how you can use it to build a userland exceptions sentinel without too many lines of codes. Here is the list of the features we want:
 
  * To hook *ntdll!KiUserExceptionDispatcher*: we will use Detours for that,
  * To generate a tiny readable exception report: for the disassembly part we will use [Distorm](http://www.ragestorm.net/distorm/) (yet another easy cool library to use),
