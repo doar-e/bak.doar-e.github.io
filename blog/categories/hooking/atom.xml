@@ -4,7 +4,7 @@
   <title><![CDATA[Category: hooking | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/hooking/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2013-10-17T21:44:44+02:00</updated>
+  <updated>2013-10-17T22:33:12+02:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -264,7 +264,7 @@ Exact matches:</p>
 <ul>
 <li>To hook <em>ntdll!KiUserExceptionDispatcher</em>: we will use Detours for that,</li>
 <li>To generate a tiny readable exception report: for the disassembly part we will use <a href="http://www.ragestorm.net/distorm/">Distorm</a> (yet another easy cool library to use),</li>
-<li>To to focus x86 architecture: because unfortunately the express version doesn&rsquo;t work for x86_64.</li>
+<li>To focus x86 architecture: because unfortunately the express version doesn&rsquo;t work for x86_64.</li>
 </ul>
 
 
