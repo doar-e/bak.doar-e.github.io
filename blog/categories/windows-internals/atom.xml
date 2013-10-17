@@ -4,7 +4,7 @@
   <title><![CDATA[Category: windows internals | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/windows-internals/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2013-10-17T22:33:12+02:00</updated>
+  <updated>2013-10-17T22:38:58+02:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -291,7 +291,7 @@ Exact matches:</p>
 <p>The first one is really easy to implement using <a href="https://github.com/0vercl0k/stuffz/blob/master/The%20Sentinel/ProcessSpawner/main.cpp#L66">DetourCreateProcessWithDll</a>: it&rsquo;s going to create the process and inject the DLL we want.</p>
 
 <p><code>text
-Usage: ./ProcessSpwaner &lt;full path dll&gt; &lt;path executable&gt; &lt;excutable name&gt; [args..]
+Usage: ./ProcessSpawner &lt;full path dll&gt; &lt;path executable&gt; &lt;excutable name&gt; [args..]
 </code></p>
 
 <p>To successfully hook a function you have to know its address of course, and you have to implement the hook function. Then, you have to call <em>DetourTransactionBegin</em>, <em>DetourUpdateThread</em>, <em>DetourTransactionCommit</em> and you&rsquo;re done, wonderful isn&rsquo;t it ?</p>
