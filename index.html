@@ -9,7 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction Kryptonite was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic &hellip;">
+  <meta name="description" content="Introduction The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like gynvael&rsquo;s &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -82,6 +82,115 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a Look at the Windows&#8217; User/Kernel Exceptions Dispatcher</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-10-12T14:03:00+02:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like <a href="http://gynvael.coldwind.pl/">gynvael</a>&rsquo;s <a href="http://gynvael.coldwind.pl/?id=148">ExcpHook</a> but in userland), and to generate a report with information related to the exception. The other purpose is to have a look at the internals of course.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>--Exception detected--
+</span><span class='line'>ExceptionRecord: 0x0028fa2c Context: 0x0028fa7c
+</span><span class='line'>Image Path: D:\Codes\The Sentinel\tests\divzero.exe
+</span><span class='line'>Command Line: ..\tests\divzero.exe divzero.exe
+</span><span class='line'>PID: 0x00000aac
+</span><span class='line'>Exception Code: 0xc0000094 (EXCEPTION_INT_DIVIDE_BY_ZERO)
+</span><span class='line'>Exception Address: 0x00401359
+</span><span class='line'>EAX: 0x0000000a EDX: 0x00000000 ECX: 0x00000001 EBX: 0x7ffde000
+</span><span class='line'>ESI: 0x00000000 EDI: 0x00000000 ESP: 0x0028fee0 EBP: 0x0028ff18
+</span><span class='line'>EIP: 0x00401359
+</span><span class='line'>EFLAGS: 0x00010246
+</span><span class='line'>
+</span><span class='line'>Stack:
+</span><span class='line'>0x767bc265 0x54f3620f 0xfffffffe 0x767a0f5a
+</span><span class='line'>0x767ffc59 0x004018b0 0x0028ff90 0x00000000
+</span><span class='line'>
+</span><span class='line'>Disassembly:
+</span><span class='line'>00401359 (04) f77c241c                 IDIV DWORD [ESP+0x1c]
+</span><span class='line'>0040135d (04) 89442404                 MOV [ESP+0x4], EAX
+</span><span class='line'>00401361 (07) c7042424304000           MOV DWORD [ESP], 0x403024
+</span><span class='line'>00401368 (05) e833080000               CALL 0x401ba0
+</span><span class='line'>0040136d (05) b800000000               MOV EAX, 0x0
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>That&rsquo;s why I divided this post in two big parts:</p>
+
+<ul>
+<li>the first one will talk about Windows internals background required to understand how things work under the hood,</li>
+<li>the last one will talk about <a href="http://research.microsoft.com/en-us/projects/detours/"><em>Detours</em></a> and how to hook <em>ntdll!KiUserExceptionDispatcher</em> toward our purpose. Basically, the library gives programmers a set of APIs to easily hook procedures. It also has a clean and readable documentation, so you should use it! It is usually used for that kind of things:
+
+<ul>
+<li>Hot-patching bugs (no need to reboot),</li>
+<li>Tracing API calls (<a href="http://www.rohitab.com/apimonitor">API Monitor</a> like),</li>
+<li>Monitoring (a bit like our example),</li>
+<li>Pseudo-sandboxing (prevent API calls),</li>
+<li>etc.</li>
+</ul>
+</li>
+</ul>
+
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
   
   
     <article>
@@ -300,6 +409,10 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows&#8217; User/Kernel exceptions dispatcher</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite&#8217;s obfuscation: a static analysis approach relying on symbolic execution</a>

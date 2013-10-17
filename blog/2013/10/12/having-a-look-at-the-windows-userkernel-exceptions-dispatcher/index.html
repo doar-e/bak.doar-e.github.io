@@ -1,0 +1,1119 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Having a look at the Windows' User/Kernel exceptions dispatcher - Diary of a reverse-engineer</title>
+  <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
+
+  
+  <meta name="description" content="Introduction The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like gynvael&rsquo;s &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://doar-e.github.io/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet' type='text/css'>
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-43481215-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+
+  <style>
+    p { text-align: justify; }
+  </style>
+
+</head>
+<body   class="collapse-sidebar sidebar-footer" >
+  <header role="banner">
+	<div class="header-title"><a href="/">Diary of a reverse-engineer</a></div>
+
+
+	<br><div class="header-subtitle">Because we like to play with weird things.</div>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:doar-e.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/about">About</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+  
+    
+      <h1 class="entry-title">Having a Look at the Windows' User/Kernel Exceptions Dispatcher</h1>
+    
+  
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-10-12T14:03:00+02:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>Introduction</h1>
+
+<p>The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like <a href="http://gynvael.coldwind.pl/">gynvael</a>&rsquo;s <a href="http://gynvael.coldwind.pl/?id=148">ExcpHook</a> but in userland), and to generate a report with information related to the exception. The other purpose is to have a look at the internals of course.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>--Exception detected--
+</span><span class='line'>ExceptionRecord: 0x0028fa2c Context: 0x0028fa7c
+</span><span class='line'>Image Path: D:\Codes\The Sentinel\tests\divzero.exe
+</span><span class='line'>Command Line: ..\tests\divzero.exe divzero.exe
+</span><span class='line'>PID: 0x00000aac
+</span><span class='line'>Exception Code: 0xc0000094 (EXCEPTION_INT_DIVIDE_BY_ZERO)
+</span><span class='line'>Exception Address: 0x00401359
+</span><span class='line'>EAX: 0x0000000a EDX: 0x00000000 ECX: 0x00000001 EBX: 0x7ffde000
+</span><span class='line'>ESI: 0x00000000 EDI: 0x00000000 ESP: 0x0028fee0 EBP: 0x0028ff18
+</span><span class='line'>EIP: 0x00401359
+</span><span class='line'>EFLAGS: 0x00010246
+</span><span class='line'>
+</span><span class='line'>Stack:
+</span><span class='line'>0x767bc265 0x54f3620f 0xfffffffe 0x767a0f5a
+</span><span class='line'>0x767ffc59 0x004018b0 0x0028ff90 0x00000000
+</span><span class='line'>
+</span><span class='line'>Disassembly:
+</span><span class='line'>00401359 (04) f77c241c                 IDIV DWORD [ESP+0x1c]
+</span><span class='line'>0040135d (04) 89442404                 MOV [ESP+0x4], EAX
+</span><span class='line'>00401361 (07) c7042424304000           MOV DWORD [ESP], 0x403024
+</span><span class='line'>00401368 (05) e833080000               CALL 0x401ba0
+</span><span class='line'>0040136d (05) b800000000               MOV EAX, 0x0
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>That&rsquo;s why I divided this post in two big parts:</p>
+
+<ul>
+<li>the first one will talk about Windows internals background required to understand how things work under the hood,</li>
+<li>the last one will talk about <a href="http://research.microsoft.com/en-us/projects/detours/"><em>Detours</em></a> and how to hook <em>ntdll!KiUserExceptionDispatcher</em> toward our purpose. Basically, the library gives programmers a set of APIs to easily hook procedures. It also has a clean and readable documentation, so you should use it! It is usually used for that kind of things:
+
+<ul>
+<li>Hot-patching bugs (no need to reboot),</li>
+<li>Tracing API calls (<a href="http://www.rohitab.com/apimonitor">API Monitor</a> like),</li>
+<li>Monitoring (a bit like our example),</li>
+<li>Pseudo-sandboxing (prevent API calls),</li>
+<li>etc.</li>
+</ul>
+</li>
+</ul>
+
+
+<!--more-->
+
+
+<h1>Lights on <em>ntdll!KiUserExceptionDispatcher</em></h1>
+
+<p>The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85">SEH</a>.aspx)/<a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85">UEF</a>.aspx) mechanisms ; though I&rsquo;m going to focus on Windows 7 x86 because that&rsquo;s the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too much details, just enough to write a working exception sentinel PoC later.</p>
+
+<h2>nt!KiTrap*</h2>
+
+<p>When your userland application does something wrong an exception is raised by your CPU: let&rsquo;s say you are trying to do a division by zero (<em>nt!KiTrap00</em> will handle that case), or you are trying to fetch a memory page that doesn&rsquo;t exist (<em>nt!KiTrap0E</em>).</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; !idt -a
+</span><span class='line'>
+</span><span class='line'>Dumping IDT: 80b95400
+</span><span class='line'>
+</span><span class='line'>00:   8464d200 nt!KiTrap00
+</span><span class='line'>01:   8464d390 nt!KiTrap01
+</span><span class='line'>02:   Task Selector = 0x0058
+</span><span class='line'>03:   8464d800 nt!KiTrap03
+</span><span class='line'>04:   8464d988 nt!KiTrap04
+</span><span class='line'>05:   8464dae8 nt!KiTrap05
+</span><span class='line'>06:   8464dc5c nt!KiTrap06
+</span><span class='line'>07:   8464e258 nt!KiTrap07
+</span><span class='line'>08:   Task Selector = 0x0050
+</span><span class='line'>09:   8464e6b8 nt!KiTrap09
+</span><span class='line'>0a:   8464e7dc nt!KiTrap0A
+</span><span class='line'>0b:   8464e91c nt!KiTrap0B
+</span><span class='line'>0c:   8464eb7c nt!KiTrap0C
+</span><span class='line'>0d:   8464ee6c nt!KiTrap0D
+</span><span class='line'>0e:   8464f51c nt!KiTrap0E
+</span><span class='line'>0f:   8464f8d0 nt!KiTrap0F
+</span><span class='line'>10:   8464f9f4 nt!KiTrap10
+</span><span class='line'>11:   8464fb34 nt!KiTrap11
+</span><span class='line'>[...]
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>I&rsquo;m sure you already know that but in x86 Intel processors there is a table called the <a href="http://wiki.osdev.org/Interrupt_Descriptor_Table">IDT</a> that stores the different routines that will handle the exceptions. The virtual address of that table is stored in a special x86 register called <em>IDTR</em>, and that register is accessible only by using the instructions <em>sidt</em> (Stores Interrupt Descriptor Table register) and <em>lidt</em> (Loads Interrupt Descriptor Table register).</p>
+
+<p>Basically there are two important things in an IDT entry: the address of the <a href="https://en.wikipedia.org/wiki/Interrupt_handler">ISR</a>, and the segment selector (remember it&rsquo;s a simple index in the <a href="http://wiki.osdev.org/GDT_Tutorial">GDT</a>) the CPU should use.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; !pcr
+</span><span class='line'>KPCR for Processor 0 at 84732c00:
+</span><span class='line'>    [...]
+</span><span class='line'>                    IDT: 80b95400
+</span><span class='line'>                    GDT: 80b95000
+</span><span class='line'>
+</span><span class='line'>kd&gt; dt nt!_KIDTENTRY 80b95400
+</span><span class='line'>   +0x000 Offset           : 0xd200
+</span><span class='line'>   +0x002 Selector         : 8
+</span><span class='line'>   +0x004 Access           : 0x8e00
+</span><span class='line'>   +0x006 ExtendedOffset   : 0x8464
+</span><span class='line'>
+</span><span class='line'>kd&gt; ln (0x8464 &lt;&lt; 10) + (0xd200)
+</span><span class='line'>Exact matches:
+</span><span class='line'>    nt!KiTrap00 (&lt;no parameter info&gt;)
+</span><span class='line'>
+</span><span class='line'>kd&gt; !@display_gdt 80b95000
+</span><span class='line'>
+</span><span class='line'>#################################
+</span><span class='line'># Global Descriptor Table (GDT) #
+</span><span class='line'>#################################
+</span><span class='line'>
+</span><span class='line'>Processor 00
+</span><span class='line'>Base : 80B95000    Limit : 03FF
+</span><span class='line'>
+</span><span class='line'>Off.  Sel.  Type    Sel.:Base  Limit   Present  DPL  AVL  Informations
+</span><span class='line'>----  ----  ------  ---------  ------- -------  ---  ---  ------------
+</span><span class='line'>[...]
+</span><span class='line'>0008  0008  Code32  00000000  FFFFFFFF  YES     0    0    Execute/Read, accessed  (Ring 0)CS=0008
+</span><span class='line'>[...]
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The entry just above tells us that for the processor 0, if a <em>division-by-zero</em> exception is raised the kernel mode routine nt!KiTrap00 will be called with a flat-model code32 ring0 segment (cf GDT dump).</p>
+
+<p>Once the CPU is in <em>nt!KiTrap00</em>&rsquo;s code it basically does a lot of things, same thing for all the other <em>nt!KiTrap</em> routines, but somehow they (more or less) end up in the kernel mode exceptions dispatcher: <em>nt!KiDispatchException</em> (remember <a href="http://gynvael.coldwind.pl/">gynvael</a>&rsquo;s tool ? He was hooking that method!) once they created the <em>nt!_KTRAP_FRAME</em> structure associated with the fault.</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/butterfly.png" title="nt!KiExceptionDispatch graph from ReactOS" ></p>
+
+<p>Now, you may already have asked yourself how the kernel reaches back to the userland in order to process the exception via the SEH mechanism for example ?</p>
+
+<p>That&rsquo;s kind of simple actually. The trick used by the Windows kernel is to check where the exception took place: if it&rsquo;s from user mode, the kernel mode exceptions dispatcher sets the field <em>eip</em> of the trap frame structure (passed in argument) to the symbol <em>nt!KeUserExceptionDispatcher</em>. Then, <em>nt!KeEloiHelper</em> will use that same trap frame to resume the execution (in our case on <em>nt!KeUserExceptionDispatcher</em>).</p>
+
+<p>But guess what ? That symbol holds the address of <em>ntdll!KiUserExceptionDispatcher</em>, so it makes total sense!</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; dps nt!KeUserExceptionDispatcher L1
+</span><span class='line'>847a49a0  77476448 ntdll!KiUserExceptionDispatcher
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>If like me you like illustrations, I&rsquo;ve made a WinDbg session where I am going to show what we just talked about. First, let&rsquo;s trigger our <em>division-by-zero</em> exception:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; bp nt!KiTrap00
+</span><span class='line'>kd&gt; g
+</span><span class='line'>Breakpoint 0 hit
+</span><span class='line'>nt!KiTrap00:
+</span><span class='line'>8464c200 6a00            push    0
+</span><span class='line'>kd&gt; k
+</span><span class='line'>ChildEBP RetAddr
+</span><span class='line'>8ec9bd98 01141269 nt!KiTrap00
+</span><span class='line'>8ec9bd9c 00000000 divzero+0x1269
+</span><span class='line'>kd&gt; u divzero+0x1269 l1
+</span><span class='line'>divzero+0x1269:
+</span><span class='line'>01141269 f7f0            div     eax,eax
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Now let&rsquo;s go a bit further in the ISR, and more precisely when the <em>nt!_KTRAP_FRAME</em> is built:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; bp nt!KiTrap00+0x36
+</span><span class='line'>kd&gt; g
+</span><span class='line'>Breakpoint 1 hit
+</span><span class='line'>nt!KiTrap00+0x36:
+</span><span class='line'>8464c236 8bec            mov     ebp,esp
+</span><span class='line'>kd&gt; dt nt!_KTRAP_FRAME @esp
+</span><span class='line'>   +0x000 DbgEbp           : 0x1141267
+</span><span class='line'>   +0x004 DbgEip           : 0x1141267
+</span><span class='line'>   +0x008 DbgArgMark       : 0
+</span><span class='line'>   +0x00c DbgArgPointer    : 0
+</span><span class='line'>   +0x010 TempSegCs        : 0
+</span><span class='line'>   +0x012 Logging          : 0 &#39;&#39;
+</span><span class='line'>   +0x013 Reserved         : 0 &#39;&#39;
+</span><span class='line'>   +0x014 TempEsp          : 0
+</span><span class='line'>   +0x018 Dr0              : 0
+</span><span class='line'>   +0x01c Dr1              : 0
+</span><span class='line'>   +0x020 Dr2              : 0
+</span><span class='line'>   +0x024 Dr3              : 0x23
+</span><span class='line'>   +0x028 Dr6              : 0x23
+</span><span class='line'>   +0x02c Dr7              : 0x1141267
+</span><span class='line'>   +0x030 SegGs            : 0
+</span><span class='line'>   +0x034 SegEs            : 0x23
+</span><span class='line'>   +0x038 SegDs            : 0x23
+</span><span class='line'>   +0x03c Edx              : 0x1141267
+</span><span class='line'>   +0x040 Ecx              : 0
+</span><span class='line'>   +0x044 Eax              : 0
+</span><span class='line'>   +0x048 PreviousPreviousMode : 0
+</span><span class='line'>   +0x04c ExceptionList    : 0xffffffff _EXCEPTION_REGISTRATION_RECORD
+</span><span class='line'>   +0x050 SegFs            : 0x270030
+</span><span class='line'>   +0x054 Edi              : 0
+</span><span class='line'>   +0x058 Esi              : 0
+</span><span class='line'>   +0x05c Ebx              : 0x7ffd3000
+</span><span class='line'>   +0x060 Ebp              : 0x27fd58
+</span><span class='line'>   +0x064 ErrCode          : 0
+</span><span class='line'>   +0x068 Eip              : 0x1141269
+</span><span class='line'>   +0x06c SegCs            : 0x1b
+</span><span class='line'>   +0x070 EFlags           : 0x10246
+</span><span class='line'>   +0x074 HardwareEsp      : 0x27fd50
+</span><span class='line'>   +0x078 HardwareSegSs    : 0x23
+</span><span class='line'>   +0x07c V86Es            : 0
+</span><span class='line'>   +0x080 V86Ds            : 0
+</span><span class='line'>   +0x084 V86Fs            : 0
+</span><span class='line'>   +0x088 V86Gs            : 0
+</span><span class='line'>kd&gt; .trap @esp
+</span><span class='line'>ErrCode = 00000000
+</span><span class='line'>eax=00000000 ebx=7ffd3000 ecx=00000000 edx=01141267 esi=00000000 edi=00000000
+</span><span class='line'>eip=01141269 esp=0027fd50 ebp=0027fd58 iopl=0         nv up ei pl zr na pe nc
+</span><span class='line'>cs=001b  ss=0023  ds=0023  es=0023  fs=0030  gs=0000             efl=00010246
+</span><span class='line'>divzero+0x1269:
+</span><span class='line'>001b:01141269 f7f0            div     eax,eax
+</span><span class='line'>kd&gt; .trap
+</span><span class='line'>Resetting default scope
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The idea now is to track the modification of the <em>nt!_KTRAP_FRAME.Eip</em> field as we discussed earlier (BTW, don&rsquo;t try to put directly a breakpoint on <em>nt!KiDispatchException</em> with VMware, it justs blow my guest virtual machine) via a hardware-breakpoint:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; ba w4 esp+68
+</span><span class='line'>kd&gt; g
+</span><span class='line'>Breakpoint 2 hit
+</span><span class='line'>nt!KiDispatchException+0x3d6:
+</span><span class='line'>846c559e c745fcfeffffff  mov     dword ptr [ebp-4],0FFFFFFFEh
+</span><span class='line'>kd&gt; dt nt!_KTRAP_FRAME Eip @esi
+</span><span class='line'>   +0x068 Eip : 0x77b36448
+</span><span class='line'>kd&gt; ln 0x77b36448
+</span><span class='line'>Exact matches:
+</span><span class='line'>    ntdll!KiUserExceptionDispatcher (&lt;no parameter info&gt;)
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>OK, so here we can clearly see the trap frame has been modified (keep in mind WinDbg gives you the control <em>after</em> the actual writing). That basically means that when the kernel will resume the execution via <em>nt!KiExceptionExit</em> (or <em>nt!Kei386EoiHelper</em>, two symbols for one same address) the CPU will directly execute the user mode exceptions dispatcher.</p>
+
+<p>Great, I think we have now enough understanding to move on the second part of the article.</p>
+
+<h1>Serial Detourer</h1>
+
+<p>In this part we are going to talk about Detours, what looks like the API and how you can use it to build a userland exceptions sentinel without too many lines of codes. Here are the list of the features we want:</p>
+
+<ul>
+<li>To hook <em>ntdll!KiUserExceptionDispatcher</em>: we will use Detours for that,</li>
+<li>To generate a tiny readable exception report: for the disassembly part we will use <a href="http://www.ragestorm.net/distorm/">Distorm</a> (yet another easy cool library to use),</li>
+<li>To to focus x86 architecture: because unfortunately the express version doesn&rsquo;t work for x86_64.</li>
+</ul>
+
+
+<p>Detours is going to modify the first bytes of the API you want to hook in order to redirect its execution in your piece of code: it&rsquo;s called an <em>inline-hook</em>.</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/detours.png"></p>
+
+<p>Detours can work in two modes:</p>
+
+<ul>
+<li>A first mode where you don&rsquo;t touch to the binary you&rsquo;re going to hook, you will need a DLL module you will inject into your binary&rsquo;s memory. Then, Detours will modify in-memory the code of the APIs you will hook. That&rsquo;s what we are going to use.</li>
+<li>A second mode where you modify the binary file itself, more precisely the <a href="http://sandsprite.com/CodeStuff/Understanding_imports.html">IAT</a>. In that mode, you won&rsquo;t need to have a DLL injecter. If you are interested in details about those tricks they described them in the <em>Detours.chm</em> file in the installation directory, read it!</li>
+</ul>
+
+
+<p>So our sentinel will be divided in two main parts:</p>
+
+<ul>
+<li>A program that will start the target binary and inject our DLL module (that&rsquo;s where all the important things are),</li>
+<li>The sentinel DLL module that will hook the userland exceptions dispatcher and write the exception report.</li>
+</ul>
+
+
+<p>The first one is really easy to implement using <a href="https://github.com/0vercl0k/stuffz/blob/master/The%20Sentinel/ProcessSpawner/main.cpp#L66">DetourCreateProcessWithDll</a>: it&rsquo;s going to create the process and inject the DLL we want.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>Usage: ./ProcessSpwaner &lt;full path dll&gt; &lt;path executable&gt; &lt;excutable name&gt; [args..]
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>To successfully hook a function you have to know its address of course, and you have to implement the hook function. Then, you have to call <em>DetourTransactionBegin</em>, <em>DetourUpdateThread</em>, <em>DetourTransactionCommit</em> and you&rsquo;re done, wonderful isn&rsquo;t it ?</p>
+
+<p>The only tricky thing, in our case, is that we want to hook <em>ntdll!KiUserExceptionDispatcher</em>, and that function has its own custom calling convention. Fortunately for us, in the <em>samples</em> directory of Detours you can find how you are supposed to deal with that specific case:</p>
+
+<figure class='code'><figcaption><span>KiUserExceptionDispatcher hook</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="n">VOID</span> <span class="nf">__declspec</span><span class="p">(</span><span class="kr">naked</span><span class="p">)</span> <span class="n">NTAPI</span> <span class="n">KiUserExceptionDispatcher</span><span class="p">(</span><span class="n">PEXCEPTION_RECORD</span> <span class="n">ExceptionRecord</span><span class="p">,</span> <span class="n">PCONTEXT</span> <span class="n">Context</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="cm">/* Taken from the Excep&#39;s detours sample */</span>
+</span><span class='line'>    <span class="kr">__asm</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">xor</span>     <span class="n">eax</span><span class="p">,</span> <span class="n">eax</span>                <span class="p">;</span> <span class="c1">// Create fake return address on stack.</span>
+</span><span class='line'>        <span class="n">push</span>    <span class="n">eax</span>                     <span class="p">;</span> <span class="c1">// (Generally, we are called by the kernel.)</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="n">push</span>    <span class="n">ebp</span>                     <span class="p">;</span> <span class="c1">// Prolog</span>
+</span><span class='line'>        <span class="n">mov</span>     <span class="n">ebp</span><span class="p">,</span> <span class="n">esp</span>                <span class="p">;</span>
+</span><span class='line'>        <span class="n">sub</span>     <span class="n">esp</span><span class="p">,</span> <span class="n">__LOCAL_SIZE</span>       <span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">EnterCriticalSection</span><span class="p">(</span><span class="o">&amp;</span><span class="n">critical_section</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">log_exception</span><span class="p">(</span><span class="n">ExceptionRecord</span><span class="p">,</span> <span class="n">Context</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">LeaveCriticalSection</span><span class="p">(</span><span class="o">&amp;</span><span class="n">critical_section</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="kr">__asm</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">mov</span>     <span class="n">ebx</span><span class="p">,</span> <span class="n">ExceptionRecord</span>    <span class="p">;</span>
+</span><span class='line'>        <span class="n">mov</span>     <span class="n">ecx</span><span class="p">,</span> <span class="n">Context</span>            <span class="p">;</span>
+</span><span class='line'>        <span class="n">push</span>    <span class="n">ecx</span>                     <span class="p">;</span>
+</span><span class='line'>        <span class="n">push</span>    <span class="n">ebx</span>                     <span class="p">;</span>
+</span><span class='line'>        <span class="n">mov</span>     <span class="n">eax</span><span class="p">,</span> <span class="p">[</span><span class="n">TrueKiUserExceptionDispatcher</span><span class="p">];</span>
+</span><span class='line'>        <span class="n">jmp</span>     <span class="n">eax</span>                     <span class="p">;</span>
+</span><span class='line'>        <span class="c1">//</span>
+</span><span class='line'>        <span class="c1">// The above code should never return.</span>
+</span><span class='line'>        <span class="c1">//</span>
+</span><span class='line'>        <span class="kt">int</span>     <span class="mi">3</span>                       <span class="p">;</span> <span class="c1">// Break!</span>
+</span><span class='line'>        <span class="n">mov</span>     <span class="n">esp</span><span class="p">,</span> <span class="n">ebp</span>                <span class="p">;</span> <span class="c1">// Epilog</span>
+</span><span class='line'>        <span class="n">pop</span>     <span class="n">ebp</span>                     <span class="p">;</span>
+</span><span class='line'>        <span class="n">ret</span>                             <span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Here is what looks <em>ntdll!KiUserExceptionDispatcher</em> like in memory after the hook:</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/hook.png"></p>
+
+<p>Disassembling some instructions pointed by the <em>CONTEXT.Eip</em> field is also really straightforward to do with <em>distorm_decode</em>:</p>
+
+<figure class='code'><figcaption><span>Use distorm3 to disassemble some codes</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">if</span><span class="p">(</span><span class="n">IsBadReadPtr</span><span class="p">((</span><span class="k">const</span> <span class="kt">void</span><span class="o">*</span><span class="p">)</span><span class="n">Context</span><span class="o">-&gt;</span><span class="n">Eip</span><span class="p">,</span> <span class="n">SIZE_BIGGEST_X86_INSTR</span> <span class="o">*</span> <span class="n">MAX_INSTRUCTIONS</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="n">_DecodeResult</span> <span class="n">res</span><span class="p">;</span>
+</span><span class='line'>  <span class="n">_OffsetType</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">Context</span><span class="o">-&gt;</span><span class="n">Eip</span><span class="p">;</span>
+</span><span class='line'>  <span class="n">_DecodedInst</span> <span class="n">decodedInstructions</span><span class="p">[</span><span class="n">MAX_INSTRUCTIONS</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">decodedInstructionsCount</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="n">res</span> <span class="o">=</span> <span class="n">distorm_decode</span><span class="p">(</span>
+</span><span class='line'>      <span class="n">offset</span><span class="p">,</span>
+</span><span class='line'>      <span class="p">(</span><span class="k">const</span> <span class="kt">unsigned</span> <span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">Context</span><span class="o">-&gt;</span><span class="n">Eip</span><span class="p">,</span>
+</span><span class='line'>      <span class="n">MAX_INSTRUCTIONS</span> <span class="o">*</span> <span class="n">SIZE_BIGGEST_X86_INSTR</span><span class="p">,</span>
+</span><span class='line'>      <span class="n">Decode32Bits</span><span class="p">,</span>
+</span><span class='line'>      <span class="n">decodedInstructions</span><span class="p">,</span>
+</span><span class='line'>      <span class="n">MAX_INSTRUCTIONS</span><span class="p">,</span>
+</span><span class='line'>      <span class="o">&amp;</span><span class="n">decodedInstructionsCount</span>
+</span><span class='line'>  <span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="k">if</span><span class="p">(</span><span class="n">res</span> <span class="o">==</span> <span class="n">DECRES_SUCCESS</span> <span class="o">||</span> <span class="n">res</span> <span class="o">==</span> <span class="n">DECRES_MEMORYERR</span><span class="p">)</span>
+</span><span class='line'>  <span class="p">{</span>
+</span><span class='line'>    <span class="n">fprintf</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">Disassembly:</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">for</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">decodedInstructionsCount</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>      <span class="n">fprintf</span><span class="p">(</span>
+</span><span class='line'>        <span class="n">f</span><span class="p">,</span>
+</span><span class='line'>        <span class="s">&quot;%.8I64x (%.2d) %-24s %s%s%s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+</span><span class='line'>        <span class="n">decodedInstructions</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">offset</span><span class="p">,</span>
+</span><span class='line'>        <span class="n">decodedInstructions</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">size</span><span class="p">,</span>
+</span><span class='line'>        <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">decodedInstructions</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">instructionHex</span><span class="p">.</span><span class="n">p</span><span class="p">,</span>
+</span><span class='line'>        <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">decodedInstructions</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">mnemonic</span><span class="p">.</span><span class="n">p</span><span class="p">,</span>
+</span><span class='line'>        <span class="n">decodedInstructions</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">operands</span><span class="p">.</span><span class="n">length</span> <span class="o">!=</span> <span class="mi">0</span> <span class="o">?</span> <span class="s">&quot; &quot;</span> <span class="o">:</span> <span class="s">&quot;&quot;</span><span class="p">,</span>
+</span><span class='line'>        <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">decodedInstructions</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">operands</span><span class="p">.</span><span class="n">p</span>
+</span><span class='line'>      <span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>  <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>So the prototype works pretty great like that.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>D:\Codes\The Sentinel\Release&gt;ProcessSpawner.exe &quot;D:\Codes\The Sentinel\Release\ExceptionMonitorDll.dll&quot; ..\tests\divzero.exe divzero.exe
+</span><span class='line'>D:\Codes\The Sentinel\Release&gt;ls -l D:\Crashs\divzero.exe
+</span><span class='line'>total 4
+</span><span class='line'>-rw-rw-rw-  1 0vercl0k 0 863 2013-10-16 22:58 exceptionaddress_401359pid_2732tick_258597468timestamp_1381957116.txt
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>But once I&rsquo;ve encountered a behavior that I didn&rsquo;t plan on: there was like a stack-corruption in a stack-frame protected by the <em>/GS</em> cookie. If the cookie has been, somehow, rewritten the program calls <em>___report_gs_failure</em> (sometimes the implementation is directly inlined, thus you can find the definition of the function in your binary) in order to kill the program because the stack-frame is broken. Long story short, I was also hooking <em>kernel32!UnhandleExceptionFilter</em> to not miss that kind of exceptions, but I noticed while writing this post that it doesn&rsquo;t work anymore. We are going to see why in the next part.</p>
+
+<h1>The untold story: Win8 and <em>nt!KiFastFailDispatch</em></h1>
+
+<h2>Introduction</h2>
+
+<p>When I was writing this little post I did also some tests on my personal machine: a Windows 8 host. But the test for the <em>/GS</em> thing we just talked about wasn&rsquo;t working at all as I said. So I started my investigation by looking at the code of <em>__report_gsfailure</em> (generated with a VS2012) and I saw this:</p>
+
+<figure class='code'><figcaption><span>__report_gsfailure</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">void</span> <span class="n">__usercall</span> <span class="nf">__report_gsfailure</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">a1</span><span class="o">&lt;</span><span class="n">ebx</span><span class="o">&gt;</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">a2</span><span class="o">&lt;</span><span class="n">edi</span><span class="o">&gt;</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">a3</span><span class="o">&lt;</span><span class="n">esi</span><span class="o">&gt;</span><span class="p">,</span> <span class="kt">char</span> <span class="n">a4</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">v4</span><span class="p">;</span> <span class="c1">// eax@1</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">v5</span><span class="p">;</span> <span class="c1">// edx@1</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">v6</span><span class="p">;</span> <span class="c1">// ecx@1</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">v11</span><span class="p">;</span> <span class="c1">// [sp-4h] [bp-328h]@1</span>
+</span><span class='line'>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">v12</span><span class="p">;</span> <span class="c1">// [sp+324h] [bp+0h]@0</span>
+</span><span class='line'>  <span class="kt">void</span> <span class="o">*</span><span class="n">v13</span><span class="p">;</span> <span class="c1">// [sp+328h] [bp+4h]@3</span>
+</span><span class='line'>
+</span><span class='line'>  <span class="n">v4</span> <span class="o">=</span> <span class="n">IsProcessorFeaturePresent</span><span class="p">(</span><span class="mh">0x17u</span><span class="p">);</span>
+</span><span class='line'>  <span class="c1">// [...]</span>
+</span><span class='line'>  <span class="k">if</span> <span class="p">(</span> <span class="n">v4</span> <span class="p">)</span>
+</span><span class='line'>  <span class="p">{</span>
+</span><span class='line'>    <span class="n">v6</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+</span><span class='line'>    <span class="kr">__asm</span> <span class="p">{</span> <span class="kt">int</span>     <span class="mi">29</span><span class="n">h</span>             <span class="p">;</span> <span class="n">DOS</span> <span class="mi">2</span><span class="o">+</span> <span class="n">internal</span> <span class="o">-</span> <span class="n">FAST</span> <span class="n">PUTCHAR</span> <span class="p">}</span>
+</span><span class='line'>  <span class="p">}</span>
+</span><span class='line'>  <span class="p">[...]</span>
+</span><span class='line'>  <span class="n">__raise_securityfailure</span><span class="p">(</span><span class="o">&amp;</span><span class="n">GS_ExceptionPointers</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The first thing I asked myself was about that weird <em>int 29h</em>. Next thing I did was to download a fresh Windows 8 VM <a href="http://www.modern.ie/fr-fr/virtualization-tools#downloads">here</a> and attached a kernel debugger in order to check the IDT entry 0x29:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; vertarget
+</span><span class='line'>Windows 8 Kernel Version 9200 MP (2 procs) Free x86 compatible
+</span><span class='line'>Built by: 9200.16424.x86fre.win8_gdr.120926-1855
+</span><span class='line'>Machine Name:
+</span><span class='line'>Kernel base = 0x8145c000 PsLoadedModuleList = 0x81647e68
+</span><span class='line'>Debug session time: Thu Oct 17 11:30:18.772 2013 (UTC + 2:00)
+</span><span class='line'>System Uptime: 0 days 0:02:55.784
+</span><span class='line'>kd&gt; !idt 29
+</span><span class='line'>
+</span><span class='line'>Dumping IDT: 809da400
+</span><span class='line'>
+</span><span class='line'>29: 8158795c nt!KiRaiseSecurityCheckFailure
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>As opposed I was used to see on my Win7 machine:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; vertarget
+</span><span class='line'>Windows 7 Kernel Version 7600 MP (1 procs) Free x86 compatible
+</span><span class='line'>Product: WinNt, suite: TerminalServer SingleUserTS
+</span><span class='line'>Built by: 7600.16385.x86fre.win7_rtm.090713-1255
+</span><span class='line'>Machine Name:
+</span><span class='line'>Kernel base = 0x84646000 PsLoadedModuleList = 0x8478e810
+</span><span class='line'>Debug session time: Thu Oct 17 14:25:40.969 2013 (UTC + 2:00)
+</span><span class='line'>System Uptime: 0 days 0:00:55.203
+</span><span class='line'>kd&gt; !idt 29
+</span><span class='line'>
+</span><span class='line'>Dumping IDT: 80b95400
+</span><span class='line'>
+</span><span class='line'>29: 00000000
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>I&rsquo;ve opened my favorite IDE and I wrote a bit of code to test if there was a different behavior between Win7 and Win8 regarding this exception handling:</p>
+
+<figure class='code'><figcaption><span>gs.c</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;windows.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>  <span class="kr">__try</span>
+</span><span class='line'>  <span class="p">{</span>
+</span><span class='line'>    <span class="kr">__asm</span> <span class="kt">int</span> <span class="mh">0x29</span>
+</span><span class='line'>  <span class="p">}</span>
+</span><span class='line'>  <span class="kr">__except</span><span class="p">(</span><span class="n">EXCEPTION_EXECUTE_HANDLER</span><span class="p">)</span>
+</span><span class='line'>  <span class="p">{</span>
+</span><span class='line'>    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;SEH catched the exception!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>  <span class="p">}</span>
+</span><span class='line'>  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>On Win7 I&rsquo;m able to catch the exception via a SEH handler: it means the Windows kernel calls the user mode exception dispatcher for further processing by the user exception handlers (as we saw at the beginning of the post). But on Win8, at my surprise, I don&rsquo;t get the message ; the process is killed directly after displaying the usual message box &ldquo;a program has stopped&rdquo;. Definitely weird.</p>
+
+<h2>What happens on Win7</h2>
+
+<p>When the interruption 0x29 is triggered by my code, the CPU is going to check if there is an IDT entry for that interruption, and if there isn&rsquo;t it&rsquo;s going to raise a #GP (<em>nt!KiTrap0d</em>) that will end up in <em>nt!KiDispatchException</em>.</p>
+
+<p>And as previously, the function is going to check where the fault happened and because it happened in userland it will modify the trap frame structure to reach <em>ntdll!KiUserExceptionDispatcher</em>. That&rsquo;s why we can catch it in our <em>__except</em> scope.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>kd&gt; r
+</span><span class='line'>eax=0000000d ebx=86236d40 ecx=862b48f0 edx=0050e600 esi=00000000 edi=0029b39f
+</span><span class='line'>eip=848652dd esp=9637fd34 ebp=9637fd34 iopl=0         nv up ei pl zr na pe nc
+</span><span class='line'>cs=0008  ss=0010  ds=0023  es=0023  fs=0030  gs=0000             efl=00000246
+</span><span class='line'>nt!KiTrap0D+0x471:
+</span><span class='line'>848652dd e80ddeffff      call    nt!CommonDispatchException+0x123 (848630ef)
+</span><span class='line'>kd&gt; k 2
+</span><span class='line'>ChildEBP RetAddr
+</span><span class='line'>9637fd34 0029b39f nt!KiTrap0D+0x471
+</span><span class='line'>0016fc1c 0029be4c gs+0x2b39f
+</span><span class='line'>kd&gt; u gs+0x2b39f l1
+</span><span class='line'>gs+0x2b39f:
+</span><span class='line'>0029b39f cd29            int     29h
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h2>What happens on Win8</h2>
+
+<p>This time the kernel has defined an ISR for the interruption 0x29: <em>nt!KiRaiseSecurityCheckFailure</em>. This function is going to call <em>nt!KiFastFailDispatch</em>, and this one is going to call <em>nt!KiDispatchException</em>:</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/kifastfaildispatch.png"></p>
+
+<p>BUT the exception is going to be processed as a <strong>second-chance</strong> exception because of the way <em>nt!KiFastFailDispatch</em> calls the kernel mode exception dispatcher. And if we look at the source of <em>nt!KiDispatchException</em> in ReactOS we can see that this exception won&rsquo;t have the chance to reach back the userland as in Win7 :)):</p>
+
+<figure class='code'><figcaption><span>KiDispatchException from ReactOS</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="n">VOID</span>
+</span><span class='line'><span class="n">NTAPI</span>
+</span><span class='line'><span class="nf">KiDispatchException</span><span class="p">(</span><span class="n">IN</span> <span class="n">PEXCEPTION_RECORD</span> <span class="n">ExceptionRecord</span><span class="p">,</span>
+</span><span class='line'>                    <span class="n">IN</span> <span class="n">PKEXCEPTION_FRAME</span> <span class="n">ExceptionFrame</span><span class="p">,</span>
+</span><span class='line'>                    <span class="n">IN</span> <span class="n">PKTRAP_FRAME</span> <span class="n">TrapFrame</span><span class="p">,</span>
+</span><span class='line'>                    <span class="n">IN</span> <span class="n">KPROCESSOR_MODE</span> <span class="n">PreviousMode</span><span class="p">,</span>
+</span><span class='line'>                    <span class="n">IN</span> <span class="n">BOOLEAN</span> <span class="n">FirstChance</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="n">CONTEXT</span> <span class="n">Context</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">EXCEPTION_RECORD</span> <span class="n">LocalExceptRecord</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="c1">// [...]</span>
+</span><span class='line'>    <span class="cm">/* Handle kernel-mode first, it&#39;s simpler */</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">PreviousMode</span> <span class="o">==</span> <span class="n">KernelMode</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'><span class="c1">// [...]</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="cm">/* User mode exception, was it first-chance? */</span>
+</span><span class='line'>        <span class="k">if</span> <span class="p">(</span><span class="n">FirstChance</span><span class="p">)</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'><span class="c1">// [...]</span>
+</span><span class='line'><span class="c1">// that&#39;s in this branch the kernel reaches back to the user mode exception dispatcher</span>
+</span><span class='line'><span class="c1">// but if FirstChance=0, we won&#39;t have that chance</span>
+</span><span class='line'>
+</span><span class='line'>          <span class="cm">/* Set EIP to the User-mode Dispatcher */</span>
+</span><span class='line'>          <span class="n">TrapFrame</span><span class="o">-&gt;</span><span class="n">Eip</span> <span class="o">=</span> <span class="p">(</span><span class="n">ULONG</span><span class="p">)</span><span class="n">KeUserExceptionDispatcher</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>          <span class="cm">/* Dispatch exception to user-mode */</span>
+</span><span class='line'>          <span class="n">_SEH2_YIELD</span><span class="p">(</span><span class="k">return</span><span class="p">);</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="cm">/* Try second chance */</span>
+</span><span class='line'>        <span class="k">if</span> <span class="p">(</span><span class="n">DbgkForwardException</span><span class="p">(</span><span class="n">ExceptionRecord</span><span class="p">,</span> <span class="n">TRUE</span><span class="p">,</span> <span class="n">TRUE</span><span class="p">))</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'>            <span class="cm">/* Handled, get out */</span>
+</span><span class='line'>            <span class="k">return</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>        <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">DbgkForwardException</span><span class="p">(</span><span class="n">ExceptionRecord</span><span class="p">,</span> <span class="n">FALSE</span><span class="p">,</span> <span class="n">TRUE</span><span class="p">))</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'>            <span class="cm">/* Handled, get out */</span>
+</span><span class='line'>            <span class="k">return</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="c1">// [...]</span>
+</span><span class='line'>    <span class="k">return</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>To convince yourself you can even modify the <em>FirstChance</em> argument passed to <em>nt!KiDispatchException</em> from <em>nt!KiFastFailDispatch</em>. You will see the SEH handler is called like in Win7:</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/win8.png"></p>
+
+<p>Cool, we have now our answer to the weird behavior! I guess if you want to monitor <em>/GS</em> exception you are going to find another trick :)).</p>
+
+<h1>Conclusion</h1>
+
+<p>I hope you enjoyed this little trip in the Windows&#8217; exception world both in user and kernel mode. You will find the seems-to-be-working PoC on my github account here: <a href="https://github.com/0vercl0k/stuffz/tree/master/The%20Sentinel">The sentinel</a>. By the way, you are highly encouraged to improve it, or to modify it in order to suit your use-case!</p>
+
+<p>If you liked the subject of the post, I&rsquo;ve made a list of really cool/interesting links you should check out:</p>
+
+<ul>
+<li><a href="http://www.alex-ionescu.com/?p=69">New Security Assertions in Windows 8</a> &ndash; <a href="https://twitter.com/aionescu">@aionescu</a> endless source of inspiration</li>
+<li><a href="http://www.uninformed.org/?v=4&amp;a=5&amp;t=txt">Exploiting the Otherwise Unexploitable on Windows</a> &ndash; Yet another awesome article by <a href="http://www.nynaeve.net/">Skywing</a> and <a href="http://uninformed.org/">skape</a></li>
+<li><a href="http://www.nynaeve.net/?p=201">A catalog of NTDLL kernel mode to user mode callbacks, part 2: KiUserExceptionDispatcher</a></li>
+<li><a href="http://dralu.com/?p=167">Windows Exceptions, Part II: Exception Dispatching</a></li>
+<li><a href="https://easyhook.codeplex.com/">EasyHook</a> &ndash; &ldquo;EasyHook starts where Microsoft Detours ends.&rdquo;</li>
+</ul>
+
+
+<p>High five to my friend <a href="https://twitter.com/Ivanlef0u">@Ivanlef0u</a> for helping me to troubleshoot the weird behavior, and <a href="https://twitter.com/__x86">@__x86</a> for the review!</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Axel "0vercl0k" Souchet</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-10-12T14:03:00+02:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/coding/'>coding</a>, <a class='category' href='/blog/categories/hooking/'>hooking</a>, <a class='category' href='/blog/categories/windows-internals/'>windows internals</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/" title="Previous Post: Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution">&laquo; Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution</a>
+      
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows' User/Kernel exceptions dispatcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Pinpointing heap-related issues: OllyDbg2 off-by-one story</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/">Some thoughts about code-coverage measurement with Pin</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Regular expressions obfuscation under the microscope</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2013 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  
+  </span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>
