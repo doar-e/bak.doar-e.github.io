@@ -230,7 +230,7 @@ In this part we are going to talk about Detours, what looks like the API and how
 
  * To hook *ntdll!KiUserExceptionDispatcher*: we will use Detours for that,
  * To generate a tiny readable exception report: for the disassembly part we will use [Distorm](http://www.ragestorm.net/distorm/) (yet another easy cool library to use),
- * To to focus x86 architecture: because unfortunately the express version doesn't work for x86_64.
+ * To focus x86 architecture: because unfortunately the express version doesn't work for x86_64.
 
 Detours is going to modify the first bytes of the API you want to hook in order to redirect its execution in your piece of code: it's called an *inline-hook*.
 
