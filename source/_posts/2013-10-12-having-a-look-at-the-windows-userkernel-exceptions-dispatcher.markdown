@@ -249,7 +249,7 @@ So our sentinel will be divided in two main parts:
 The first one is really easy to implement using [DetourCreateProcessWithDll](https://github.com/0vercl0k/stuffz/blob/master/The%20Sentinel/ProcessSpawner/main.cpp#L66): it's going to create the process and inject the DLL we want.
 
 ```text
-Usage: ./ProcessSpwaner <full path dll> <path executable> <excutable name> [args..]
+Usage: ./ProcessSpawner <full path dll> <path executable> <excutable name> [args..]
 ```
 
 To successfully hook a function you have to know its address of course, and you have to implement the hook function. Then, you have to call *DetourTransactionBegin*, *DetourUpdateThread*, *DetourTransactionCommit* and you're done, wonderful isn't it ?
