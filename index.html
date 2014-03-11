@@ -9,7 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like gynvael&rsquo;s &hellip;">
+  <meta name="description" content="Introduction I am currently playing with pool-based memory corruption vulnerabilities. That’s why I wanted to program a PoC exploit for the &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -90,6 +90,61 @@
   <header>
   
     
+      <h1 class="entry-title"><a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First Dip Into the Kernel Pool : MS10-058</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-03-11T10:52:37+01:00" pubdate data-updated="true">Mar 11<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>I am currently playing with pool-based memory corruption vulnerabilities. That’s why I wanted to program a PoC exploit for the vulnerability presented by Tarjei Mandt during his first talk “Kernel Pool Exploitation on Windows 7” <a href="http://www.mista.nu/research/MANDT-kernelpool-PAPER.pdf">[3]</a>. I think it&rsquo;s a good exercise to start learning about pool overflows.</p>
+
+<h1>Forewords</h1>
+
+<p>If you want to experiment with this vulnerability, you should read <a href="http://www.itsecdb.com/oval/definition/oval/gov.nist.USGCB.patch/def/11689/MS10-058-Vulnerabilities-in-TCP-IP-Could-Allow-Elevation-of.html">[1]</a> and be sure to have a vulnerable system. I tested my exploit on a VM with Windows 7 32 bits with tcpip.sys 6.1.7600.16385. The Microsoft bulletin dealing with this vulnerability is MS10-058. It has been found by Matthieu Suiche <a href="http://technet.microsoft.com/fr-fr/security/bulletin/ms10-058">[2]</a> and was used as an example on Tarjei Mandt’s paper <a href="http://www.mista.nu/research/MANDT-kernelpool-PAPER.pdf">[3]</a>.</p>
+
+<h1>Triggering the flaw</h1>
+
+<p>An integer overflow in <em>tcpip!IppSortDestinationAddresses</em> allows to allocate a wrong-sized non-paged pool memory chunk. Below you can see the diff between the vulnerable version and the patched version.</p>
+
+<p><img class="center" src="/images/MS10-058/diff.png"></p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
       <h1 class="entry-title"><a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a Look at the Windows&#8217; User/Kernel Exceptions Dispatcher</a></h1>
       
       
@@ -107,7 +162,7 @@
   
 
 
-<time datetime="2013-10-12T14:03:00+01:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
+<time datetime="2013-10-12T14:03:00+02:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
         
       </p>
     
@@ -216,7 +271,7 @@
   
 
 
-<time datetime="2013-09-16T11:47:00+01:00" pubdate data-updated="true">Sep 16<span>th</span>, 2013</time>
+<time datetime="2013-09-16T11:47:00+02:00" pubdate data-updated="true">Sep 16<span>th</span>, 2013</time>
         
       </p>
     
@@ -265,7 +320,7 @@
   
 
 
-<time datetime="2013-09-09T09:53:00+01:00" pubdate data-updated="true">Sep 9<span>th</span>, 2013</time>
+<time datetime="2013-09-09T09:53:00+02:00" pubdate data-updated="true">Sep 9<span>th</span>, 2013</time>
         
       </p>
     
@@ -324,7 +379,7 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
   
 
 
-<time datetime="2013-08-31T18:57:00+01:00" pubdate data-updated="true">Aug 31<span>st</span>, 2013</time>
+<time datetime="2013-08-31T18:57:00+02:00" pubdate data-updated="true">Aug 31<span>st</span>, 2013</time>
         
       </p>
     
@@ -375,7 +430,7 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
   
 
 
-<time datetime="2013-08-24T12:35:00+01:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
+<time datetime="2013-08-24T12:35:00+02:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
         
       </p>
     
@@ -412,6 +467,10 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
   <ul id="recent_posts">
     
       <li class="post">
+        <a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First dip into the kernel pool : MS10-058</a>
+      </li>
+    
+      <li class="post">
         <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows&#8217; User/Kernel exceptions dispatcher</a>
       </li>
     
@@ -427,10 +486,6 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
         <a href="/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/">Some thoughts about code-coverage measurement with Pin</a>
       </li>
     
-      <li class="post">
-        <a href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Regular expressions obfuscation under the microscope</a>
-      </li>
-    
   </ul>
 </section>
 
@@ -444,7 +499,7 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     </div>
   </div>
   <footer role="contentinfo"><p>
-  Copyright &copy; 2013 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  Copyright &copy; 2014 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
   <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
 	  
   </span>

@@ -4,7 +4,7 @@
   <title><![CDATA[Category: coding | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/coding/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2013-11-03T12:01:44+00:00</updated>
+  <updated>2014-03-11T13:53:20+01:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -16,7 +16,7 @@
   <entry>
     <title type="html"><![CDATA[Having a look at the Windows' User/Kernel exceptions dispatcher]]></title>
     <link href="http://doar-e.github.io/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/"/>
-    <updated>2013-10-12T14:03:00+01:00</updated>
+    <updated>2013-10-12T14:03:00+02:00</updated>
     <id>http://doar-e.github.io/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 

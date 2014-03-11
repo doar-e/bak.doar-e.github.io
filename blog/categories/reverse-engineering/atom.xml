@@ -4,7 +4,7 @@
   <title><![CDATA[Category: reverse-engineering | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/reverse-engineering/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2013-11-03T12:01:44+00:00</updated>
+  <updated>2014-03-11T13:53:20+01:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -16,7 +16,7 @@
   <entry>
     <title type="html"><![CDATA[Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution]]></title>
     <link href="http://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/"/>
-    <updated>2013-09-16T11:47:00+01:00</updated>
+    <updated>2013-09-16T11:47:00+02:00</updated>
     <id>http://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 
@@ -852,7 +852,7 @@ EAX=arg0 + arg1
   <entry>
     <title type="html"><![CDATA[Pinpointing heap-related issues: OllyDbg2 off-by-one story]]></title>
     <link href="http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/"/>
-    <updated>2013-09-09T09:53:00+01:00</updated>
+    <updated>2013-09-09T09:53:00+02:00</updated>
     <id>http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 
@@ -1140,7 +1140,7 @@ ollydbg!Findfreehardbreakslot+0x21d9:
   <entry>
     <title type="html"><![CDATA[Some thoughts about code-coverage measurement with Pin]]></title>
     <link href="http://doar-e.github.io/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/"/>
-    <updated>2013-08-31T18:57:00+01:00</updated>
+    <updated>2013-08-31T18:57:00+02:00</updated>
     <id>http://doar-e.github.io/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 
@@ -1551,7 +1551,7 @@ PS D:> Measure-Command {start-process pin.exe &ldquo;-t pin-code-coverage-measur
   <entry>
     <title type="html"><![CDATA[Regular expressions obfuscation under the microscope]]></title>
     <link href="http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/"/>
-    <updated>2013-08-24T12:35:00+01:00</updated>
+    <updated>2013-08-24T12:35:00+02:00</updated>
     <id>http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 
