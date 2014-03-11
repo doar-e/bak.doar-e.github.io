@@ -117,7 +117,7 @@ As you can see on the listing above, *nt!PoolHitTag* is compared against the poo
 #Exploitation technique 
 ##Basic structure 
 
-As the internals of the pool are thoroughly detailed in Tarjei Mandt’s paper [[3]](www.mista.nu/research/MANDT-kernelpool-PAPER.pdf), I will only be giving a glimpse at the pool descriptor and the pool header structures. The pool memory is divided into several types of pool. Two of them are the paged pool and the non-paged pool. A pool is described by a *_POOL_DESCRIPTOR* structure as seen below.
+As the internals of the pool are thoroughly detailed in Tarjei Mandt’s paper [[3]](http://www.mista.nu/research/MANDT-kernelpool-PAPER.pdf), I will only be giving a glimpse at the pool descriptor and the pool header structures. The pool memory is divided into several types of pool. Two of them are the paged pool and the non-paged pool. A pool is described by a *_POOL_DESCRIPTOR* structure as seen below.
 ```text
 0: kd> dt _POOL_TYPE
 ntdll!_POOL_TYPE
