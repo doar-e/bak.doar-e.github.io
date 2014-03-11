@@ -2,6 +2,7 @@
 layout: post
 title: "First dip into the kernel pool : MS10-058"
 date: 2014-03-11 10:52:37 +0100
+author: Jeremy "__x86" Fetiveau
 comments: true
 categories: 
 ---
@@ -254,6 +255,7 @@ Now that we are able to execute arbitrary code from kernel land we just have to 
 
 This is illustrated in *payload()*. 
 
+{%img center /images/MS10-058/screenshot.png %}
 
 #Greetings
 
