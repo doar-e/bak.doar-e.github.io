@@ -4,7 +4,7 @@
   <title><![CDATA[Category: virtual machine | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/virtual-machine/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-04-17T23:39:36+01:00</updated>
+  <updated>2014-04-17T23:40:36+01:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -32,6 +32,9 @@
 
 <p>Also, keep in mind I will focus Python 2.7.5 x86 on Windows ; but obviously this is adaptable for other systems and architectures, so this is left as an exercise to the interested readers.
 All right, let&rsquo;s move on to the first part: this one will focus the essentials about the VM, and Python objects.</p>
+
+<!--more-->
+
 
 <h1>The Python virtual processor</h1>
 
