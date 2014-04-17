@@ -31,16 +31,28 @@
         <lastmod>2013-10-17T22:00:33+01:00</lastmod>
     </url>
     <url>
+        <loc>
+            http://doar-e.github.io/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/
+        </loc>
+        <lastmod>2014-04-17T23:21:11+01:00</lastmod>
+    </url>
+    <url>
+        <loc>
+            http://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/
+        </loc>
+        <lastmod>2014-04-17T23:23:02+01:00</lastmod>
+    </url>
+    <url>
         <loc>http://doar-e.github.io/about/</loc>
         <lastmod>2013-09-13T13:10:14+01:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/blog/archives/</loc>
-        <lastmod>2013-10-17T22:00:33+01:00</lastmod>
+        <lastmod>2014-04-17T23:23:02+01:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/</loc>
-        <lastmod>2013-10-17T22:00:33+01:00</lastmod>
+        <lastmod>2014-04-17T23:23:02+01:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/robots.txt</loc>
