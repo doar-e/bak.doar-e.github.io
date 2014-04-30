@@ -4,7 +4,7 @@
   <title><![CDATA[Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-04-30T21:02:40+01:00</updated>
+  <updated>2014-04-30T21:06:26+01:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -29,6 +29,9 @@
 
 <p>I am assuming the reader is familiar with Linux kernel exploitation and knows some ARM assembly (seriously).</p>
 
+<!--more-->
+
+
 <h1>ARM Exceptions and the Exception Vector Table</h1>
 
 <p>In a few words, the EVT is to ARM what the IDT is to x86. In the ARM world, an exception is an event that causes the CPU to stop or pause from executing the current set of instructions. When this exception occurs, the CPU diverts execution to another location called an exception handler. There are 7 exception types and each exception type is associated with a mode of operation. Modes of operation affect the processor&rsquo;s &ldquo;permissions&rdquo; in regards to system resources. There are in total 7 modes of operation. The following table maps some exception types to their associated modes of operation:</p>
@@ -47,7 +50,7 @@
 <h2>The Exceptions</h2>
 
 <p>The exceptions change the processor mode and each exception has access to a set of <em>banked</em> registers. These can be described as a set of registers that exist only in the exception&rsquo;s context so modifying them will not affect the banked registers of another exception mode. Different exception modes have different banked registers:<br/>
-<img src="http://doar-e.github.io/source/images/corrupting_arm_evt/banked_regs.png" alt="Banked Registers" /></p>
+<img src="http://doar-e.github.io/images/corrupting_arm_evt/banked_regs.png" alt="Banked Registers" /></p>
 
 <h2>The Exception Vector Table</h2>
 
@@ -120,9 +123,9 @@
 
 <p>Basically, with this cool and realistic vulnerability, you give the module an address followed by data to write at that address.
 Now, our plan is going to be to backdoor the kernel by overwriting the SWI exception vector with code that jumps to our backdoor code. This code will check for a magic value in a register (say r7 which holds the syscall number) and if it matches, it will elevate the privileges of the calling process. Where do we store this backdoor code ? Considering the fact that we have an arbitrary write to kernel memory, we can either store it in userspace or somewhere in kernel space. The good thing about the latter choice is that if we choose an appropriate location in kernel space, our code will exist as long as the machine is running, whereas with the former choice, as soon as our user space application exits, the code is lost and if the entry in the EVT isn&rsquo;t set back to its original value, it will most likely be pointing to invalid/unmmapped memory which will crash the system. So we need a location in kernel space that is executable and writeable. Where could this be ? Let&rsquo;s take a closer look at the EVT:<br/>
-<img src="http://doar-e.github.io/source/images/corrupting_arm_evt/evt_8i.png" alt="EVT Disassembly" /><br/>
+<img src="http://doar-e.github.io/images/corrupting_arm_evt/evt_8i.png" alt="EVT Disassembly" /><br/>
 As expected we see a bunch of control transfer instructions but one thing we notice about them is that &ldquo;closest&rdquo; referenced address is <em>0xffff0200</em>. Let&rsquo;s take a look what is between the end of the EVT and 0xffff0200:<br/>
-<img src="http://doar-e.github.io/source/images/corrupting_arm_evt/evt_400wx.png" alt="EVT Inspection" /><br/>
+<img src="http://doar-e.github.io/images/corrupting_arm_evt/evt_400wx.png" alt="EVT Inspection" /><br/>
 It looks like nothing is there so we have around 480 bytes to store our backdoor which is more than enough.</p>
 
 <h3>The Exploit</h3>
@@ -176,7 +179,7 @@ It looks like nothing is there so we have around 480 bytes to store our backdoor
 
 
 <p>You can find the complete code for the vulnerable module and the exploit <a href="https:/github.com/acama/arm-evt/tree/master/local_example">here</a>. Run the exploit:<br/>
-<img src="http://doar-e.github.io/source/images/corrupting_arm_evt/local_poc.png" alt="Local PoC" /></p>
+<img src="http://doar-e.github.io/images/corrupting_arm_evt/local_poc.png" alt="Local PoC" /></p>
 
 <h2>Remote scenario</h2>
 
@@ -208,7 +211,7 @@ It looks like nothing is there so we have around 480 bytes to store our backdoor
 
 
 <p>Just like the previous example, this module has an awesome feature that allows you to write data to anywhere you want. Connect on port tcp/9999 and just give it an address, followed by the size of the data and the actual data to write there. In this case we will also backdoor the kernel by overwriting the SWI exception vector and backdooring the kernel. The code will branch to our shellcode which we will also, as in the previous example, store at <em>0xffff020</em>. Overwriting the SWI vector is especially a good idea in this remote scenario because it will allow us to switch from interrupt context to process context. So our backdoor will be executing in a context with a backing process and we will be able to &ldquo;hijack&rdquo; this process and overwrite its code segment with a bind shell or connect back shell. But let&rsquo;s not do it that way. Let&rsquo;s check something real quick:<br/>
-<img src="http://doar-e.github.io/source/images/corrupting_arm_evt/proc_self_maps.png" alt="cat /proc/self/maps" /><br/>
+<img src="http://doar-e.github.io/images/corrupting_arm_evt/proc_self_maps.png" alt="cat /proc/self/maps" /><br/>
 Would you look at that, on top of everything else, the EVT is a shared memory segment. It is executable from user land and writeable from kernel land. Instead of overwriting the code segment of a process that is making a system call, let&rsquo;s just store our code in the EVT right after our first stage and just return there.
 Every system call goes through the SWI vector so we won&rsquo;t have to wait too much for a process to get caught in our trap.</p>
 
@@ -312,7 +315,7 @@ Every system call goes through the SWI vector so we won&rsquo;t have to wait too
 
 
 <p>You can find the complete code for the vulnerable module and the exploit <a href="https:/github.com/acama/arm-evt/tree/master/remote_example">here</a>. Run the exploit:<br/>
-<img src="http://doar-e.github.io/source/images/corrupting_arm_evt/remote_poc.png" alt="Remote PoC" /></p>
+<img src="http://doar-e.github.io/images/corrupting_arm_evt/remote_poc.png" alt="Remote PoC" /></p>
 
 <h2>Bonus: Interrupt Stack Overflow</h2>
 
