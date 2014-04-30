@@ -1,11 +1,11 @@
 ---
 layout: post
 title: "Corrupting the ARM Exception Vector Table"
-date: 2014
+date: 2014-04-30 21:01
 comments: true
 categories: [exploitation, kernel]
 author: Amat "acez" Cama
-published: false
+published: true
 ---
 
 Introduction
