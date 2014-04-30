@@ -4,7 +4,7 @@
   <title><![CDATA[Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-04-30T21:06:26+01:00</updated>
+  <updated>2014-04-30T21:49:11+01:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -178,7 +178,7 @@ It looks like nothing is there so we have around 480 bytes to store our backdoor
 </span></code></pre></td></tr></table></div></figure>
 
 
-<p>You can find the complete code for the vulnerable module and the exploit <a href="https:/github.com/acama/arm-evt/tree/master/local_example">here</a>. Run the exploit:<br/>
+<p>You can find the complete code for the vulnerable module and the exploit <a href="https://github.com/acama/arm-evt/tree/master/local_example">here</a>. Run the exploit:<br/>
 <img src="http://doar-e.github.io/images/corrupting_arm_evt/local_poc.png" alt="Local PoC" /></p>
 
 <h2>Remote scenario</h2>
@@ -336,7 +336,7 @@ Every system call goes through the SWI vector so we won&rsquo;t have to wait too
 
 <p>Among other things, <a href="http:/grsecurity.net/">grsec</a> prevents the modification of the EVT by making the page read-only.
 If you want to play with some fun kernel challenges checkout the &ldquo;kernelpanic&rdquo; branch on <a href="http:/w3challs.com/challenges/wargame">w3challs</a>.<br/>
-Cheers, <a href="https:/twitter.com/amatcama">@amatcama</a></p>
+Cheers, <a href="https://twitter.com/amatcama">@amatcama</a></p>
 
 <h1>References</h1>
 ]]></content>
