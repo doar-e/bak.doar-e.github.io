@@ -113,7 +113,7 @@ exit:
     ldr     pc, [pc, #980]      @ go to normal swi handler
 
 ```
-You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/local_example). Run it and then:  
+You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/local_example). Run the exploit:  
 ![Local PoC](/source/images/corrupting_arm_evt/local_poc.png)
 
 ## Remote scenario
@@ -131,8 +131,8 @@ For this example, we will use a netfilter module with a similar vulnerability as
         }
     }
 ```
-Just like the previous example, this module has an awesome feature that allows you to write data to anywhere you want. Connect on port tcp/9999 and just give it an address, followed by the size of the data and the actual data to write there. In this case we will also backdoor the kernel by overwriting the SWI exception vector and backdooring the kernel. The code will branch to our shellcode which we will also, as in the previous example, store at *0xffff020*. Overwriting the SWI vector is especially a good idea in this remote scenario because it will allow us to switch from interrupt context to process context. So our backdoor will be executing in a context with a backing process and we will be able to "hijack" this process and overwrite its code segment with a bind shell or connect back shell. But let's not do it that way. Let's check something real quick:
-[cat /proc/self/maps](/source/images/corrupting_arm_evt/proc_self_maps.png)
+Just like the previous example, this module has an awesome feature that allows you to write data to anywhere you want. Connect on port tcp/9999 and just give it an address, followed by the size of the data and the actual data to write there. In this case we will also backdoor the kernel by overwriting the SWI exception vector and backdooring the kernel. The code will branch to our shellcode which we will also, as in the previous example, store at *0xffff020*. Overwriting the SWI vector is especially a good idea in this remote scenario because it will allow us to switch from interrupt context to process context. So our backdoor will be executing in a context with a backing process and we will be able to "hijack" this process and overwrite its code segment with a bind shell or connect back shell. But let's not do it that way. Let's check something real quick:  
+![cat /proc/self/maps](/source/images/corrupting_arm_evt/proc_self_maps.png)
 Would you look at that, on top of everything else, the EVT is a shared memory segment. It is executable from user land and writeable from kernel land. Instead of overwriting the code segment of a process that is making a system call, let's just store our code in the EVT right after our first stage and just return there.
 Every system call goes through the SWI vector so we won't have to wait too much for a process to get caught in our trap.
 
@@ -191,7 +191,7 @@ stage_2:
 
 ```
 
-You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/remote_example). Run it and then:  
+You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/remote_example). Run the exploit:  
 ![Remote PoC](/source/images/corrupting_arm_evt/remote_poc.png)
 
 ## Bonus: Interrupt Stack Overflow
