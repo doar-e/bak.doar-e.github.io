@@ -16,6 +16,8 @@ The article is broken down into two main sections. First a brief description of 
 
 I am assuming the reader is familiar with Linux kernel exploitation and knows some ARM assembly (seriously).
 
+<!--more-->
+
 ARM Exceptions and the Exception Vector Table
 =============================================
 In a few words, the EVT is to ARM what the IDT is to x86. In the ARM world, an exception is an event that causes the CPU to stop or pause from executing the current set of instructions. When this exception occurs, the CPU diverts execution to another location called an exception handler. There are 7 exception types and each exception type is associated with a mode of operation. Modes of operation affect the processor's "permissions" in regards to system resources. There are in total 7 modes of operation. The following table maps some exception types to their associated modes of operation: 
@@ -32,7 +34,7 @@ The other two modes are User Mode which is self explanatory and System Mode whic
 
 ## The Exceptions
 The exceptions change the processor mode and each exception has access to a set of *banked* registers. These can be described as a set of registers that exist only in the exception's context so modifying them will not affect the banked registers of another exception mode. Different exception modes have different banked registers:  
-![Banked Registers](/source/images/corrupting_arm_evt/banked_regs.png)  
+![Banked Registers](/images/corrupting_arm_evt/banked_regs.png)  
 
 ## The Exception Vector Table
 The vector table is a table that actually contains control transfer instructions that jump to the respective exception handlers. For example, when a software interrupt is raised, execution is transfered to the software interrupt entry in the table which in turn will jump to the syscall handler. Why is the EVT so interesting to target? Well because it is loaded at a known address in memory and it is writeable and executable. On 32-bit ARM Linux this address is **0xffff0000**. Each entry in the EVT is also at a known offset as can be seen on the following table:
@@ -81,9 +83,9 @@ end:
 ```
 Basically, with this cool and realistic vulnerability, you give the module an address followed by data to write at that address.
 Now, our plan is going to be to backdoor the kernel by overwriting the SWI exception vector with code that jumps to our backdoor code. This code will check for a magic value in a register (say r7 which holds the syscall number) and if it matches, it will elevate the privileges of the calling process. Where do we store this backdoor code ? Considering the fact that we have an arbitrary write to kernel memory, we can either store it in userspace or somewhere in kernel space. The good thing about the latter choice is that if we choose an appropriate location in kernel space, our code will exist as long as the machine is running, whereas with the former choice, as soon as our user space application exits, the code is lost and if the entry in the EVT isn't set back to its original value, it will most likely be pointing to invalid/unmmapped memory which will crash the system. So we need a location in kernel space that is executable and writeable. Where could this be ? Let's take a closer look at the EVT:  
-![EVT Disassembly](/source/images/corrupting_arm_evt/evt_8i.png)  
+![EVT Disassembly](/images/corrupting_arm_evt/evt_8i.png)  
 As expected we see a bunch of control transfer instructions but one thing we notice about them is that "closest" referenced address is *0xffff0200*. Let's take a look what is between the end of the EVT and 0xffff0200:  
-![EVT Inspection](/source/images/corrupting_arm_evt/evt_400wx.png)  
+![EVT Inspection](/images/corrupting_arm_evt/evt_400wx.png)  
 It looks like nothing is there so we have around 480 bytes to store our backdoor which is more than enough.
 
 ### The Exploit
@@ -114,7 +116,7 @@ exit:
 
 ```
 You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/local_example). Run the exploit:  
-![Local PoC](/source/images/corrupting_arm_evt/local_poc.png)  
+![Local PoC](/images/corrupting_arm_evt/local_poc.png)  
 
 ## Remote scenario
 For this example, we will use a netfilter module with a similar vulnerability as the previous one:
@@ -132,7 +134,7 @@ For this example, we will use a netfilter module with a similar vulnerability as
     }
 ```
 Just like the previous example, this module has an awesome feature that allows you to write data to anywhere you want. Connect on port tcp/9999 and just give it an address, followed by the size of the data and the actual data to write there. In this case we will also backdoor the kernel by overwriting the SWI exception vector and backdooring the kernel. The code will branch to our shellcode which we will also, as in the previous example, store at *0xffff020*. Overwriting the SWI vector is especially a good idea in this remote scenario because it will allow us to switch from interrupt context to process context. So our backdoor will be executing in a context with a backing process and we will be able to "hijack" this process and overwrite its code segment with a bind shell or connect back shell. But let's not do it that way. Let's check something real quick:  
-![cat /proc/self/maps](/source/images/corrupting_arm_evt/proc_self_maps.png)  
+![cat /proc/self/maps](/images/corrupting_arm_evt/proc_self_maps.png)  
 Would you look at that, on top of everything else, the EVT is a shared memory segment. It is executable from user land and writeable from kernel land. Instead of overwriting the code segment of a process that is making a system call, let's just store our code in the EVT right after our first stage and just return there.
 Every system call goes through the SWI vector so we won't have to wait too much for a process to get caught in our trap.
 
@@ -192,7 +194,7 @@ stage_2:
 ```
 
 You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/remote_example). Run the exploit:  
-![Remote PoC](/source/images/corrupting_arm_evt/remote_poc.png)  
+![Remote PoC](/images/corrupting_arm_evt/remote_poc.png)  
 
 ## Bonus: Interrupt Stack Overflow
 It seems like the Interrupt Stack is adjacent to the EVT in most memory layouts. Who knows what kind of interesting things would happen if there was something like a stack overflow ?
