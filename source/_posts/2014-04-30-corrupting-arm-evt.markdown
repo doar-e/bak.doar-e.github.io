@@ -115,7 +115,7 @@ exit:
     ldr     pc, [pc, #980]      @ go to normal swi handler
 
 ```
-You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/local_example). Run the exploit:  
+You can find the complete code for the vulnerable module and the exploit [here](https://github.com/acama/arm-evt/tree/master/local_example). Run the exploit:  
 ![Local PoC](/images/corrupting_arm_evt/local_poc.png)  
 
 ## Remote scenario
@@ -211,7 +211,7 @@ Final words
 ===========
 Among other things, [grsec](http:/grsecurity.net/) prevents the modification of the EVT by making the page read-only.
 If you want to play with some fun kernel challenges checkout the "kernelpanic" branch on [w3challs](http:/w3challs.com/challenges/wargame).  
-Cheers, [@amatcama](https:/twitter.com/amatcama)
+Cheers, [@amatcama](https://twitter.com/amatcama)
 
 References
 ==========
