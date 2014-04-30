@@ -193,7 +193,7 @@ stage_2:
 
 ```
 
-You can find the complete code for the vulnerable module and the exploit [here](https:/github.com/acama/arm-evt/tree/master/remote_example). Run the exploit:  
+You can find the complete code for the vulnerable module and the exploit [here](https://github.com/acama/arm-evt/tree/master/remote_example). Run the exploit:  
 ![Remote PoC](/images/corrupting_arm_evt/remote_poc.png)  
 
 ## Bonus: Interrupt Stack Overflow
