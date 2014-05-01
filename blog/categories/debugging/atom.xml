@@ -4,7 +4,7 @@
   <title><![CDATA[Category: debugging | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/debugging/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-04-30T22:51:21+01:00</updated>
+  <updated>2014-05-01T04:51:53+02:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -16,7 +16,7 @@
   <entry>
     <title type="html"><![CDATA[Pinpointing heap-related issues: OllyDbg2 off-by-one story]]></title>
     <link href="http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/"/>
-    <updated>2013-09-09T09:53:00+01:00</updated>
+    <updated>2013-09-09T09:53:00+02:00</updated>
     <id>http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 
