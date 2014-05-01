@@ -215,7 +215,7 @@ Cheers, [@amatcama](https://twitter.com/amatcama)
 
 References
 ==========
-[^1]: [Vector Rewrite Attack](http:/cansecwest.com/slides07/Vector-Rewrite-Attack.pdf)  
+[1]: [Vector Rewrite Attack](http:/cansecwest.com/slides07/Vector-Rewrite-Attack.pdf)  
 [2]: [Recent ARM Security Improvements](https:/forums.grsecurity.net/viewtopic.php?f=7&t=3292)  
 [3]: [Entering an Exception](http:/infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0311d/I30195.html)  
 [4]: [SWI handlers](http:/infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0040d/Cacdfeci.html)  
