@@ -10,7 +10,7 @@ published: true
 
 Introduction
 ============
-A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I thought I'd explore things a little. I chose the ARM architecture mainly because I thought it would be fun to look at. This article is going to describe how the ARM Exception Vector Table (EVT) can aid in kernel exploitation in case an attacker has a write what-where primitive. It will be covering a local exploit scenario as well as a remote exploit scenario. Please note that corrupting the EVT has been mentioned in the paper "Vector Rewrite Attack"[[1]](http:/cansecwest.com/slides07/Vector-Rewrite-Attack.pdf), which briefly talks about how it can be used in NULL pointer dereference vulnerabilities on an ARM RTOS.
+A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I thought I'd explore things a little. I chose the ARM architecture mainly because I thought it would be fun to look at. This article is going to describe how the ARM Exception Vector Table (EVT) can aid in kernel exploitation in case an attacker has a write what-where primitive. It will be covering a local exploit scenario as well as a remote exploit scenario. Please note that corrupting the EVT has been mentioned in the paper "Vector Rewrite Attack"[[1]](http://cansecwest.com/slides07/Vector-Rewrite-Attack.pdf), which briefly talks about how it can be used in NULL pointer dereference vulnerabilities on an ARM RTOS.
 
 The article is broken down into two main sections. First a brief description of the ARM EVT and its implications from an exploitation point of view (please note that a number of things about the EVT will be omitted to keep this article relatively short). We will go over two examples showing how we can abuse the EVT.
 
@@ -205,20 +205,21 @@ A Few Things about all this
 - The location where we are storing our shellcode (*0xffff0020*) might or might not be used by another distro's kernel.
 - The exampe codes I wrote here are merely PoCs; they could definitely be improved. For example, on the remote scenario, if it turns out that the init process is the process being hijacked, the box will crash after we exit from the bind shell.
 - If you hadn't noticed, the "vulnerabilities" presented here, aren't really vulnerabilities but that is not the point of this article.
-- \*: It seems like the EVT can be mapped read-only and therfore there is the possibility that it might not be writeable in newer/some versions of the Linux kernel.
+
+ \*: It seems like the EVT can be mapped read-only and therfore there is the possibility that it might not be writeable in newer/some versions of the Linux kernel.
 
 Final words
 ===========
-Among other things, [grsec](http:/grsecurity.net/) prevents the modification of the EVT by making the page read-only.
-If you want to play with some fun kernel challenges checkout the "kernelpanic" branch on [w3challs](http:/w3challs.com/challenges/wargame).  
+Among other things, [grsec](http://grsecurity.net/) prevents the modification of the EVT by making the page read-only.
+If you want to play with some fun kernel challenges checkout the "kernelpanic" branch on [w3challs](http://w3challs.com/challenges/wargame).  
 Cheers, [@amatcama](https://twitter.com/amatcama)
 
 References
 ==========
 
-[1] [Vector Rewrite Attack](http:/cansecwest.com/slides07/Vector-Rewrite-Attack.pdf)  
-[2] [Recent ARM Security Improvements](https:/forums.grsecurity.net/viewtopic.php?f=7&t=3292)  
-[3] [Entering an Exception](http:/infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0311d/I30195.html)  
-[4] [SWI handlers](http:/infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0040d/Cacdfeci.html)  
-[5] [ARM Exceptions](http:/osnet.cs.nchu.edu.tw/powpoint/Embedded94_1/Chapter%207%20ARM%20Exceptions.pdf)  
-[6] [Exception and Interrupt Handling in ARM](http:/www.iti.uni-stuttgart.de/~radetzki/Seminar06/08_report.pdf)  
+[1] [Vector Rewrite Attack](http://cansecwest.com/slides07/Vector-Rewrite-Attack.pdf)  
+[2] [Recent ARM Security Improvements](https://forums.grsecurity.net/viewtopic.php?f=7&t=3292)  
+[3] [Entering an Exception](http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0311d/I30195.html)  
+[4] [SWI handlers](http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0040d/Cacdfeci.html)  
+[5] [ARM Exceptions](http://osnet.cs.nchu.edu.tw/powpoint/Embedded94_1/Chapter%207%20ARM%20Exceptions.pdf)  
+[6] [Exception and Interrupt Handling in ARM](http://www.iti.uni-stuttgart.de/~radetzki/Seminar06/08_report.pdf)  
