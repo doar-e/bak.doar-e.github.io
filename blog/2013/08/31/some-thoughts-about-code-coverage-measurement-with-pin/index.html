@@ -1,0 +1,802 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Some thoughts about code-coverage measurement with Pin - Diary of a reverse-engineer</title>
+  <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
+
+  
+  <meta name="description" content="Introduction Sometimes, when you are reverse-engineering binaries you need somehow to measure, or just to have an idea about how much &ldquo;that& &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://doar-e.github.io/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet' type='text/css'>
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-43481215-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+
+  <style>
+    p { text-align: justify; }
+  </style>
+
+</head>
+<body   class="collapse-sidebar sidebar-footer" >
+  <header role="banner"><img src="/images/sigle-blanc-250px.jpg"></img>
+
+	<div class="header-title"><a href="/">Diary of a reverse-engineer</a></div>
+
+
+	<br><div class="header-subtitle">Because we like to play with weird things.</div>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:doar-e.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/about">About</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+  
+    
+      <h1 class="entry-title">Some Thoughts About Code-coverage Measurement With Pin</h1>
+    
+  
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-31T18:57:00+01:00" pubdate data-updated="true">Aug 31<span>st</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>Introduction</h1>
+
+<p>Sometimes, when you are reverse-engineering binaries you need somehow to measure, or just to have an idea about how much &ldquo;that&rdquo; execution is covering the code of your target. It can be for fuzzing purpose, maybe you have a huge set of inputs (it can be files, network traffic, anything) and you want to have the same coverage with only a subset of them. Or maybe, you are not really interested in the measure, but only with the coverage differences between two executions of your target: to locate where your program is handling a specific feature for example.</p>
+
+<p>But it&rsquo;s not a trivial problem, usually you don&rsquo;t have the source-code of the target, and you want it to be quick. The other thing, is that you don&rsquo;t have an input that covers the whole code base, you don&rsquo;t even know if it&rsquo;s possible ; so you can&rsquo;t compare your analysis to that &ldquo;ideal one&rdquo;. Long story short, you can&rsquo;t say to the user &ldquo;OK, this input covers 10% of your binary&rdquo;. But you can clearly register what your program is doing with input A, what it is doing with input B and then analyzing the differences. With that way you can have a (more precise?) idea about which input seems to have better coverage than another.</p>
+
+<p>Note also, this is a perfect occasion to play with Pin :&ndash;)).</p>
+
+<p>In this post, I will explain briefly how you can build that kind of tool using Pin, and how it can be used for reverse-engineer purposes.</p>
+
+<!--more-->
+
+
+<h1>Our Pintool</h1>
+
+<p>If you have never heard about Intel&rsquo;s DBI framework Pin, I have made a selection of links for you, read them and understand them ; you won&rsquo;t be able of using correctly Pin, if you don&rsquo;t know a bit how it works:</p>
+
+<ul>
+<li><a href="http://software.intel.com/sites/landingpage/pintool/docs/58423/Pin/html/index.html">Pin 2.12 User Guide</a></li>
+<li><a href="http://www.jaleels.org/ajaleel/Pin/slides/">Introduction to Pin &ndash; Aamer Jaleel</a></li>
+</ul>
+
+
+<p>Concerning my setup, I&rsquo;m using Pin 2.12 on Windows 7 x64 with VC2010 and I&rsquo;m building x86 Pintools (works great with Wow64). If you want to build easily your Pintool outside of the Pin tool kit directory I&rsquo;ve made a handy little python script: <a href="https://github.com/0vercl0k/stuffz/blob/master/setup_pintool_project.py">setup_pintool_project.py</a>.</p>
+
+<p>Before coding, we need to talk a bit about what we really want. This is simple, we want a Pintool that:</p>
+
+<ul>
+<li>is the more efficient possible. OK, that&rsquo;s a real problem ; even if Pin is more efficient than other DBI framework (like <a href="http://dynamorio.org/">DynamoRio</a> or <a href="http://valgrind.org/">Valgrind</a>), it is always kind of slow.</li>
+<li>keeps track of all the basic blocks executed. We will store the address of each basic block executed and its number of instructions.</li>
+<li>generates a JSON report about a specific execution. Once we have that report, we are free to use Python scripts to do whatever we want. To do that, we will use <a href="http://www.digip.org/jansson/">Jansson</a>: it&rsquo;s easy to use, open-source and written in C.</li>
+<li>doesn&rsquo;t instrument Windows APIs. We don&rsquo;t want to waste our CPU time being in the native libraries of the system ; it&rsquo;s part of our little &ldquo;tricks&rdquo; to improve the speed of our Pintool.</li>
+</ul>
+
+
+<p>I think it&rsquo;s time to code now: first, let&rsquo;s define several data structures in order to store the information we need:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="k">typedef</span> <span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">ADDRINT</span><span class="p">,</span> <span class="n">ADDRINT</span><span class="o">&gt;</span> <span class="o">&gt;</span> <span class="n">MODULE_BLACKLIST_T</span><span class="p">;</span>
+</span><span class='line'><span class="k">typedef</span> <span class="n">MODULE_BLACKLIST_T</span> <span class="n">MODULE_LIST_T</span><span class="p">;</span>
+</span><span class='line'><span class="k">typedef</span> <span class="n">std</span><span class="o">::</span><span class="n">map</span><span class="o">&lt;</span><span class="n">ADDRINT</span><span class="p">,</span> <span class="n">UINT32</span><span class="o">&gt;</span> <span class="n">BASIC_BLOCKS_INFO_T</span><span class="p">;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The two first types will be used to hold modules related information: path of the module, start address and end address. The third one is simple: the key is the basic block address and the value is its number of instructions.</p>
+
+<p>Then we are going to define our instrumentation callback:</p>
+
+<ul>
+<li>one to know whenever a module is loaded in order to store its base/end address, one for the traces. You can set the callbacks using <em>IMG_AddInstrumentationFunction</em> and <em>TRACE_AddInstrumentationFunction</em>.</li>
+</ul>
+
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="n">VOID</span> <span class="n">image_instrumentation</span><span class="p">(</span><span class="n">IMG</span> <span class="n">img</span><span class="p">,</span> <span class="n">VOID</span> <span class="o">*</span> <span class="n">v</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="n">ADDRINT</span> <span class="n">module_low_limit</span> <span class="o">=</span> <span class="n">IMG_LowAddress</span><span class="p">(</span><span class="n">img</span><span class="p">),</span> <span class="n">module_high_limit</span> <span class="o">=</span> <span class="n">IMG_HighAddress</span><span class="p">(</span><span class="n">img</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">IMG_IsMainExecutable</span><span class="p">(</span><span class="n">img</span><span class="p">))</span>
+</span><span class='line'>        <span class="k">return</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">string</span> <span class="n">image_path</span> <span class="o">=</span> <span class="n">IMG_Name</span><span class="p">(</span><span class="n">img</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">,</span> <span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">ADDRINT</span><span class="p">,</span> <span class="n">ADDRINT</span><span class="o">&gt;</span> <span class="o">&gt;</span> <span class="n">module_info</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">make_pair</span><span class="p">(</span>
+</span><span class='line'>        <span class="n">image_path</span><span class="p">,</span>
+</span><span class='line'>        <span class="n">std</span><span class="o">::</span><span class="n">make_pair</span><span class="p">(</span>
+</span><span class='line'>            <span class="n">module_low_limit</span><span class="p">,</span>
+</span><span class='line'>            <span class="n">module_high_limit</span>
+</span><span class='line'>        <span class="p">)</span>
+</span><span class='line'>    <span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">module_list</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">module_info</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">module_counter</span><span class="o">++</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">is_module_should_be_blacklisted</span><span class="p">(</span><span class="n">image_path</span><span class="p">))</span>
+</span><span class='line'>        <span class="n">modules_blacklisted</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">module_info</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li>one to be able to insert calls before every basic blocks.</li>
+</ul>
+
+
+<p>The thing is: Pin doesn&rsquo;t have a <em>BBL_AddInstrumentationFunction</em>, so we have to instrument the traces, iterate through them to get the basic block. It&rsquo;s done really easily with <em>TRACE_BblHead</em>, <em>BBL_Valid</em> and <em>BBL_Next</em> functions. Of course, if the basic block address is in a blacklisted range address, we don&rsquo;t insert a call to our analysis function.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="n">VOID</span> <span class="n">trace_instrumentation</span><span class="p">(</span><span class="n">TRACE</span> <span class="n">trace</span><span class="p">,</span> <span class="n">VOID</span> <span class="o">*</span><span class="n">v</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">for</span><span class="p">(</span><span class="n">BBL</span> <span class="n">bbl</span> <span class="o">=</span> <span class="n">TRACE_BblHead</span><span class="p">(</span><span class="n">trace</span><span class="p">);</span> <span class="n">BBL_Valid</span><span class="p">(</span><span class="n">bbl</span><span class="p">);</span> <span class="n">bbl</span> <span class="o">=</span> <span class="n">BBL_Next</span><span class="p">(</span><span class="n">bbl</span><span class="p">))</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="k">if</span><span class="p">(</span><span class="n">is_address_in_blacklisted_modules</span><span class="p">(</span><span class="n">BBL_Address</span><span class="p">(</span><span class="n">bbl</span><span class="p">)))</span>
+</span><span class='line'>            <span class="k">continue</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="n">BBL_InsertCall</span><span class="p">(</span>
+</span><span class='line'>            <span class="n">bbl</span><span class="p">,</span>
+</span><span class='line'>            <span class="n">IPOINT_ANYWHERE</span><span class="p">,</span>
+</span><span class='line'>            <span class="p">(</span><span class="n">AFUNPTR</span><span class="p">)</span><span class="n">handle_basic_block</span><span class="p">,</span>
+</span><span class='line'>            <span class="n">IARG_FAST_ANALYSIS_CALL</span><span class="p">,</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="n">IARG_UINT32</span><span class="p">,</span>
+</span><span class='line'>            <span class="n">BBL_NumIns</span><span class="p">(</span><span class="n">bbl</span><span class="p">),</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="n">IARG_ADDRINT</span><span class="p">,</span>
+</span><span class='line'>            <span class="n">BBL_Address</span><span class="p">(</span><span class="n">bbl</span><span class="p">),</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="n">IARG_END</span>
+</span><span class='line'>        <span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>For efficiency reasons, we let decide Pin about where it puts its JITed call to the analysis function <em>handle_basic_block</em> ; we also use the fast linkage (it basically means the function will be called using the <a href="http://msdn.microsoft.com/en-us/library/6xa169sk.aspx">__fastcall</a> calling convention).</p>
+
+<p>The analysis function is also very trivial, we just need to store basic block addresses in a global variable. The method doesn&rsquo;t have any branch, it means Pin will most likely inlining the function, that&rsquo;s also cool for the efficiency.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="n">VOID</span> <span class="n">PIN_FAST_ANALYSIS_CALL</span> <span class="n">handle_basic_block</span><span class="p">(</span><span class="n">UINT32</span> <span class="n">number_instruction_in_bb</span><span class="p">,</span> <span class="n">ADDRINT</span> <span class="n">address_bb</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="n">basic_blocks_info</span><span class="p">[</span><span class="n">address_bb</span><span class="p">]</span> <span class="o">=</span> <span class="n">number_instruction_in_bb</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Finally, just before the process ends we serialize our data in a simple JSON report thanks to <a href="http://www.digip.org/jansson/">jansson</a>. You may also want to use a binary serialization to have smaller report.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="n">VOID</span> <span class="n">save_instrumentation_infos</span><span class="p">()</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="c1">/// basic_blocks_info section</span>
+</span><span class='line'>    <span class="n">json_t</span> <span class="o">*</span><span class="n">bbls_info</span> <span class="o">=</span> <span class="n">json_object</span><span class="p">();</span>
+</span><span class='line'>    <span class="n">json_t</span> <span class="o">*</span><span class="n">bbls_list</span> <span class="o">=</span> <span class="n">json_array</span><span class="p">();</span>
+</span><span class='line'>    <span class="n">json_t</span> <span class="o">*</span><span class="n">bbl_info</span> <span class="o">=</span> <span class="n">json_object</span><span class="p">();</span>
+</span><span class='line'>    <span class="c1">// unique_count field</span>
+</span><span class='line'>    <span class="n">json_object_set_new</span><span class="p">(</span><span class="n">bbls_info</span><span class="p">,</span> <span class="s">&quot;unique_count&quot;</span><span class="p">,</span> <span class="n">json_integer</span><span class="p">(</span><span class="n">basic_blocks_info</span><span class="p">.</span><span class="n">size</span><span class="p">()));</span>
+</span><span class='line'>    <span class="c1">// list field</span>
+</span><span class='line'>    <span class="n">json_object_set_new</span><span class="p">(</span><span class="n">bbls_info</span><span class="p">,</span> <span class="s">&quot;list&quot;</span><span class="p">,</span> <span class="n">bbls_list</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">for</span><span class="p">(</span><span class="n">BASIC_BLOCKS_INFO_T</span><span class="o">::</span><span class="n">const_iterator</span> <span class="n">it</span> <span class="o">=</span> <span class="n">basic_blocks_info</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span> <span class="n">it</span> <span class="o">!=</span> <span class="n">basic_blocks_info</span><span class="p">.</span><span class="n">end</span><span class="p">();</span> <span class="o">++</span><span class="n">it</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">bbl_info</span> <span class="o">=</span> <span class="n">json_object</span><span class="p">();</span>
+</span><span class='line'>        <span class="n">json_object_set_new</span><span class="p">(</span><span class="n">bbl_info</span><span class="p">,</span> <span class="s">&quot;address&quot;</span><span class="p">,</span> <span class="n">json_integer</span><span class="p">(</span><span class="n">it</span><span class="o">-&gt;</span><span class="n">first</span><span class="p">));</span>
+</span><span class='line'>        <span class="n">json_object_set_new</span><span class="p">(</span><span class="n">bbl_info</span><span class="p">,</span> <span class="s">&quot;nbins&quot;</span><span class="p">,</span> <span class="n">json_integer</span><span class="p">(</span><span class="n">it</span><span class="o">-&gt;</span><span class="n">second</span><span class="p">));</span>
+</span><span class='line'>        <span class="n">json_array_append_new</span><span class="p">(</span><span class="n">bbls_list</span><span class="p">,</span> <span class="n">bbl_info</span><span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="cm">/* .. same thing for blacklisted modules, and modules .. */</span>
+</span><span class='line'>    <span class="c1">/// Building the tree</span>
+</span><span class='line'>    <span class="n">json_t</span> <span class="o">*</span><span class="n">root</span> <span class="o">=</span> <span class="n">json_object</span><span class="p">();</span>
+</span><span class='line'>    <span class="n">json_object_set_new</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="s">&quot;basic_blocks_info&quot;</span><span class="p">,</span> <span class="n">bbls_info</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">json_object_set_new</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="s">&quot;blacklisted_modules&quot;</span><span class="p">,</span> <span class="n">blacklisted_modules</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">json_object_set_new</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="s">&quot;modules&quot;</span><span class="p">,</span> <span class="n">modules</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">/// Writing the report</span>
+</span><span class='line'>    <span class="n">FILE</span><span class="o">*</span> <span class="n">f</span> <span class="o">=</span> <span class="n">fopen</span><span class="p">(</span><span class="n">KnobOutputPath</span><span class="p">.</span><span class="n">Value</span><span class="p">().</span><span class="n">c_str</span><span class="p">(),</span> <span class="s">&quot;w&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">json_dumpf</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">JSON_COMPACT</span> <span class="o">|</span> <span class="n">JSON_ENSURE_ASCII</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">fclose</span><span class="p">(</span><span class="n">f</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>If like me you are on a x64 Windows system, but you are instrumenting x86 processes you should directly blacklist the area where Windows keeps the <a href="http://www.nynaeve.net/?p=131">SystemCallStub</a> (you know the &ldquo;JMP FAR&rdquo;). To do that, we simply use the <em>__readfsdword</em> intrinsic in order to read the field <a href="http://msdn.moonsols.com/win7rtm_x64/TEB32.html">TEB32.WOW32Reserved</a> that holds the address of that stub. Like that you won&rsquo;t waste your CPU time every time your program is performing a system call.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class='cpp'><span class='line'><span class="n">ADDRINT</span> <span class="n">wow64stub</span> <span class="o">=</span> <span class="n">__readfsdword</span><span class="p">(</span><span class="mh">0xC0</span><span class="p">);</span>
+</span><span class='line'><span class="n">modules_blacklisted</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span>
+</span><span class='line'>    <span class="n">std</span><span class="o">::</span><span class="n">make_pair</span><span class="p">(</span>
+</span><span class='line'>        <span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">&quot;wow64stub&quot;</span><span class="p">),</span>
+</span><span class='line'>        <span class="n">std</span><span class="o">::</span><span class="n">make_pair</span><span class="p">(</span>
+</span><span class='line'>            <span class="n">wow64stub</span><span class="p">,</span>
+</span><span class='line'>            <span class="n">wow64stub</span>
+</span><span class='line'>        <span class="p">)</span>
+</span><span class='line'>    <span class="p">)</span>
+</span><span class='line'><span class="p">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The entire Pintool source code is here: <a href="https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/pin-code-coverage-measure.cpp">pin-code-coverage-measure.cpp</a>.</p>
+
+<h1>I want to see the results.</h1>
+
+<p>I agree that&rsquo;s neat to have a JSON report with the basic blocks executed by our program, but it&rsquo;s not really readable for a human. We can use an <a href="">IDAPython</a> script that will parse our report, and will color all the instructions executed. It should be considerably better to see the execution path used by your program.</p>
+
+<p>To color an instruction you have to use the functions: <em>idaapi.set_item_color</em> and <em>idaapi.del_item_color</em> (if you want to reset the color). You can also use <em>idc.GetItemSize</em> to know the size of an instruction, like that you can iterate for a specific number of instruction (remember, we stored that in our JSON report!).</p>
+
+<figure class='code'><figcaption><span>idapy_color_path_from_json.py</span><a href='https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/idapy_color_path_from_json.py'>link</a></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+</pre></td><td class='code'><pre><code class='python'><span class='line'><span class="kn">import</span> <span class="nn">json</span>
+</span><span class='line'><span class="kn">import</span> <span class="nn">idc</span>
+</span><span class='line'><span class="kn">import</span> <span class="nn">idaapi</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">def</span> <span class="nf">color</span><span class="p">(</span><span class="n">ea</span><span class="p">,</span> <span class="n">nbins</span><span class="p">,</span> <span class="n">c</span><span class="p">):</span>
+</span><span class='line'>    <span class="sd">&#39;&#39;&#39;Color &#39;nbins&#39; instructions starting from ea&#39;&#39;&#39;</span>
+</span><span class='line'>    <span class="n">colors</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="p">{</span>
+</span><span class='line'>            <span class="s">&#39;black&#39;</span> <span class="p">:</span> <span class="mh">0x000000</span><span class="p">,</span>
+</span><span class='line'>            <span class="s">&#39;red&#39;</span> <span class="p">:</span> <span class="mh">0x0000FF</span><span class="p">,</span>
+</span><span class='line'>            <span class="s">&#39;blue&#39;</span> <span class="p">:</span> <span class="mh">0xFF0000</span><span class="p">,</span>
+</span><span class='line'>            <span class="s">&#39;green&#39;</span> <span class="p">:</span> <span class="mh">0x00FF00</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">)</span>
+</span><span class='line'>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nbins</span><span class="p">):</span>
+</span><span class='line'>        <span class="n">idaapi</span><span class="o">.</span><span class="n">del_item_color</span><span class="p">(</span><span class="n">ea</span><span class="p">)</span>
+</span><span class='line'>        <span class="n">idaapi</span><span class="o">.</span><span class="n">set_item_color</span><span class="p">(</span><span class="n">ea</span><span class="p">,</span> <span class="n">colors</span><span class="p">[</span><span class="n">c</span><span class="p">])</span>
+</span><span class='line'>        <span class="n">ea</span> <span class="o">+=</span> <span class="n">idc</span><span class="o">.</span><span class="n">ItemSize</span><span class="p">(</span><span class="n">ea</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+</span><span class='line'>    <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">idc</span><span class="o">.</span><span class="n">AskFile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">&#39;*.json&#39;</span><span class="p">,</span> <span class="s">&#39;Where is the JSON report you want to load ?&#39;</span><span class="p">),</span> <span class="s">&#39;r&#39;</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">c</span> <span class="o">=</span> <span class="n">idc</span><span class="o">.</span><span class="n">AskStr</span><span class="p">(</span><span class="s">&#39;black&#39;</span><span class="p">,</span> <span class="s">&#39;Which color do you want ?&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+</span><span class='line'>    <span class="n">report</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</span><span class='line'>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">report</span><span class="p">[</span><span class="s">&#39;basic_blocks_info&#39;</span><span class="p">][</span><span class="s">&#39;list&#39;</span><span class="p">]:</span>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;</span><span class="si">%x</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">i</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">],</span>
+</span><span class='line'>        <span class="k">try</span><span class="p">:</span>
+</span><span class='line'>            <span class="n">color</span><span class="p">(</span><span class="n">i</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">],</span> <span class="n">i</span><span class="p">[</span><span class="s">&#39;nbins&#39;</span><span class="p">],</span> <span class="n">c</span><span class="p">)</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;ok&#39;</span>
+</span><span class='line'>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;fail: </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;done&#39;</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+</span><span class='line'>    <span class="n">main</span><span class="p">()</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Here is an example generated by launching &ldquo;ping google.fr&rdquo;, we can clearly see in black the nodes reached by the ping utility:</p>
+
+<p><img class="center" src="/images/some_thoughts_about_code-coverage_measurement_with_pin/ping.png"></p>
+
+<p>You can even start to generate several traces with different options, to see where each argument is handled and analyzed by the program :&ndash;).</p>
+
+<h1>Trace differences</h1>
+
+<p>As you saw previously, it can be handy to actually see the execution path our program took. But if you think about it, it can be even more handy to have a look at the differences between two different executions. It could be used to locate a specific feature of a program: like a license check, where an option is checked, etc.</p>
+
+<p>Now, let&rsquo;s run another trace with for example &ldquo;ping -n 10 google.fr&rdquo;. Here are the two executions traces and the difference between the two others (the previous one, and the new):</p>
+
+<p><img class="center" src="/images/some_thoughts_about_code-coverage_measurement_with_pin/pingboth.png"></p>
+
+<p>You can clearly identify the basic blocks and the functions that use the &ldquo;-n 10&rdquo; argument.
+If you look even closer, you are able very quickly to figure out where the string is converted into an integer:</p>
+
+<p><img class="center" src="/images/some_thoughts_about_code-coverage_measurement_with_pin/strtoul.png"></p>
+
+<p>A lot of software are built around a really annoying GUI (for the reverser at least): it usually generates big binaries, or ships with a lot of external modules (like Qt runtime libraries). The thing is you don&rsquo;t really care about how the GUI is working, you want to focus on the &ldquo;real&rdquo; code not on that &ldquo;noise&rdquo;. Each time you have noise somewhere, you have to figure out a way to filter that noise ; in order to only keep the interesting part. This is exactly what we are doing when we generate different execution traces of the program and the process is every time pretty the same:</p>
+
+<ul>
+<li>You launch the application, and you exit</li>
+<li>You launch the application, you do something and you exit</li>
+<li>You remove the basic blocks executed in the first run in the second trace ; in order to keep only the part that does the &ldquo;do something&rdquo; thing. That way you filter the noise induced by the GUI to focus only on the interesting part.</li>
+</ul>
+
+
+<p>Cool for us because that&rsquo;s pretty easy to implement via IDAPython, here is the script:</p>
+
+<figure class='code'><figcaption><span>idapy_color_diff_from_jsons.py</span><a href='https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/idapy_color_diff_from_jsons.py'>link</a></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+</pre></td><td class='code'><pre><code class='python'><span class='line'><span class="kn">import</span> <span class="nn">json</span>
+</span><span class='line'><span class="kn">import</span> <span class="nn">idc</span>
+</span><span class='line'><span class="kn">import</span> <span class="nn">idaapi</span>
+</span><span class='line'><span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">def</span> <span class="nf">color</span><span class="p">(</span><span class="n">ea</span><span class="p">,</span> <span class="n">nbins</span><span class="p">,</span> <span class="n">c</span><span class="p">):</span>
+</span><span class='line'>    <span class="sd">&#39;&#39;&#39;Color &#39;nbins&#39; instructions starting from ea&#39;&#39;&#39;</span>
+</span><span class='line'>    <span class="n">colors</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="p">{</span>
+</span><span class='line'>            <span class="s">&#39;black&#39;</span> <span class="p">:</span> <span class="mh">0x000000</span><span class="p">,</span>
+</span><span class='line'>            <span class="s">&#39;red&#39;</span> <span class="p">:</span> <span class="mh">0x0000FF</span><span class="p">,</span>
+</span><span class='line'>            <span class="s">&#39;blue&#39;</span> <span class="p">:</span> <span class="mh">0xFF0000</span><span class="p">,</span>
+</span><span class='line'>            <span class="s">&#39;green&#39;</span> <span class="p">:</span> <span class="mh">0x00FF00</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">)</span>
+</span><span class='line'>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nbins</span><span class="p">):</span>
+</span><span class='line'>        <span class="n">idaapi</span><span class="o">.</span><span class="n">del_item_color</span><span class="p">(</span><span class="n">ea</span><span class="p">)</span>
+</span><span class='line'>        <span class="n">idaapi</span><span class="o">.</span><span class="n">set_item_color</span><span class="p">(</span><span class="n">ea</span><span class="p">,</span> <span class="n">colors</span><span class="p">[</span><span class="n">c</span><span class="p">])</span>
+</span><span class='line'>        <span class="n">ea</span> <span class="o">+=</span> <span class="n">idc</span><span class="o">.</span><span class="n">ItemSize</span><span class="p">(</span><span class="n">ea</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+</span><span class='line'>    <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">idc</span><span class="o">.</span><span class="n">AskFile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">&#39;*.json&#39;</span><span class="p">,</span> <span class="s">&#39;Where is the first JSON report you want to load ?&#39;</span><span class="p">),</span> <span class="s">&#39;r&#39;</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">report</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">l1</span> <span class="o">=</span> <span class="n">report</span><span class="p">[</span><span class="s">&#39;basic_blocks_info&#39;</span><span class="p">][</span><span class="s">&#39;list&#39;</span><span class="p">]</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">idc</span><span class="o">.</span><span class="n">AskFile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">&#39;*.json&#39;</span><span class="p">,</span> <span class="s">&#39;Where is the second JSON report you want to load ?&#39;</span><span class="p">),</span> <span class="s">&#39;r&#39;</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">report</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">l2</span> <span class="o">=</span> <span class="n">report</span><span class="p">[</span><span class="s">&#39;basic_blocks_info&#39;</span><span class="p">][</span><span class="s">&#39;list&#39;</span><span class="p">]</span>
+</span><span class='line'>    <span class="n">c</span> <span class="o">=</span> <span class="n">idc</span><span class="o">.</span><span class="n">AskStr</span><span class="p">(</span><span class="s">&#39;black&#39;</span><span class="p">,</span> <span class="s">&#39;Which color do you want ?&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">addresses_l1</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">l1</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">addresses_l2</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">l2</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">dic_l2</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">k</span><span class="p">[</span><span class="s">&#39;address&#39;</span><span class="p">],</span> <span class="n">k</span><span class="p">[</span><span class="s">&#39;nbins&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">l2</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">diff</span> <span class="o">=</span> <span class="n">addresses_l2</span> <span class="o">-</span> <span class="n">addresses_l1</span>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;</span><span class="si">%d</span><span class="s"> bbls in the first execution&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">addresses_l1</span><span class="p">)</span>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;</span><span class="si">%d</span><span class="s"> bbls in the second execution&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">addresses_l2</span><span class="p">)</span>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;Differences between the two executions: </span><span class="si">%d</span><span class="s"> bbls&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">assert</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">addresses_l1</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">addresses_l2</span><span class="p">))</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">funcs</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+</span><span class='line'>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">diff</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">try</span><span class="p">:</span>
+</span><span class='line'>            <span class="n">color</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">dic_l2</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c</span><span class="p">)</span>
+</span><span class='line'>            <span class="n">funcs</span><span class="p">[</span><span class="n">get_func</span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="o">.</span><span class="n">startEA</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;fail </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;A total of </span><span class="si">%d</span><span class="s"> different sub:&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">funcs</span><span class="p">)</span>
+</span><span class='line'>    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">funcs</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;</span><span class="si">%x</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">s</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;done&#39;</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+</span><span class='line'>    <span class="n">main</span><span class="p">()</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>By the way, you must keep in mind we are only talking about <strong>deterministic</strong> program (will always execute the same path if you give it the same inputs). If the same inputs aren&rsquo;t giving the exact same outputs <strong>every time</strong>, your program is not deterministic.</p>
+
+<p>Also, don&rsquo;t forget about <a href="http://fr.wikipedia.org/wiki/Address_space_layout_randomization">ASLR</a> because if you want to compare basic block addresses executed at two different times, trust me you want your binary loaded at the same base address. However, if you want to patch quickly a simple file I&rsquo;ve made a little Python script that can be handy sometimes: <a href="https://github.com/0vercl0k/stuffz/blob/master/remove_aslr_bin.py">remove_aslr_bin.py</a> ; otherwise, booting your Windows XP virtual machine is the easy solution.</p>
+
+<h1>Does-it scale ?</h1>
+
+<p>These tests have been done on my Windows 7 x64 laptop with Wow64 processes (4GB RAM, i7 Q720 @ 1.6GHz). All the modules living in <em>C:\Windows</em> have been blacklisted. Also, note those tests are not really accurate, I didn&rsquo;t launch each thing thousand times, it&rsquo;s just here to give you a vague idea.</p>
+
+<h2>Portable Python 2.7.5.1</h2>
+
+<h3>Without instrumentation</h3>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>PS D:\&gt; Measure-Command {start-process python.exe &quot;-c &#39;quit()&#39;&quot; -Wait}
+</span><span class='line'>
+</span><span class='line'>TotalMilliseconds : 73,1953
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h3>With instrumentation and JSON report serialization</h3>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>PS D:\&gt; Measure-Command {start-process pin.exe &quot;-t pin-code-coverage-measure.dll -o test.json -- python.exe -c &#39;quit()&#39;&quot; -Wait}
+</span><span class='line'>
+</span><span class='line'>TotalMilliseconds : 13122,4683
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h2>VLC 2.0.8</h2>
+
+<h3>Without instrumentation</h3>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>PS D:\&gt; Measure-Command {start-process vlc.exe &quot;--play-and-exit hu&quot; -Wait}
+</span><span class='line'>
+</span><span class='line'>TotalMilliseconds : 369,4677
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h3>With instrumentation and JSON report serialization</h3>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>PS D:\&gt; Measure-Command {start-process pin.exe &quot;-t pin-code-coverage-measure.dll -o test.json -- D:\vlc.exe --play-and-exit hu&quot; -Wait}
+</span><span class='line'>
+</span><span class='line'>TotalMilliseconds : 60109,204
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>To optimize the process you may want to blacklist some of the VLC plugins (there are a tons!), otherwise your VLC instrumented is 160 times slower than the normal one (and I didn&rsquo;t even try to launch the instrumentation when decoding x264 videos).</p>
+
+<h2>Browsers ?</h2>
+
+<p>You don&rsquo;t want to see the overhead here.</p>
+
+<h1>Conclusion</h1>
+
+<p>If you want to use that kind of tool for fuzzing purposes, I definitely encourage you to make a little program that uses the library you are targeting the same way your target does. This way you have a really smaller and less complicate binary to instrument, thus the instrumentation process will be far more efficient. And in this specific case, I really believe you can launch this Pintool on a large set of inputs (thousands) in order to pick inputs that cover better your target. In the other hand, if you do that directly on big software like browsers: it won&rsquo;t scale because you will pass your time instrumenting GUI or stuff you don&rsquo;t care.</p>
+
+<p>Pin is a really powerful and accessible tool. The C++ API is really easy to use, it works with Linux, OSX, Android for x86, (even X86_64 on the important targets), there is also a doxygen documentation. What else seriously ?</p>
+
+<p>Use it, it&rsquo;s good for you.</p>
+
+<h1>References &amp; sources of inspiration</h1>
+
+<p>If you find that subject cool, I&rsquo;ve made a list of cool readings:</p>
+
+<ul>
+<li><a href="http://www.hexblog.com/?p=34">Coverage analyzer</a>: You will see using Pin is <strong>really</strong> easier</li>
+<li><a href="https://github.com/Cr4sh/Code-coverage-analysis-tools">Code-coverage-analysis-tool</a>: That&rsquo;s cool, but it seems to instrument at the routine level ; we wanted to have information at the basic level</li>
+<li><a href="http://media.blackhat.com/bh-us-11/Diskin/BH_US_11_Diskin_Binary_Instrumentation_Slides.pdf">Binary instrumentation for security professionals</a></li>
+<li><a href="http://joxeankoret.com/blog/2010/05/02/mynav-a-python-plugin-for-ida-pro/">MyNav, a python plugin</a></li>
+<li><a href="http://www.zynamics.com/binnavi.html#videos">zynamics BinNavi Videos</a></li>
+<li><a href="http://bitblaze.cs.berkeley.edu/papers/diffslicing_oakland11.pdf">Differential Slicing: Identifying Causal Execution Differences for Security Applications</a> (thanks for the reference <a href="https://twitter.com/joancalvet">j04n</a>!)</li>
+</ul>
+
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Axel "0vercl0k" Souchet</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-31T18:57:00+01:00" pubdate data-updated="true">Aug 31<span>st</span>, 2013</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/dynamic-binary-instrumentation/'>dynamic-binary-instrumentation</a>, <a class='category' href='/blog/categories/reverse-engineering/'>reverse-engineering</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/" title="Previous Post: Regular expressions obfuscation under the microscope">&laquo; Regular expressions obfuscation under the microscope</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/" title="Next Post: Pinpointing heap-related issues: OllyDbg2 off-by-one story">Pinpointing heap-related issues: OllyDbg2 off-by-one story &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Deep dive into Python's VM: Story of LOAD_CONST bug</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First dip into the kernel pool : MS10-058</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows' User/Kernel exceptions dispatcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  
+  </span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>

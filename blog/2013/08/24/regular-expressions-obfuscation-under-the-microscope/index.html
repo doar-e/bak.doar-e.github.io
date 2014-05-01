@@ -1,0 +1,1066 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Regular expressions obfuscation under the microscope - Diary of a reverse-engineer</title>
+  <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
+
+  
+  <meta name="description" content="Introduction Some months ago I came across a strange couple of functions that was kind of playing with a finite-state automaton to validate an input &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet' type='text/css'>
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-43481215-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+
+  <style>
+    p { text-align: justify; }
+  </style>
+
+</head>
+<body   class="collapse-sidebar sidebar-footer" >
+  <header role="banner"><img src="/images/sigle-blanc-250px.jpg"></img>
+
+	<div class="header-title"><a href="/">Diary of a reverse-engineer</a></div>
+
+
+	<br><div class="header-subtitle">Because we like to play with weird things.</div>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:doar-e.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/about">About</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+  
+    
+      <h1 class="entry-title">Regular Expressions Obfuscation Under the Microscope</h1>
+    
+  
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-24T12:35:00+01:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>Introduction</h1>
+
+<p>Some months ago I came across a strange couple of functions that was kind of playing with a <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automaton</a> to validate an input. At first glance, I didn&rsquo;t really notice it was in fact a regex being processed, that&rsquo;s exactly why I spent quite some time to understand those routines. You are right to ask yourself: &ldquo;Hmm but the regex string representation should be in the binary shouldn&rsquo;t it?&rdquo;, the thing is it wasn&rsquo;t. The purpose of this post is to focus on those kind of &ldquo;compiled&rdquo; regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.</p>
+
+<p>In this short post, we are going to see how a regular expression looks like in assembly/C, and how you can hide/obfuscate it. I hope you will enjoy the read, and you will both be able to recognize a regular expression compiled in your future reverse-engineering tasks and to obfuscate heavily your regex!</p>
+
+<!--more-->
+
+
+<h1>Bring out the FSM</h1>
+
+<h2>Manually</h2>
+
+<p>Before automating things, let&rsquo;s see how we can implement a simple regex in C. It&rsquo;s always easier to reverse-engineer something you have, at least once in your life, implemented. Even if the actual implementation is slightly different from the one you did.
+Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdquo;.</p>
+
+<p><strong>NOTE</strong>: I just had the chance to have a conversation with <a href="https://plus.google.com/111956453297829313313">Michal</a>, and he is totally right saying that automata ins&rsquo;t <em>really</em> the regex we said it was. Here is an example of what the regex should match: &lsquo;Hi-GARBAGEGARBAGE_Hi-1234&rsquo;. We don&rsquo;t allow our regex to like rewind the state to zero if the input doesn&rsquo;t match the regex. To do so, we could replace the return statements by a &ldquo;state = 0&rdquo; statement :). Thank you to <a href="https://plus.google.com/111956453297829313313">Michal</a> for the remark.</p>
+
+<p>Now, if from that string representation we extract an FSM, we can have that one:</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/FSM_example.png"></p>
+
+<p>Here is this automaton implemented in C:</p>
+
+<figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+<span class='line-number'>71</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">state</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">do</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="k">switch</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">0</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;H&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">1</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;i&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">2</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;-&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">3</span> <span class="p">...</span> <span class="mi">6</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;&amp;</span> <span class="o">*</span><span class="n">s</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span><span class="o">++</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">7</span>:
+</span><span class='line'>                <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">}</span> <span class="k">while</span><span class="p">(</span><span class="o">*</span><span class="n">s</span><span class="o">++</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>If we try to execute the program:</p>
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>> fsm_example.exe garbage-Hi-1337-garbage
+</span><span class='line'>Good boy.
+</span><span class='line'>
+</span><span class='line'>> fsm_example.exe garbage-Hi-1337
+</span><span class='line'>Good boy.
+</span><span class='line'>
+</span><span class='line'>> fsm_example.exe Hi-1337-garbage
+</span><span class='line'>Good boy.
+</span><span class='line'>
+</span><span class='line'>> fsm_example.exe Hi-dudies
+</span><span class='line'>Bad boy.</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The purpose of that trivial example was just to show you how a regex string representation can be compiled into something harder to analyze but also more efficient (it doesn&rsquo;t need a compilation step, that&rsquo;s the reason why you may encounter that kind of thing in real (?) softwares). Even if the code seems trivial at the first sight, when you look at it at the assembly level, it takes a bit of time to figure out it&rsquo;s a simple &ldquo;Hi-[0-9]{4}&rdquo; regex.</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/cfg.png"></p>
+
+<p>In that kind of analysis, it&rsquo;s really important to find the &ldquo;state&rdquo; variable that allows the program to pass through the different nodes of the FSM. Then, you have also to figure out how you can reach a specific node, and all the nodes reachable from a specific one. To make it short, at the end of your analysis you really want to have a clean FSM like the one we did earlier. And once you have it, you want to eliminate unreachable nodes, and to minimize it in order to remove some potential automaton obfuscation.</p>
+
+<figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+<span class='line-number'>71</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">state</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">do</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="k">switch</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">0</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;H&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">1</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;i&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">2</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;-&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">3</span> <span class="p">...</span> <span class="mi">6</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;&amp;</span> <span class="o">*</span><span class="n">s</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span><span class="o">++</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">7</span>:
+</span><span class='line'>                <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">}</span> <span class="k">while</span><span class="p">(</span><span class="o">*</span><span class="n">s</span><span class="o">++</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h2>Automatically</h2>
+
+<p>But what if our regex was totally more complex ? It would be a hell to implement manually the FSM. That&rsquo;s why I wanted to find some ways to generate your own FSM from a regex string manipulation.</p>
+
+<h3>With re2c</h3>
+
+<p><a href="http://re2c.org/manual.html">re2c</a> is a cool and simple tool that allows you to describe your regex in a C comment, then it will generate the code of the scanner. As an example, here is the source code to generate the scanner for the previous regex:</p>
+
+<figure class='code'><figcaption><span> (fsm_re2c_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_example.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cm">/* re2c -i fsm_re2c_example.c */</span>
+</span><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">char</span> <span class="o">*</span><span class="n">q</span><span class="p">;</span>
+</span><span class='line'><span class="cm">/*!re2c</span>
+</span><span class='line'><span class="cm">    re2c:define:YYCTYPE = &quot;char&quot;;</span>
+</span><span class='line'><span class="cm">    re2c:define:YYCURSOR = s;</span>
+</span><span class='line'><span class="cm">    re2c:define:YYMARKER = q;</span>
+</span><span class='line'><span class="cm">    re2c:yyfill:enable   = 0;</span>
+</span><span class='line'>
+</span><span class='line'><span class="cm">   &quot;Hi-&quot;[0-9]{4}  { return 1; }</span>
+</span><span class='line'><span class="cm">   [^]            { return 0; }</span>
+</span><span class='line'><span class="cm">*/</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Once you feed that source to re2c, it gives you that scanner ready to be compiled:</p>
+
+<figure class='code'><figcaption><span> (fsm_re2c_generated_non_optimized.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_generated_non_optimized.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+<span class='line-number'>71</span>
+<span class='line-number'>72</span>
+<span class='line-number'>73</span>
+<span class='line-number'>74</span>
+<span class='line-number'>75</span>
+<span class='line-number'>76</span>
+<span class='line-number'>77</span>
+<span class='line-number'>78</span>
+<span class='line-number'>79</span>
+<span class='line-number'>80</span>
+<span class='line-number'>81</span>
+<span class='line-number'>82</span>
+<span class='line-number'>83</span>
+<span class='line-number'>84</span>
+<span class='line-number'>85</span>
+<span class='line-number'>86</span>
+<span class='line-number'>87</span>
+<span class='line-number'>88</span>
+<span class='line-number'>89</span>
+<span class='line-number'>90</span>
+<span class='line-number'>91</span>
+<span class='line-number'>92</span>
+<span class='line-number'>93</span>
+<span class='line-number'>94</span>
+<span class='line-number'>95</span>
+<span class='line-number'>96</span>
+<span class='line-number'>97</span>
+<span class='line-number'>98</span>
+<span class='line-number'>99</span>
+<span class='line-number'>100</span>
+<span class='line-number'>101</span>
+<span class='line-number'>102</span>
+<span class='line-number'>103</span>
+<span class='line-number'>104</span>
+<span class='line-number'>105</span>
+<span class='line-number'>106</span>
+<span class='line-number'>107</span>
+<span class='line-number'>108</span>
+<span class='line-number'>109</span>
+<span class='line-number'>110</span>
+<span class='line-number'>111</span>
+<span class='line-number'>112</span>
+<span class='line-number'>113</span>
+<span class='line-number'>114</span>
+<span class='line-number'>115</span>
+<span class='line-number'>116</span>
+<span class='line-number'>117</span>
+<span class='line-number'>118</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cm">/* Generated by re2c 0.13.5 on Sun Aug 25 00:27:48 2013 */</span>
+</span><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">char</span> <span class="o">*</span><span class="n">q</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>        <span class="kt">char</span> <span class="n">yych</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;H&#39;</span>:       <span class="k">goto</span> <span class="n">yy2</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy4</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy2:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">q</span> <span class="o">=</span> <span class="o">++</span><span class="n">s</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;i&#39;</span>:       <span class="k">goto</span> <span class="n">yy5</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy3</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy3:</span>
+</span><span class='line'>        <span class="p">{</span> <span class="k">return</span> <span class="mi">0</span><span class="p">;</span> <span class="p">}</span>
+</span><span class='line'><span class="nl">yy4:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">goto</span> <span class="n">yy3</span><span class="p">;</span>
+</span><span class='line'><span class="nl">yy5:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;-&#39;</span>:       <span class="k">goto</span> <span class="n">yy7</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy6:</span>
+</span><span class='line'>        <span class="n">s</span> <span class="o">=</span> <span class="n">q</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">goto</span> <span class="n">yy3</span><span class="p">;</span>
+</span><span class='line'><span class="nl">yy7:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy8</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy8:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy9</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy9:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy10</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy10:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy11</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy11:</span>
+</span><span class='line'>        <span class="o">++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">{</span> <span class="k">return</span> <span class="mi">1</span><span class="p">;</span> <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Cool isn&rsquo;t it ? But in fact, if you try to compile and Hexrays it (even with optimizations disabled) you will be completely disappointed: it gets simplified like <strong>really</strong> ; not cool for us (cool for the reverse-engineer though!).</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/hexrays.png"></p>
+
+<h3>By hand</h3>
+
+<p>That&rsquo;s why I tried to generate myself the C code of the scanner. The first thing you need is a <a href="http://osteele.com/software/python/fsa/reCompiler.html">&ldquo;regular-expression string&rdquo; to FSM Python library</a>: a sort-of regex compiler. Then, once you are able to generate a FSM from a regular expression string, you are totally free to do whatever you want with the automaton. You can obfuscate it, try to optimize it, etc. You are also free to generate the C code you want.
+Here is the ugly-buggy-PoC code I wrote to generate the scanner for the regex used previously:</p>
+
+<figure class='code'><figcaption><span> (generate_c_fsm.py)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/generate_c_fsm.py'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+</pre></td><td class='code'><pre><code class='py'><span class='line'><span class="kn">import</span> <span class="nn">reCompiler</span>
+</span><span class='line'><span class="kn">import</span> <span class="nn">random</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">c</span> <span class="o">=</span> <span class="s">&#39;0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!&quot;#$%&amp;()*+,-./:;&lt;=&gt;?@[</span><span class="se">\\</span><span class="s">]^_`{|}~ </span><span class="se">\t\n\r\x0b\x0c</span><span class="s">&#39;</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">fsm</span> <span class="o">=</span> <span class="n">reCompiler</span><span class="o">.</span><span class="n">compileRE</span><span class="p">(</span><span class="s">&#39;Hi-[0-9][0-9][0-9][0-9]&#39;</span><span class="p">,</span> <span class="n">minimize</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span>
+</span><span class='line'><span class="n">states</span> <span class="o">=</span> <span class="n">fsm</span><span class="o">.</span><span class="n">states</span>
+</span><span class='line'><span class="n">transitions</span> <span class="o">=</span> <span class="n">fsm</span><span class="o">.</span><span class="n">transitions</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">useless_states</span> <span class="o">=</span> <span class="p">[</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mh">0xffffffff</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">))]</span>
+</span><span class='line'><span class="n">states</span> <span class="o">+=</span> <span class="n">useless_states</span>
+</span><span class='line'>
+</span><span class='line'><span class="c"># We don&#39;t want to have dead nodes, so let&#39;s create transition</span>
+</span><span class='line'><span class="n">deadnodes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">useless_states</span><span class="p">)</span>
+</span><span class='line'><span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">deadnodes</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+</span><span class='line'>    <span class="n">s</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">states</span><span class="p">),</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">states</span><span class="p">),</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">transitions</span> <span class="o">+=</span> <span class="p">[(</span><span class="n">s</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">t</span><span class="p">)]</span>
+</span><span class='line'>    <span class="n">deadnodes</span> <span class="o">-=</span> <span class="nb">set</span><span class="p">([</span><span class="n">s</span><span class="p">])</span>
+</span><span class='line'>
+</span><span class='line'><span class="c"># To obfuscate we can use random state number</span>
+</span><span class='line'><span class="n">dic_states</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+</span><span class='line'>    <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mh">0xffffffff</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">states</span>
+</span><span class='line'><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
+</span><span class='line'><span class="k">assert</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dic_states</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">dic_states</span><span class="o">.</span><span class="n">values</span><span class="p">())))</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">print</span> <span class="s">&#39;unsigned char checkinput(char *p){</span><span class="se">\n</span><span class="s">unsigned int state = </span><span class="si">%d</span><span class="s">;</span><span class="se">\n</span><span class="s">while(*p)</span><span class="se">\n</span><span class="s">{</span><span class="se">\n</span><span class="s">switch(state)</span><span class="se">\n</span><span class="s">{&#39;</span> <span class="o">%</span> <span class="n">dic_states</span><span class="p">[</span><span class="n">fsm</span><span class="o">.</span><span class="n">initialState</span><span class="p">]</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">states</span><span class="p">:</span>
+</span><span class='line'>    <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">fsm</span><span class="o">.</span><span class="n">finalStates</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">continue</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;case </span><span class="si">%d</span><span class="s">:</span><span class="se">\n</span><span class="s">{&#39;</span> <span class="o">%</span> <span class="n">dic_states</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">is_first</span> <span class="o">=</span> <span class="bp">True</span>
+</span><span class='line'>    <span class="k">for</span> <span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">transitions</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">if</span> <span class="n">src</span> <span class="o">!=</span> <span class="n">i</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">continue</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">if</span> <span class="n">is_first</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;else&#39;</span><span class="p">,</span>
+</span><span class='line'>        <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>            <span class="n">is_first</span> <span class="o">=</span> <span class="bp">False</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="n">r</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="bp">False</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&quot;if(*p == </span><span class="si">%s</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="nb">repr</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">elif</span> <span class="n">r</span> <span class="o">==</span> <span class="s">&#39;</span><span class="se">\\</span><span class="s">d&#39;</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&quot;if(*p &gt;= &#39;0&#39; &amp;&amp; *p &lt;= &#39;9&#39;)&quot;</span>
+</span><span class='line'>        <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;Not implemented!&#39;</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;{&#39;</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">if</span> <span class="n">dst</span> <span class="ow">in</span> <span class="n">fsm</span><span class="o">.</span><span class="n">finalStates</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;return 1;&#39;</span>
+</span><span class='line'>        <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;state = </span><span class="si">%d</span><span class="s">; ++p;&#39;</span> <span class="o">%</span> <span class="n">dic_states</span><span class="p">[</span><span class="n">dst</span><span class="p">]</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;}&#39;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c"># Kind of hack to not anchor the regex (not handled by the RE-&gt;FSM)</span>
+</span><span class='line'>    <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">fsm</span><span class="o">.</span><span class="n">initialState</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;else ++p;&#39;</span>
+</span><span class='line'>    <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;else return 0;&#39;</span>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;break;</span><span class="se">\n</span><span class="s">}&#39;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">print</span> <span class="s">&#39;}</span><span class="se">\n</span><span class="s">}</span><span class="se">\n</span><span class="s">return 0;</span><span class="se">\n</span><span class="s">}&#39;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Now, if you open it in IDA the CFG will look like this:</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/hell_yeah.png"></p>
+
+<p>Not that fun to reverse-engineer I guess. If you are enough curious to look at the complete source, here it is: <a href="/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_generated_by_hand_example.c">fsm_generated_by_hand_example.c</a>.</p>
+
+<h2>Thoughts to be more evil: one input to bind all the regex in the darkness</h2>
+
+<p>Keep in mind, the previous examples are really trivial to analyze, even if we had to do it at the assembly level without Hexrays (by the way Hexrays does a really nice job to simplify the assembly code, cool for us!). Even if we have slightly obfuscated the automaton with useless states/transitions, we may want to make things harder.</p>
+
+<p>One interesting idea to bother the reverse-engineer is to use several regex as &ldquo;input filters&rdquo;. You create one first &ldquo;permissive&rdquo; regex that has many possible valid inputs. To reduce the valid inputs set you use another regex as a filter. And you do that until you have only one valid input: your serial. Note that you may also want to build complex regex, because you are evil.</p>
+
+<p>In that case, the reverse-engineer <strong>has to</strong> analyze all the different regex. And if you focus on a specific regex, you will have too many valid inputs whereas only one gives you the good boy (the intersection of all the valid inputs set of the different regex).</p>
+
+<p>If you are interested by the subject, a cool resource I&rsquo;ve seen recently that does similar things was in a CTF task write-up written by <a href="https://plus.google.com/111956453297829313313">Michal Kowalczyk</a>: read <a href="http://blog.dragonsector.pl/2013/07/sigint-ctf-2013-task-fenster-400-pts.html">it</a>, it&rsquo;s awesome.</p>
+
+<p><strong>UPDATE</strong>: You should also read the follow-up made by <a href="https://twitter.com/fdfalcon">@fdfalcon</a> &ldquo;<a href="http://sysexit.wordpress.com/2013/09/04/a-black-box-approach-against-obfuscated-regular-expressions-using-pin/">A black-box approach against obfuscated regular expressions using Pin</a>&rdquo;. Using Pin to defeat the FSM obfuscation, and to prove my obfuscation was a bit buggy: two birds, one stone :)).</p>
+
+<p>Messing with automata is good for you.</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Axel "0vercl0k" Souchet</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-24T12:35:00+01:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/obfuscation/'>obfuscation</a>, <a class='category' href='/blog/categories/reverse-engineering/'>reverse-engineering</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+      
+        <a class="basic-alignment right" href="/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/" title="Next Post: Some thoughts about code-coverage measurement with Pin">Some thoughts about code-coverage measurement with Pin &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Deep dive into Python's VM: Story of LOAD_CONST bug</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First dip into the kernel pool : MS10-058</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows' User/Kernel exceptions dispatcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  
+  </span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>

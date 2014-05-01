@@ -1,0 +1,2397 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: reverse-engineering | Diary of a reverse-engineer]]></title>
+  <link href="http://doar-e.github.io/blog/categories/reverse-engineering/atom.xml" rel="self"/>
+  <link href="http://doar-e.github.io/"/>
+  <updated>2014-04-30T22:51:21+01:00</updated>
+  <id>http://doar-e.github.io/</id>
+  <author>
+    <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution]]></title>
+    <link href="http://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/"/>
+    <updated>2013-09-16T11:47:00+01:00</updated>
+    <id>http://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p><em>Kryptonite</em> was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic-preserving transformations in order to not break the original program. One of the main idea was for example to build a home-made 32 bits adder to replace the <em>add</em> LLVM instruction. Instead of having a single asm instruction generated at the end of the pipeline, you will end up with a ton of assembly codes doing only an addition. If you never read my article, and you are interested in it here it is: <a href="http://0vercl0k.tuxfamily.org/bl0g/?p=260">Obfuscation of steel: meet my Kryptonite</a>.</p>
+
+<p><img class="center" src="/images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png"></p>
+
+<p>In this post I wanted to show you how we can manage to break that obfuscation with symbolic execution. We are going to write a really tiny symbolic execution engine with IDAPy, and we will use Z3Py to simplify all our equations. Note that a friend of mine <a href="https://twitter.com/elvanderb">@elvanderb</a> used a similar approach (more generic though) to simplify some parts of the <a href="http://download.tuxfamily.org/overclokblog/Obfuscation%20of%20steel%3a%20meet%20my%20Kryptonite/binaries/">crackme</a> ; but he didn&rsquo;t wanted to publish it, so here is my blog post about it!</p>
+
+<!--more-->
+
+
+<h1>The target</h1>
+
+<p>In this blogpost we are first going to work on the LLVM code emitted by <a href="https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/llvm-cpp-frontend-home-made-32bits-adder.cpp">llvm-cpp-frontend-home-made-32bits-adder.cpp</a>. Long story short, the code uses the LLVM frontend API to emit a home made 32 bits adder in the <a href="http://llvm.org/docs/LangRef.html">LLVM intermediate language</a>. You can then feed the output directly to clang to generate a real executable binary for your platform, I chose to work only on the x86 platform here. I&rsquo;ve also uploaded the binary here: <a href="https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/adder">adder</a>.</p>
+
+<p>So if you open the generated binary in IDA, you will see an interminable routine that only does an addition. At first glance, it really is kind of scary:</p>
+
+<ul>
+<li>every instructions seems to be important, there is no junk codes</li>
+<li>it seems that only binary operations are used: addition, left shift, right shift, xor, etc.</li>
+<li>it&rsquo;s also a two thousands instructions routine</li>
+</ul>
+
+
+<p>The idea in this post is to write a very basic symbolic execution engine in order to see what kind of result will hold the EAX register at the end of the routine. Hopefully, we will obtain something highly simplified and more readable that this bunch of assembly codes!</p>
+
+<h1>The symbolic execution engine approach</h1>
+
+<p>But in fact that piece of code makes it <strong>really</strong> easy for us to write a symbolic execution engine. Here are the main reasons:</p>
+
+<ul>
+<li>there is no branches, no loops, perfect.</li>
+<li>the instruction aren&rsquo;t playing with the <a href="https://en.wikipedia.org/wiki/FLAGS_register">EFLAGS</a> register.</li>
+<li>the instruction only used 32 bits registers (not 16 bits, or 8 bits).</li>
+<li>the number of unique instruction is really small: <em>mov</em>, <em>shr</em>, <em>shl</em>, <em>xor</em>, <em>and</em>, <em>xor</em>, <em>add</em>.</li>
+<li>the instructions used are easy to emulate.</li>
+</ul>
+
+
+<p>Understand that here, we are really in a specific case, the engine wouldn&rsquo;t be that easy to implement to cover the most used x86 instructions ; but we are lucky, we won&rsquo;t need that!</p>
+
+<p>The engine is in fact a pseudo-emulator that propagates the different actions done by the asm instructions. Here is how our engine works:</p>
+
+<ol>
+<li>Each time a symbolic variable is found, you instantiate a Z3 BitVector and you keep it somewhere. A symbolic variable is basically a variable that the attacker can control. For example, in our case, we will have two symbolic variables: the two arguments passed to the function. We will see later an easy heuristic to find &ldquo;automatically&rdquo; the symbolic variables in our case.</li>
+<li>When you have an instruction, you emulate it and you update the CPU state of the engine. If it involves an equation, you update your set of equations.</li>
+<li>You do that until the end of the routine.</li>
+</ol>
+
+
+<p>Of course, when the engine has been successfully executed, you may want to ask it some questions like &ldquo;what does hold the EAX register at the end of the routine?&rdquo;. You want to have exactly all the operations needed to compute EAX. In our case, we hope to obtain &ldquo;<em>symbolic_variable1</em> + <em>symbolic_variable2</em>&rdquo;.</p>
+
+<p>Here is a little example to sum up what we just said:
+```nasm
+mov eax, [arg1]  ; at this moment we have our first symbolic variable</p>
+
+<pre><code>             ; we push it in our equations list
+</code></pre>
+
+<p>mov edx, [arg2]  ; same thing here</p>
+
+<p>shr eax, 2   ; EAX=sym1 >> 2
+add eax, 1   ; EAX=(sym1 >> 2) + 1
+shl eax, 3   ; EAX=((sym1 >> 2) + 1) &lt;&lt; 1
+and eax, 2   ; EAX=(((sym1 >> 2) + 1) &lt;&lt; 1) &amp; 2
+inc edx      ; EDX=sym2 + 1
+xor edx, eax ; EDX=(sym2 + 1) ^ ((((sym1 >> 2) + 1) &lt;&lt; 1) &amp; 2)
+mov eax, edx ; EAX=(sym2 + 1) ^ ((((sym1 >> 2) + 1) &lt;&lt; 1) &amp; 2)
+```</p>
+
+<p>So at the end, you can ask the engine to give you the final state of EAX for example and it should give you something like:
+<code>text
+EAX=(sym2 + 1) ^ ((((sym1 &gt;&gt; 2) + 1) &lt;&lt; 1) &amp; 2)
+</code></p>
+
+<p>With that equation you are free to use Z3Py to either simplify it or to try to find how you can have a specific value in EAX controlling only the symbolic variables:</p>
+
+<p>```text
+In [1]: from z3 import *
+In [2]: sym1 = BitVec(&lsquo;sym1&rsquo;, 32)
+In [3]: sym2 = BitVec(&lsquo;sym2&rsquo;, 32)</p>
+
+<p>In [4]: simplify((sym2 + 1) ^ ((((sym1 >> 2) + 1) &lt;&lt; 1) &amp; 2))
+Out[4]: 1 + sym2 ^ Concat(0, 1 + Extract(0, 0, sym1 >> 2), 0)</p>
+
+<p>In [5]: solve((sym2 + 1) ^ ((((sym1 >> 2) + 1) &lt;&lt; 1) &amp; 2) == 0xdeadbeef)
+[sym1 = 0, sym2 = 3735928556]</p>
+
+<p>In [6]: solve((sym2 + 1) ^ ((((sym1 >> 2) + 1) &lt;&lt; 1) &amp; 2) == 0xdeadbeef, sym1 !=  0)
+[sym1 = 1073741824, sym2 = 3735928556]</p>
+
+<p>In [7]: sym1 = 1073741824
+In [8]: sym2 = 3735928556</p>
+
+<p>In [9]: hex((sym2 + 1) ^ ((((sym1 >> 2) + 1) &lt;&lt; 1) &amp; 2) &amp; 0xffffffff)
+Out[9]: &lsquo;0xdeadbeefL&rsquo;
+```</p>
+
+<p>As you can imagine, that kind of tool is very valuable/handy when you do reverse-engineering tasks or bug-hunting. Unfortunately, our PoC won&rsquo;t be enough accurate/generic/complete to be used in &ldquo;normal&rdquo; cases, but never mind.</p>
+
+<h1>Let&rsquo;s code</h1>
+
+<p>To implement our little PoC we will use only <a href="https://code.google.com/p/idapython/">IDAPython</a> and <a href="http://rise4fun.com/z3py/">Z3Py</a>.</p>
+
+<h2>The disassembler</h2>
+
+<p>The first thing we have to do is to use IDA&rsquo;s API in order to have some inspection information about assembly instructions. The idea is just to have the mnemonic, the source and the destination operands easily ; here is the class I&rsquo;ve designed toward that purpose:</p>
+
+<p>```python Disassembler class
+class Disassembler(object):</p>
+
+<pre><code>'''A simple class to decode easily instruction in IDA'''
+def __init__(self, start, end):
+    self.start = start
+    self.end = end
+    self.eip = start
+
+def _decode_instr(self):
+    '''Returns mnemonic, dst, src'''
+    mnem = GetMnem(self.eip)
+    x = []
+    for i in range(2):
+        ty = GetOpType(self.eip, i)
+        # cst
+        if 5 &lt;= ty &lt;= 7:
+            x.append(GetOperandValue(self.eip, i))
+        else:
+            x.append(GetOpnd(self.eip, i))
+
+    return [mnem] + x
+
+def get_next_instruction(self):
+    '''This is a convenient generator, you can iterator through
+    each instructions easily'''
+    while self.eip != self.end:
+        yield self._decode_instr()
+        self.eip += ItemSize(self.eip)
+</code></pre>
+
+<p>```</p>
+
+<h2>The symbolic execution engine</h2>
+
+<p>There are several important parts in our engine:</p>
+
+<ol>
+<li>the part which &ldquo;emulates&rdquo; the assembly instruction.</li>
+<li>the part which stores the different equations used through the routine. It is a simple Python dictionary: the key is a unique identifier, and the value is the equation</li>
+<li>the CPU state. We also use a dictionary for that purpose: the key will be the register names, and the value will be what the register holds at that specific moment. Note we will only store the unique identifier of the equation. In fact, our design is really similar to Jonathan&rsquo;s one in &ldquo;<a href="http://shell-storm.org/blog/Binary-analysis-Concolic-execution-with-Pin-and-z3/">Binary analysis: Concolic execution with Pin and z3</a>&rdquo;, so please refer you to his cool pictures if it&rsquo;s not really clear :P.</li>
+<li>the memory state ; in that dictionary we store memory references. Remember, if we find a non-initialized access to a memory area we instantiate a symbolic variable. That is our heuristic to find the symbolic variables automatically.</li>
+</ol>
+
+
+<p>Here is the PoC code:</p>
+
+<p>```python SymbolicExecutionEngine class
+def prove(f):</p>
+
+<pre><code>'''Taken from http://rise4fun.com/Z3Py/tutorialcontent/guide#h26'''
+s = Solver()
+s.add(Not(f))
+if s.check() == unsat:
+    return True
+return False
+</code></pre>
+
+<p>class SymbolicExecutionEngine(object):</p>
+
+<pre><code>'''The symbolic execution engine is the class that will
+handle the symbolic execution. It will keep a track of the 
+different equations encountered, and the CPU context at each point of the program.
+
+The symbolic variables have to be found by the user (or using data-taing). This is not
+the purpose of this class.
+
+We are lucky, we only need to handle those operations &amp; encodings:
+    . mov:
+        . mov reg32, reg32
+        . mov reg32, [mem]
+        . mov [mem], reg32
+    . shr:
+        . shr reg32, cst
+    . shl:
+        . shl reg32, cst
+    . and:
+        . and reg32, cst
+        . and reg32, reg32
+    . xor:
+        . xor reg32, cst
+    . or:
+        . or reg32, reg32
+    . add:
+        . add reg32, reg32
+
+We also don't care about:
+    . EFLAGS
+    . branches
+    . smaller registers (16/8 bits)
+Long story short: it's perfect ; that environment makes really easy to play with symbolic execution.'''
+def __init__(self, start, end):
+    # This is the CPU context at each time
+    # The value of the registers are index in the equations dictionnary
+    self.ctx = {
+        'eax' : None,
+        'ebx' : None,
+        'ecx' : None,
+        'edx' : None,
+        'esi' : None,
+        'edi' : None,
+        'ebp' : None,
+        'esp' : None,
+        'eip' : None
+    }
+
+    # The address where the symbolic execution will start
+    self.start = start
+
+    # The address where the symbolic execution will stop
+    self.end = end
+
+    # Our disassembler
+    self.disass = Disassembler(start, end)
+
+    # This is the memory that can be used by the instructions to save temporary values/results
+    self.mem = {}
+
+    # Each equation must have a unique id
+    self.idx = 0
+
+    # The symbolic variables will be stored there
+    self.sym_variables = []
+
+    # Each equation will be stored here
+    self.equations = {}
+
+def _check_if_reg32(self, r):
+    '''XXX: make a decorator?'''
+    return r.lower() in self.ctx
+
+def _push_equation(self, e):
+    self.equations[self.idx] = e
+    self.idx += 1
+    return (self.idx - 1)
+
+def set_reg_with_equation(self, r, e):
+    if self._check_if_reg32(r) == False:
+        return
+
+    self.ctx[r] = self._push_equation(e)
+
+def get_reg_equation(self, r):
+    if self._check_if_reg32(r) == False:
+        return
+
+    return self.equations[self.ctx[r]]
+
+def run(self):
+    '''Run from start address to end address the engine'''
+    for mnemonic, dst, src in self.disass.get_next_instruction():
+        if mnemonic == 'mov':
+            # mov reg32, reg32
+            if src in self.ctx and dst in self.ctx:
+                self.ctx[dst] = self.ctx[src]
+            # mov reg32, [mem]
+            elif (src.find('var_') != -1 or src.find('arg') != -1) and dst in self.ctx:
+                if src not in self.mem:
+                    # A non-initialized location is trying to be read, we got a symbolic variable!
+                    sym = BitVec('arg%d' % len(self.sym_variables), 32)
+                    self.sym_variables.append(sym)
+                    print 'Trying to read a non-initialized area, we got a new symbolic variable: %s' % sym
+                    self.mem[src] = self._push_equation(sym)
+
+                self.ctx[dst] = self.mem[src]
+            # mov [mem], reg32
+            elif dst.find('var_') != -1 and src in self.ctx:
+                if dst not in self.mem:
+                    self.mem[dst] = None
+
+                self.mem[dst] = self.ctx[src]
+            else:
+                raise Exception('This encoding of "mov" is not handled.')
+        elif mnemonic == 'shr':
+            # shr reg32, cst
+            if dst in self.ctx and type(src) == int:
+                self.set_reg_with_equation(dst, LShR(self.get_reg_equation(dst), src))
+            else:
+                raise Exception('This encoding of "shr" is not handled.')
+        elif mnemonic == 'shl':
+            # shl reg32, cst
+            if dst in self.ctx and type(src) == int:
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) &lt;&lt; src)
+            else:
+                raise Exception('This encoding of "shl" is not handled.')
+        elif mnemonic == 'and':
+            x = None
+            # and reg32, cst
+            if type(src) == int:
+                x = src
+            # and reg32, reg32
+            elif src in self.ctx:
+                x = self.get_reg_equation(src)
+            else:
+                raise Exception('This encoding of "and" is not handled.')
+
+            self.set_reg_with_equation(dst, self.get_reg_equation(dst) &amp; x)
+        elif mnemonic == 'xor':
+            # xor reg32, cst
+            if dst in self.ctx and type(src) == int:
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) ^ src)
+            else:
+                raise Exception('This encoding of "xor" is not handled.')
+        elif mnemonic == 'or':
+            # or reg32, reg32
+            if dst in self.ctx and src in self.ctx:
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) | self.get_reg_equation(src))
+            else:
+                raise Exception('This encoding of "or" is not handled.')
+        elif mnemonic == 'add':
+            # add reg32, reg32
+            if dst in self.ctx and src in self.ctx:
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) + self.get_reg_equation(src))
+            else:
+                raise Exception('This encoding of "add" is not handled.')
+        else:
+            print mnemonic, dst, src
+            raise Exception('This instruction is not handled.')
+
+def get_reg_equation_simplified(self, reg):
+    eq = self.get_reg_equation(reg)
+    eq = simplify(eq)
+    return eq
+</code></pre>
+
+<p>```</p>
+
+<h2>Testing</h2>
+
+<p>OK, we just have to instantiate the engine giving him the start/end address of the routine and to ask him to give us the final equation holded in EAX.</p>
+
+<p>```python main
+def main():</p>
+
+<pre><code>'''Here we will try to attack the semantic-preserving obfuscations
+I talked about in "Obfuscation of steel: meet my Kryptonite." : http://0vercl0k.tuxfamily.org/bl0g/?p=260.
+
+The idea is to defeat those obfuscations using a tiny symbolic execution engine.'''
+sym = SymbolicExecutionEngine(0x804845A, 0x0804A17C)
+print 'Launching the engine..'
+sym.run()
+print 'Done, retrieving the equation in EAX, and simplifying..'
+eax = sym.get_reg_equation_simplified('eax')
+print 'EAX=%r' % eax
+return 1
+</code></pre>
+
+<p>if <strong>name</strong> == &lsquo;<strong>main</strong>&rsquo;:</p>
+
+<pre><code>main()
+</code></pre>
+
+<p>```</p>
+
+<p>And here is what I saw:</p>
+
+<p>```text
+Launching the engine..
+Trying to read a non-initialized area, we got a new symbolic variable: arg0
+Trying to read a non-initialized area, we got a new symbolic variable: arg1
+Done, retrieving the equation in EAX, and simplifying..
+EAX=(~(Concat(2147483647, Extract(0, 0, arg1)) |
+   Concat(2147483647, ~Extract(0, 0, arg0)) |
+   4294967294) |
+ ~(Concat(2147483647, ~Extract(0, 0, arg1)) |
+   Concat(2147483647, Extract(0, 0, arg0)) |
+   4294967294)) +
+Concat(~(Concat(1073741823, Extract(1, 1, arg1)) |</p>
+
+<pre><code>     Concat(1073741823, ~Extract(1, 1, arg0)) |
+     Concat(1073741823,
+            ~(~Extract(0, 0, arg1) |
+              ~Extract(0, 0, arg0)))) |
+   ~(Concat(1073741823, ~Extract(1, 1, arg1)) |
+     Concat(1073741823, Extract(1, 1, arg0)) |
+     Concat(1073741823,
+            ~(~Extract(0, 0, arg1) |
+              ~Extract(0, 0, arg0)))) |
+   ~(Concat(1073741823, Extract(1, 1, arg1)) |
+     Concat(1073741823, Extract(1, 1, arg0)) |
+     Concat(1073741823, ~Extract(0, 0, arg1)) |
+     Concat(1073741823, ~Extract(0, 0, arg0)) |
+     2147483646) |
+   ~(Concat(1073741823, ~Extract(1, 1, arg1)) |
+     Concat(1073741823, ~Extract(1, 1, arg0)) |
+     Concat(1073741823, ~Extract(0, 0, arg1)) |
+     Concat(1073741823, ~Extract(0, 0, arg0)) |
+     2147483646),
+   0) +
+</code></pre>
+
+<p>&hellip;
+```</p>
+
+<p>There was two possible explanations for this problem:</p>
+
+<ul>
+<li>my code is wrong, and it generates equations not simplify-able.</li>
+<li>my code is right, and Z3Py&rsquo;s simplify method has a hard time to simplify it.</li>
+</ul>
+
+
+<p> To know what was the right answer, I used Z3Py&rsquo;s prove function in order to know if the equation was equivalent to a simple addition:</p>
+
+<p>```python main
+ def main():</p>
+
+<pre><code>'''Here we will try to attack the semantic-preserving obfuscations
+I talked about in "Obfuscation of steel: meet my Kryptonite." : http://0vercl0k.tuxfamily.org/bl0g/?p=260.
+
+The idea is to defeat those obfuscations using a tiny symbolic execution engine.'''
+sym = SymbolicExecutionEngine(0x804845A, 0x0804A17C)
+print 'Launching the engine..'
+sym.run()
+print 'Done, retrieving the equation in EAX, and simplifying..'
+eax = sym.get_reg_equation_simplified('eax')
+print prove(eax == Sum(sym.sym_variables))
+return 1
+</code></pre>
+
+<p>if <strong>name</strong> == &lsquo;<strong>main</strong>&rsquo;:</p>
+
+<pre><code>main()
+</code></pre>
+
+<p>```</p>
+
+<p>Fortunately for us, it printed <em>True</em> ; so our code is correct. But it also means, the simplify function, as is at least, isn&rsquo;t able to simplify that bunch of equations involving bit-vector arithmetics. I still haven&rsquo;t found a clean way to make Z3Py simplify my big equation, so if someone knows how I can do that please contact me. I&rsquo;ve also exported the complete equation, and uploaded it <a href="/downloads/code/breaking_kryptonite_s_obfuscation_with_symbolic_execution/eq.txt">here</a> ; you are free to give it a try like this.</p>
+
+<p>The ugly trick I came up with is just to use Z3Py&rsquo;s prove function, to try to prove that the equation is in fact an addition and if this is the case it returns the simplified equation. Again, if someone manages to simplify the previous equation without that type of trick I&rsquo;m really interested!</p>
+
+<p>```python nasty trick</p>
+
+<pre><code>def _simplify_additions(self, eq):
+    '''The idea in this function is to help Z3 to simplify our big bitvec-arithmetic
+    expression. It's simple, in eq we have a big expression with two symbolic variables (arg0 &amp; arg1)
+    and a lot of bitvec arithmetic. Somehow, the simplify function is not clever enough to reduce the
+    equation.
+
+    The idea here is to use the prove function in order to see if we can simplify an equation by an addition of the
+    symbolic variables.'''
+    # The two expressions are equivalent ; we got a simplification!
+    if prove(Sum(self.sym_variables) == eq):
+        return Sum(self.sym_variables)
+
+    return eq
+
+def get_reg_equation_simplified(self, reg):
+    eq = self.get_reg_equation(reg)
+    eq = simplify(self._simplify_additions(eq))
+    return eq
+</code></pre>
+
+<p>```</p>
+
+<p>And now if you relaunch the script you will get:</p>
+
+<p><code>text
+Launching the engine..
+Trying to read a non-initialized area, we got a new symbolic variable: arg0
+Trying to read a non-initialized area, we got a new symbolic variable: arg1
+Done, retrieving the equation in EAX, and simplifying..
+EAX=arg0 + arg1
+</code></p>
+
+<p>We just successfully simplified two thousands of assembly into a simple addition, wonderful!</p>
+
+<h1>Symbolic execution VS Kryptonite</h1>
+
+<p>OK, now we have a working engine able to break a small program (~two thousands instructions), let&rsquo;s see if we can do the same with a kryptonized-binary. Let&rsquo;s take a simple addition like in the previous parts:</p>
+
+<p>```c</p>
+
+<h1>include &lt;stdio.h></h1>
+
+<h1>include &lt;stdlib.h></h1>
+
+<p>unsigned int add(unsigned int a, unsigned int b)
+{</p>
+
+<pre><code>return a + b;
+</code></pre>
+
+<p>}</p>
+
+<p>int main(int argc, char* argv[])
+{</p>
+
+<pre><code>if(argc != 3)
+    return 0;
+
+printf("Result: %u\n", add(atoll(argv[1]), atoll(argv[2])));
+return 1;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>Now, time for a kryptonization:</p>
+
+<p><code>bash
+$ wget https://raw.github.com/0vercl0k/stuffz/master/llvm-funz/kryptonite/llvm-functionpass-kryptonite-obfuscater.cpp
+$ clang++ llvm-functionpass-kryptonite-obfuscater.cpp `llvm-config --cxxflags --ldflags --libs core` -shared -o llvm-functionpass-kryptonite-obfuscater.so
+$ clang -S -emit-llvm add.c -o add.ll
+$ opt -S -load ~/dev/llvm-functionpass-kryptonite-obfuscater.so -kryptonite -heavy-add-obfu add.ll -o add.opti.ll &amp;&amp; mv add.opti.ll add.ll
+$ opt -S -load ~/dev/llvm-functionpass-kryptonite-obfuscater.so -kryptonite -heavy-add-obfu add.ll -o add.opti.ll &amp;&amp; mv add.opti.ll add.ll
+$ llc -O0 -filetype=obj -march=x86 add.ll -o add.o
+$ clang -static add.o -o kryptonite-add
+$ strip --strip-all ./kryptonite-add
+</code></p>
+
+<p>At this moment we end up with that binary: <a href="https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/kryptonite-add">kryptonite-add</a>. The target routine for our study starts at 0x804823C and ends at 0x08072284 ; roughly more than 40 thousands assembly instructions and kind of big right?</p>
+
+<p>Here is our final IDAPython script after some minor adjustments (added one or two more instructions):</p>
+
+<p>```python tiny_symbolic_execution_engine_z3.py <a href="https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/tiny_symbolic_execution_engine_z3.py">https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/tiny_symbolic_execution_engine_z3.py</a>
+class EquationId(object):</p>
+
+<pre><code>def __init__(self, id_):
+    self.id = id_
+
+def __repr__(self):
+    return 'EID:%d' % self.id
+</code></pre>
+
+<p>class Disassembler(object):</p>
+
+<pre><code>'''A simple class to decode easily instruction in IDA'''
+def __init__(self, start, end):
+    self.start = start
+    self.end = end
+    self.eip = start
+
+def _decode_instr(self):
+    '''Returns mnemonic, dst, src'''
+    mnem = GetMnem(self.eip)
+    x = []
+    for i in range(2):
+        ty = GetOpType(self.eip, i)
+        # cst
+        if 5 &lt;= ty &lt;= 7:
+            x.append(GetOperandValue(self.eip, i))
+        else:
+            x.append(GetOpnd(self.eip, i))
+
+    return [mnem] + x
+
+def get_next_instruction(self):
+    '''This is a convenient generator, you can iterator through
+    each instructions easily'''
+    while self.eip != self.end:
+        yield self._decode_instr()
+        self.eip += ItemSize(self.eip)
+</code></pre>
+
+<p>class SymbolicExecutionEngine(object):</p>
+
+<pre><code>'''The symbolic execution engine is the class that will
+handle the symbolic execution. It will keep a track of the 
+different equations encountered, and the CPU context at each point of the program.
+
+The symbolic variables have to be found by the user (or using data-taing). This is not
+the purpose of this class.
+
+We are lucky, we only need to handle those operations &amp; encodings:
+    . mov:
+        . mov reg32, reg32
+        . mov reg32, [mem]
+        . mov [mem], reg32
+        . mov reg32, cst
+    . shr:
+        . shr reg32, cst
+    . shl:
+        . shl reg32, cst
+    . and:
+        . and reg32, cst
+        . and reg32, reg32
+    . xor:
+        . xor reg32, cst
+    . or:
+        . or reg32, reg32
+    . add:
+        . add reg32, reg32
+        . add reg32, cst
+
+We also don't care about:
+    . EFLAGS
+    . branches
+    . smaller registers (16/8 bits)
+Long story short: it's perfect ; that environment makes really easy to play with symbolic execution.'''
+def __init__(self, start, end):
+    # This is the CPU context at each time
+    # The value of the registers are index in the equations dictionnary
+    self.ctx = {
+        'eax' : None,
+        'ebx' : None,
+        'ecx' : None,
+        'edx' : None,
+        'esi' : None,
+        'edi' : None,
+        'ebp' : None,
+        'esp' : None,
+        'eip' : None
+    }
+
+    # The address where the symbolic execution will start
+    self.start = start
+
+    # The address where the symbolic execution will stop
+    self.end = end
+
+    # Our disassembler
+    self.disass = Disassembler(start, end)
+
+    # This is the memory that can be used by the instructions to save temporary values/results
+    self.mem = {}
+
+    # Each equation must have a unique id
+    self.idx = 0
+
+    # The symbolic variables will be stored there
+    self.sym_variables = []
+
+    # Each equation will be stored here
+    self.equations = {}
+
+    # Number of instructions emulated
+    self.ninstrs = 0
+
+def _check_if_reg32(self, r):
+    '''XXX: make a decorator?'''
+    return r.lower() in self.ctx
+
+def _push_equation(self, e):
+    idx = EquationId(self.idx)
+    self.equations[idx] = e
+    self.idx += 1
+    return idx
+
+def set_reg_with_equation(self, r, e):
+    if self._check_if_reg32(r) == False:
+        return
+
+    self.ctx[r] = self._push_equation(e)
+
+def get_reg_equation(self, r):
+    if self._check_if_reg32(r) == False:
+        return
+
+    if isinstance(self.ctx[r], EquationId):
+        return self.equations[self.ctx[r]]
+    else:
+        return self.ctx[r]
+
+def run(self):
+    '''Run from start address to end address the engine'''
+    for mnemonic, dst, src in self.disass.get_next_instruction():
+        if (self.ninstrs % 5000) == 0 and self.ninstrs &gt; 0:
+            print '%d instructions, %d equations so far...' % (self.ninstrs, len(self.equations))
+
+        if mnemonic == 'mov':
+            # mov reg32, imm32
+            if dst in self.ctx and isinstance(src, (int, long)):
+                self.ctx[dst] = src
+            # mov reg32, reg32
+            elif src in self.ctx and dst in self.ctx:
+                self.ctx[dst] = self.ctx[src]
+            # mov reg32, [mem]
+            elif (src.find('var_') != -1 or src.find('arg') != -1) and dst in self.ctx:
+                if src not in self.mem:
+                    # A non-initialized location is trying to be read, we got a symbolic variable!
+                    sym = BitVec('arg%d' % len(self.sym_variables), 32)
+                    self.sym_variables.append(sym)
+                    print 'Trying to read a non-initialized area, we got a new symbolic variable: %s' % sym
+                    self.mem[src] = self._push_equation(sym)
+
+                self.ctx[dst] = self.mem[src]
+            # mov [mem], reg32
+            elif dst.find('var_') != -1 and src in self.ctx:
+                self.mem[dst] = self.ctx[src]
+            else:
+                raise Exception('This encoding of "mov" is not handled.')
+        elif mnemonic == 'shr':
+            # shr reg32, cst
+            if dst in self.ctx and isinstance(src, (int, long)):
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) &gt;&gt; src)
+            else:
+                raise Exception('This encoding of "shr" is not handled.')
+        elif mnemonic == 'shl':
+            # shl reg32, cst
+            if dst in self.ctx and isinstance(src, (int, long)):
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) &lt;&lt; src)
+            else:
+                raise Exception('This encoding of "shl" is not handled.')
+        elif mnemonic == 'and':
+            # and reg32, cst
+            if isinstance(src, (int, long)):
+                x = src
+            # and reg32, reg32
+            elif src in self.ctx:
+                x = self.get_reg_equation(src)
+            else:
+                raise Exception('This encoding of "and" is not handled.')
+
+            self.set_reg_with_equation(dst, self.get_reg_equation(dst) &amp; x)
+        elif mnemonic == 'xor':
+            # xor reg32, cst
+            if dst in self.ctx and isinstance(src, (int, long)):
+                if self.ctx[dst] not in self.equations:
+                    self.ctx[dst] ^= src
+                else:
+                    self.set_reg_with_equation(dst, self.get_reg_equation(dst) ^ src)
+            else:
+                raise Exception('This encoding of "xor" is not handled.')
+        elif mnemonic == 'or':
+            # or reg32, reg32
+            if dst in self.ctx and src in self.ctx:
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) | self.get_reg_equation(src))
+            else:
+                raise Exception('This encoding of "or" is not handled.')
+        elif mnemonic == 'add':
+            # add reg32, reg32
+            if dst in self.ctx and src in self.ctx:
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) + self.get_reg_equation(src))
+            # add reg32, cst
+            elif dst in self.ctx and isinstance(src, (int, long)):
+                self.set_reg_with_equation(dst, self.get_reg_equation(dst) + src)
+            else:
+                raise Exception('This encoding of "add" is not handled.')
+        else:
+            print mnemonic, dst, src
+            raise Exception('This instruction is not handled.')
+
+        self.ninstrs += 1
+
+def _simplify_additions(self, eq):
+    '''The idea in this function is to help Z3 to simplify our big bitvec-arithmetic
+    expression. It's simple, in eq we have a big expression with two symbolic variables (arg0 &amp; arg1)
+    and a lot of bitvec arithmetic. Somehow, the simplify function is not clever enough to reduce the
+    equation.
+
+    The idea here is to use the prove function in order to see if we can simplify an equation by an addition of the
+    symbolic variables.'''
+    # The two expressions are equivalent ; we got a simplification!
+    if prove_(Sum(self.sym_variables) == eq):
+        return Sum(self.sym_variables)
+
+    return eq
+
+def get_reg_equation_simplified(self, reg):
+    eq = self.get_reg_equation(reg)
+    eq = simplify(self._simplify_additions(eq))
+    return eq
+</code></pre>
+
+<p>def main():</p>
+
+<pre><code>'''Here we will try to attack the semantic-preserving obfuscations
+I talked about in "Obfuscation of steel: meet my Kryptonite." : http://0vercl0k.tuxfamily.org/bl0g/?p=260.
+
+The idea is to defeat those obfuscations using a tiny symbolic execution engine.'''
+# sym = SymbolicExecutionEngine(0x804845A, 0x0804A17C) # for simple adder
+sym = SymbolicExecutionEngine(0x804823C, 0x08072284) # adder kryptonized
+print 'Launching the engine..'
+sym.run()
+print 'Done. %d equations built, %d assembly lines emulated, %d virtual memory cells used' % (len(sym.equations), sym.ninstrs, len(sym.mem))
+print 'CPU state at the end:'
+print sym.ctx
+print 'Retrieving and simplifying the EAX register..'
+eax = sym.get_reg_equation_simplified('eax')
+print 'EAX=%r' % eax
+return 1
+</code></pre>
+
+<p>if <strong>name</strong> == &lsquo;<strong>main</strong>&rsquo;:</p>
+
+<pre><code>main()
+</code></pre>
+
+<p>```</p>
+
+<p>And here is the final output:</p>
+
+<p><code>text
+Launching the engine..
+Trying to read a non-initialized area, we got a new symbolic variable: arg0
+Trying to read a non-initialized area, we got a new symbolic variable: arg1
+5000 instructions, 2263 equations so far...
+10000 instructions, 4832 equations so far...
+15000 instructions, 7228 equations so far...
+20000 instructions, 9766 equations so far...
+25000 instructions, 12212 equations so far...
+30000 instructions, 14762 equations so far...
+35000 instructions, 17255 equations so far...
+40000 instructions, 19801 equations so far...
+Done. 19857 equations built, 40130 assembly lines emulated, 5970 virtual memory cells used
+CPU state at the end:
+{'eax': EID:19856, 'ebp': None, 'eip': None, 'esp': None, 'edx': EID:19825, 'edi': EID:19796, 'ebx': EID:19797, 'esi': EID:19823, 'ecx': EID:19856}
+Retrieving and simplifying the EAX register..
+EAX=arg0 + arg1
+</code></p>
+
+<h1>Conclusion</h1>
+
+<p>I hope you did enjoy this little introduction to symbolic execution, and how it can be very valuable to remove some semantic-preserving obfuscations. We also have seen that this PoC is not really elaborate: it doesn&rsquo;t handle loops or any branches, doesn&rsquo;t care about EFLAGS, etc ; but it was enough to break our two examples. I hope you also enjoyed the examples used to showcase our tiny symbolic execution engine.</p>
+
+<p>If you want to go further with symbolic execution, here is a list of nice articles:</p>
+
+<ul>
+<li><a href="http://seanhn.wordpress.com/2012/03/23/anatomy-of-a-symbolic-emulator-part-1-trace-generation/">Anatomy of a Symbolic Emulator, Part 1: Trace Generation</a></li>
+<li><a href="http://seanhn.wordpress.com/2012/03/23/anatomy-of-a-symbolic-emulator-part-2-introducing-symbolic-data/">Anatomy of a Symbolic Emulator, Part 2: Introducing Symbolic Data</a></li>
+<li><a href="http://seanhn.wordpress.com/2012/03/23/anatomy-of-a-symbolic-emulator-part-3-processing-symbolic-data-generating-new-inputs/">Anatomy of a Symbolic Emulator, Part 3: Processing Symbolic Data &amp; Generating New Inputs</a></li>
+<li><a href="http://research.microsoft.com/en-us/um/people/pg/public_psfiles/fsttcs2012.pdf">Test Generation Using Symbolic Execution</a></li>
+<li><a href="http://ccadar.github.io/klee/">The KLEE Symbolic Virtual Machine</a></li>
+<li><a href="http://shell-storm.org/blog/Concolic-execution-taint-analysis-with-valgrind-and-constraints-path-solver-with-z3/">Concolic execution &ndash; Taint analysis with Valgrind and constraints path solver with Z3</a></li>
+<li><a href="https://sites.google.com/site/symexbib/">A Bibliography of Papers on Symbolic Execution Technique and its Applications</a></li>
+</ul>
+
+
+<p>PS: By the way, for those who like weird machines, I&rsquo;ve managed to code a MOV/JMP turing machine based on <a href="http://www.cl.cam.ac.uk/~sd601/papers/mov.pdf">mov is Turing-complete</a> here: <a href="https://github.com/0vercl0k/stuffz/blob/master/fun_with_mov_turing_completeness.cpp">fun_with_mov_turing_completeness.cpp</a>!</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Pinpointing heap-related issues: OllyDbg2 off-by-one story]]></title>
+    <link href="http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/"/>
+    <updated>2013-09-09T09:53:00+01:00</updated>
+    <id>http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
+As usual, in those type of situations you fire up your debugger in order to understand what is going on under the hood.
+That was a bit weird, to give you a bit of context I was doing some inline x86 assembly, and I&rsquo;ve put on purpose an <em>int3</em> just
+before the piece of assembly code I thought was buggy. Once my file loaded in <a href="http://ollydbg.de/version2.html">OllyDbg2</a>, I hit <em>F9</em> in order to reach quickly the <em>int3</em> I&rsquo;ve slipped into the inline assembly code. A bit of single-stepping, and <strong>BOOM</strong> I got a nasty crash. It happens sometimes, and that&rsquo;s uncool.
+Then, I relaunch my binary and try to reproduce the bug: same actions and <strong>BOOM</strong> again. OK, this time it&rsquo;s cool, I got a reproducible crash in OllyDbg2.</p>
+
+<p>I like when things like that happens to me (remember the crashes I&rsquo;ve found in OllyDbg/IDA here: <a href="http://download.tuxfamily.org/overclokblog/PDB%20ain%27t%20PDD/0vercl0k_pdb_aint_pdd.pdf">PDB Ain&rsquo;t PDD</a>), it&rsquo;s always a nice exercise for me where I&rsquo;ve to:</p>
+
+<ul>
+<li>pinpoint the bug in the application: usually not trivial when it&rsquo;s a real/big application</li>
+<li>reverse-engineer the codes involved in the bug in order to figure out why it&rsquo;s happening (sometimes I got the sources, sometimes I don&rsquo;t like this time)</li>
+</ul>
+
+
+<p>In this post, I will show you how I&rsquo;ve manage to pinpoint where the bug was, using <a href="http://msdn.microsoft.com/en-us/library/windows/hardware/ff549561(v=vs.85).aspx">GFlags, PageHeap</a> and <a href="http://www.windbg.info/">WinDbg</a>. Then, we will reverse-engineer the buggy code in order to understand why the bug is happening, and how we can code a clean trigger.</p>
+
+<!--more-->
+
+
+<h1>The crash</h1>
+
+<p>The first thing I did was to launch WinDbg to debug OllyDbg2 to debug my binary (yeah.). Once OllyDbg2 has been started up, I reproduced exactly the same steps as previously to trigger the bug and here is what WinDbg was telling me:</p>
+
+<p>```text
+HEAP[ollydbg.exe]: Heap block at 00987AB0 modified at 00987D88 past
+requested size of 2d0</p>
+
+<p>(a60.12ac): Break instruction exception &ndash; code 80000003 (first chance)
+eax=00987ab0 ebx=00987d88 ecx=76f30b42 edx=001898a5 esi=00987ab0 edi=000002d0
+eip=76f90574 esp=00189aec ebp=00189aec iopl=0         nv up ei pl nz na po nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200202
+ntdll!RtlpBreakPointHeap+0x23:
+76f90574 cc              int     3
+```</p>
+
+<p>We got a debug message from the heap allocator informing us the process has written outside of its heap buffer. The thing is, this message and the breakpoint are not triggered when the faulty write is done but triggered like <em>after</em>, when another call to the allocator has been made. At this moment, the allocator is checking the chunks are OK and if it sees something weird, it outputs a message and breaks. The stack-trace should confirm that:</p>
+
+<p><code>text
+0:000&gt; k
+ChildEBP RetAddr  
+00189aec 76f757c2 ntdll!RtlpBreakPointHeap+0x23
+00189b04 76f52a8a ntdll!RtlpCheckBusyBlockTail+0x171
+00189b24 76f915cf ntdll!RtlpValidateHeapEntry+0x116
+00189b6c 76f4ac29 ntdll!RtlDebugFreeHeap+0x9a
+00189c60 76ef34a2 ntdll!RtlpFreeHeap+0x5d
+00189c80 75d8537d ntdll!RtlFreeHeap+0x142
+00189cc8 00403cfc KERNELBASE!GlobalFree+0x27
+00189cd4 004cefc0 ollydbg!Memfree+0x3c
+...
+</code></p>
+
+<p>As we said just above, the message from the heap allocator has been probably triggered when OllyDbg2 wanted to free a chunk of memory.</p>
+
+<p>Basically, the problem with our issue is the fact we don&rsquo;t know:</p>
+
+<ul>
+<li>where the heap chunk has been allocated</li>
+<li>where the faulty write has been made</li>
+</ul>
+
+
+<p>That&rsquo;s what makes our bug not trivial to debug without the suitable tools. If you want to have more information about debugging heap issues efficiently, you should definitely read the heap chapter in <a href="http://advancedwindowsdebugging.com/">Advanced Windows Debugging</a> (cheers <a href="https://twitter.com/Ivanlef0u">`Ivan</a>).</p>
+
+<h1>Pinpointing the heap issue: introducing full PageHeap</h1>
+
+<p>In a nutshell, the full PageHeap option is really powerful to diagnostic heap issues, here are at least two reasons why:</p>
+
+<ul>
+<li>it will save where each heap chunk has been allocated</li>
+<li>it will allocate a guard page at the end of our chunk (thus when the faulty write occurs, we might have a write access exception)</li>
+</ul>
+
+
+<p>To do so, this option changes a bit how the allocator works (it adds more meta-data for each heap chunk, etc.) ; if you want more information, try at home allocating stuff with/without page heap and compare the allocated memory. Here is how looks like a heap chunk when PageHeap full is enabled:</p>
+
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/heapchunk.gif"></p>
+
+<p>To enable it for <em>ollydbg.exe</em>, it&rsquo;s trivial. We just launch the <em>gflags.exe</em> binary (it&rsquo;s in Windbg&rsquo;s directory) and you tick the features you want to enable.</p>
+
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/gflags.png"></p>
+
+<p>Now, you just have to relaunch your target in WinDbg, reproduce the bug and here is what I get now:</p>
+
+<p>```text
+(f48.1140): Access violation &ndash; code c0000005 (first chance)
+First chance exceptions are reported before any exception handling.
+This exception may be expected and handled.</p>
+
+<p>eax=000000b4 ebx=0f919abc ecx=0f00ed30 edx=00000b73 esi=00188694 edi=005d203c
+eip=004ce769 esp=00187d60 ebp=00187d80 iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010246
+ollydbg!Findfreehardbreakslot+0x21d9:
+004ce769 891481          mov     dword ptr [ecx+eax*4],edx ds:002b:0f00f000=????????
+```</p>
+
+<p>Woot, this is very cool, because now we know <strong>exactly</strong> where something is going wrong. Let&rsquo;s get more information about the heap chunk now:</p>
+
+<p>```text
+0:000> !heap -p -a ecx</p>
+
+<pre><code>address 0f00ed30 found in
+_DPH_HEAP_ROOT @ 4f11000
+in busy allocation
+(  DPH_HEAP_BLOCK:  UserAddr  UserSize -  VirtAddr VirtSize)
+          f6f1b2c:  f00ed30        2d0 -  f00e000  2000
+
+6e858e89 verifier!AVrfDebugPageHeapAllocate+0x00000229
+76f90d96 ntdll!RtlDebugAllocateHeap+0x00000030
+76f4af0d ntdll!RtlpAllocateHeap+0x000000c4
+76ef3cfe ntdll!RtlAllocateHeap+0x0000023a
+75d84e55 KERNELBASE!GlobalAlloc+0x0000006e
+00403bef ollydbg!Memalloc+0x00000033
+004ce5ec ollydbg!Findfreehardbreakslot+0x0000205c
+004cf1df ollydbg!Getsourceline+0x0000007f
+00479e1b ollydbg!Getactivetab+0x0000241b
+0047b341 ollydbg!Setcpu+0x000006e1
+004570f4 ollydbg!Checkfordebugevent+0x00003f38
+0040fc51 ollydbg!Setstatus+0x00006441
+004ef9ef ollydbg!Pluginshowoptions+0x0001214f
+</code></pre>
+
+<p>```</p>
+
+<p>With this really handy command we got a lot of relevant information:</p>
+
+<ul>
+<li>This chunk has a size of 0x2d0 bytes. Thus, starting from 0xf00ed30 to 0xf00efff.</li>
+<li>The faulty write now makes sense: the application tries to write 4 bytes outside of its heap buffer (off-by-one on an unsigned array I guess).</li>
+<li>The memory has been allocated in <em>ollydbg!Memalloc</em> (called by <em>ollydbg!Getsourceline</em>, PDB related ?). We will study that routine later in the post.</li>
+<li>The faulty write occurs at address 0x4ce769.</li>
+</ul>
+
+
+<h1>Looking inside OllyDbg2</h1>
+
+<p>We are kind of lucky, the routines involved with this bug are quite simple to reverse-engineer, and Hexrays works just like a charm. Here is the C code (the interesting part at least) of the buggy function:</p>
+
+<p>```c ollydbg!buggy @ 0x004CE424
+signed int buggy(struct_a1 <em>u)
+{
+  int file_size;
+  unsigned int nbchar;
+  unsigned __int8 </em>file_content;
+  int nb_lines;
+  int idx;</p>
+
+<p>  // &hellip;
+  file_content = (unsigned __int8 *)Readfile(&amp;u->sourcefile, 0, &amp;file_size);
+  // &hellip;
+  nbchar = 0;
+  nb_lines = 0;
+  while(nbchar &lt; file_size)
+  {</p>
+
+<pre><code>// doing stuff to count all the char, and all the lines in the file
+// ...
+</code></pre>
+
+<p>  }</p>
+
+<p>  u->mem1_ov = (unsigned int *)Memalloc(12 * (nb_lines + 1), 3);
+  u->mem2 = Memalloc(8 * (nb_lines + 1), 3);
+  if ( u->mem1_ov &amp;&amp; u->mem2 )
+  {</p>
+
+<pre><code>nbchar = 0;
+nb_lines2 = 0;
+while ( nbchar &lt; file_size &amp;&amp; file_content[nbchar] )
+{
+  u-&gt;mem1_ov[3 * nb_lines2] = nbchar;
+  u-&gt;mem1_ov[3 * nb_lines2 + 1] = -1;
+  if ( nbchar &lt; file_size )
+  {
+    while ( file_content[nbchar] )
+    {
+        // Consume a line, increment stuff until finding a '\r' or '\n' sequence
+        // ..
+    }
+  }
+  ++nb_lines2;
+}
+// BOOM!
+u-&gt;mem1_ov[3 * nb_lines2] = nbchar;
+// ...
+</code></pre>
+
+<p>  }
+}
+```</p>
+
+<p>So, let me explain what this routine does:</p>
+
+<ul>
+<li>This routine is called by OllyDbg2 when it finds a PDB database for your binary and, more precisely, when in this database it finds the path of your application&rsquo;s source codes. It&rsquo;s useful to have those kind of information when you are debugging, OllyDbg2 is able to tell you at which line of your C code you&rsquo;re currently at.</li>
+</ul>
+
+
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/source.png"></p>
+
+<ul>
+<li>At line 10: &ldquo;u->Sourcefile&rdquo; is a string pointer on the path of your source code (found in the PDB database). The routine is just reading the whole file, giving you its size, and a pointer on the file content now stored memory.</li>
+<li>From line 12 to 18: we have a loop counting the total number of lines in your source code.</li>
+<li><p>At line 20: we have the allocation of our chunk. It allocates 12*(nb_lines + 1) bytes. We saw previously in WinDbg that the size of the chunk was 0x2d0: it should means we have exactly ((0x2d0 / 12) &ndash; 1) = 59 lines in our source code:
+<code>text
+D:\TODO\crashes\odb2-OOB-write-heap&gt;wc -l OOB-write-heap-OllyDbg2h-trigger.c
+59 OOB-write-heap-OllyDbg2h-trigger.c
+</code>
+Good.</p></li>
+<li><p>From line 24 to 39: we have a loop similar to previous one. It&rsquo;s basically counting lines again and initializing the memory we just allocated with some information.</p></li>
+<li>At line 41: we have our bug. Somehow, we can manage to get out of the loop with &ldquo;nb_lines2 = nb_lines + 1&rdquo;. That means the line 41 will try to write one cell outside of our buffer. In our case, if we have &ldquo;nb_lines2 = 60&rdquo; and our heap buffer starting at 0xf00ed30, it means we&rsquo;re going to try to write at (0xf00ed30+60<em>3</em>4)=0xf00f000. That&rsquo;s exactly what we saw earlier.</li>
+</ul>
+
+
+<p>At this point, we have fully explained the bug. If you want to do some dynamic analysis in order to follow important routines, I&rsquo;ve made several breakpoints, here they are:
+<code>text
+bp 004CF1BF ".printf \"[Getsourceline] %mu\\n[Getsourceline] struct: 0x%x\", poi(esp + 4), eax ; .if(eax != 0){ .if(poi(eax + 0x218) == 0){ .printf \" field: 0x%x\\n\", poi(eax + 0x218); gc }; } .else { .printf \"\\n\\n\" ; gc; };"
+bp 004CE5DD ".printf \"[buggy] Nbline: 0x%x \\n\", eax ; gc"
+bp 004CE5E7 ".printf \"[buggy] Nbbytes to alloc: 0x%x \\n\", poi(esp) ; gc"
+bp 004CE742 ".printf \"[buggy] NbChar: 0x%x / 0x%x - Idx: 0x%x\\n\", eax, poi(ebp - 1C), poi(ebp - 8) ; gc"
+bp 004CE769 ".printf \"[buggy] mov [0x%x + 0x%x], 0x%x\\n\", ecx, eax * 4, edx"
+</code></p>
+
+<p>On my environment, it gives me something like:</p>
+
+<p>```text
+[Getsourceline] f:\dd\vctools\crt_bld\self_x86\crt\src\crt0.c
+[Getsourceline] struct: 0x0
+[&hellip;]
+[Getsourceline] oob-write-heap-ollydbg2h-trigger.c
+[Getsourceline] struct: 0xaf00238 field: 0x0
+[buggy] Nbline: 0x3b
+[buggy] Nbbytes to alloc: 0x2d0
+[buggy] NbChar: 0x0 / 0xb73 &ndash; Idx: 0x0
+[buggy] NbChar: 0x4 / 0xb73 &ndash; Idx: 0x1
+[buggy] NbChar: 0x5a / 0xb73 &ndash; Idx: 0x2
+[buggy] NbChar: 0xa4 / 0xb73 &ndash; Idx: 0x3
+[buggy] NbChar: 0xee / 0xb73 &ndash; Idx: 0x4
+[&hellip;]
+[buggy] NbChar: 0xb73 / 0xb73 &ndash; Idx: 0x3c
+[buggy] mov [0xb031d30 + 0x2d0], 0xb73</p>
+
+<p>eax=000000b4 ebx=12dfed04 ecx=0b031d30 edx=00000b73 esi=00188694 edi=005d203c
+eip=004ce769 esp=00187d60 ebp=00187d80 iopl=0         nv up ei pl zr na pe nc
+cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
+ollydbg!Findfreehardbreakslot+0x21d9:
+004ce769 891481          mov     dword ptr [ecx+eax*4],edx ds:002b:0b032000=????????
+```</p>
+
+<h1>Repro@home</h1>
+
+<ol>
+<li>Download the last version of OllyDbg2 <a href="http://ollydbg.de/odbg201h.zip">here</a>, extract the files</li>
+<li>Download the three files from <a href="https://github.com/0vercl0k/stuffz/tree/master/odb2-OOB-write-heap">odb2-oob-write-heap</a>, put them in the same directory than <em>ollydbg.exe</em> is</li>
+<li>Launch WinDbg and open the last version of OllyDbg2</li>
+<li>Set your breakpoints (or not), F5 to launch</li>
+<li>Open the trigger in OllyDbg2</li>
+<li>Press F9 when the binary is fully loaded</li>
+<li><strong>BOOM</strong> :). Note that you may not have a visible crash (remember, that&rsquo;s what made our bug not trivial to debug without full pageheap). Try to poke around with the debugger: restarting the binary or closing OllyDbg2 should be enough to get the message from the heap allocator in your debugger.</li>
+</ol>
+
+
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/woot.png"></p>
+
+<h1>Fun fact</h1>
+
+<p>You can even trigger the bug with only the binary and the PDB database. The trick is to tamper the PDB, and more precisely where it keeps the path to your source code. That way, when OllyDbg2 will load the PDB database, it will read that same database like it&rsquo;s the source code of the application. Awesome.</p>
+
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/fun.png"></p>
+
+<h1>Conclusion</h1>
+
+<p>Those kind of crashes are always an occasion to learn new things. Either it&rsquo;s trivial to debug/repro and you won&rsquo;t waste much of your time, or it&rsquo;s not and you will improve your debugger/reverse-engineer-fu on a <strong>real</strong> example. So do it!</p>
+
+<p>By the way, I doubt the bug is exploitable and I didn&rsquo;t even try to exploit it ; but if you succeed I would be really glad to read your write-up! But if we assume it&rsquo;s exploitable for a second, you would still have to distribute the PDB file, the source file (I guess it would give you more control than with the PDB) and the binary to your victim. So no big deal.</p>
+
+<p>If you are too lazy to debug your crashes, send them to me, I may have a look at it!</p>
+
+<p>Oh, I almost forgot: <a href="http://doar-e.github.io/about/">we are still looking for motivated contributors to write cool posts</a>, spread the world.</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Some thoughts about code-coverage measurement with Pin]]></title>
+    <link href="http://doar-e.github.io/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/"/>
+    <updated>2013-08-31T18:57:00+01:00</updated>
+    <id>http://doar-e.github.io/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>Sometimes, when you are reverse-engineering binaries you need somehow to measure, or just to have an idea about how much &ldquo;that&rdquo; execution is covering the code of your target. It can be for fuzzing purpose, maybe you have a huge set of inputs (it can be files, network traffic, anything) and you want to have the same coverage with only a subset of them. Or maybe, you are not really interested in the measure, but only with the coverage differences between two executions of your target: to locate where your program is handling a specific feature for example.</p>
+
+<p>But it&rsquo;s not a trivial problem, usually you don&rsquo;t have the source-code of the target, and you want it to be quick. The other thing, is that you don&rsquo;t have an input that covers the whole code base, you don&rsquo;t even know if it&rsquo;s possible ; so you can&rsquo;t compare your analysis to that &ldquo;ideal one&rdquo;. Long story short, you can&rsquo;t say to the user &ldquo;OK, this input covers 10% of your binary&rdquo;. But you can clearly register what your program is doing with input A, what it is doing with input B and then analyzing the differences. With that way you can have a (more precise?) idea about which input seems to have better coverage than another.</p>
+
+<p>Note also, this is a perfect occasion to play with Pin :&ndash;)).</p>
+
+<p>In this post, I will explain briefly how you can build that kind of tool using Pin, and how it can be used for reverse-engineer purposes.</p>
+
+<!--more-->
+
+
+<h1>Our Pintool</h1>
+
+<p>If you have never heard about Intel&rsquo;s DBI framework Pin, I have made a selection of links for you, read them and understand them ; you won&rsquo;t be able of using correctly Pin, if you don&rsquo;t know a bit how it works:</p>
+
+<ul>
+<li><a href="http://software.intel.com/sites/landingpage/pintool/docs/58423/Pin/html/index.html">Pin 2.12 User Guide</a></li>
+<li><a href="http://www.jaleels.org/ajaleel/Pin/slides/">Introduction to Pin &ndash; Aamer Jaleel</a></li>
+</ul>
+
+
+<p>Concerning my setup, I&rsquo;m using Pin 2.12 on Windows 7 x64 with VC2010 and I&rsquo;m building x86 Pintools (works great with Wow64). If you want to build easily your Pintool outside of the Pin tool kit directory I&rsquo;ve made a handy little python script: <a href="https://github.com/0vercl0k/stuffz/blob/master/setup_pintool_project.py">setup_pintool_project.py</a>.</p>
+
+<p>Before coding, we need to talk a bit about what we really want. This is simple, we want a Pintool that:</p>
+
+<ul>
+<li>is the more efficient possible. OK, that&rsquo;s a real problem ; even if Pin is more efficient than other DBI framework (like <a href="http://dynamorio.org/">DynamoRio</a> or <a href="http://valgrind.org/">Valgrind</a>), it is always kind of slow.</li>
+<li>keeps track of all the basic blocks executed. We will store the address of each basic block executed and its number of instructions.</li>
+<li>generates a JSON report about a specific execution. Once we have that report, we are free to use Python scripts to do whatever we want. To do that, we will use <a href="http://www.digip.org/jansson/">Jansson</a>: it&rsquo;s easy to use, open-source and written in C.</li>
+<li>doesn&rsquo;t instrument Windows APIs. We don&rsquo;t want to waste our CPU time being in the native libraries of the system ; it&rsquo;s part of our little &ldquo;tricks&rdquo; to improve the speed of our Pintool.</li>
+</ul>
+
+
+<p>I think it&rsquo;s time to code now: first, let&rsquo;s define several data structures in order to store the information we need:</p>
+
+<p><code>cpp
+typedef std::map&lt;std::string, std::pair&lt;ADDRINT, ADDRINT&gt; &gt; MODULE_BLACKLIST_T;
+typedef MODULE_BLACKLIST_T MODULE_LIST_T;
+typedef std::map&lt;ADDRINT, UINT32&gt; BASIC_BLOCKS_INFO_T;
+</code></p>
+
+<p>The two first types will be used to hold modules related information: path of the module, start address and end address. The third one is simple: the key is the basic block address and the value is its number of instructions.</p>
+
+<p>Then we are going to define our instrumentation callback:</p>
+
+<ul>
+<li>one to know whenever a module is loaded in order to store its base/end address, one for the traces. You can set the callbacks using <em>IMG_AddInstrumentationFunction</em> and <em>TRACE_AddInstrumentationFunction</em>.</li>
+</ul>
+
+
+<p>```cpp
+VOID image_instrumentation(IMG img, VOID * v)
+{</p>
+
+<pre><code>ADDRINT module_low_limit = IMG_LowAddress(img), module_high_limit = IMG_HighAddress(img); 
+
+if(IMG_IsMainExecutable(img))
+    return;
+
+const std::string image_path = IMG_Name(img);
+
+std::pair&lt;std::string, std::pair&lt;ADDRINT, ADDRINT&gt; &gt; module_info = std::make_pair(
+    image_path,
+    std::make_pair(
+        module_low_limit,
+        module_high_limit
+    )
+);
+
+module_list.insert(module_info);
+module_counter++;
+
+if(is_module_should_be_blacklisted(image_path))
+    modules_blacklisted.insert(module_info);
+</code></pre>
+
+<p>}
+```
+ * one to be able to insert calls before every basic blocks.</p>
+
+<p>The thing is: Pin doesn&rsquo;t have a <em>BBL_AddInstrumentationFunction</em>, so we have to instrument the traces, iterate through them to get the basic block. It&rsquo;s done really easily with <em>TRACE_BblHead</em>, <em>BBL_Valid</em> and <em>BBL_Next</em> functions. Of course, if the basic block address is in a blacklisted range address, we don&rsquo;t insert a call to our analysis function.</p>
+
+<p>```cpp
+VOID trace_instrumentation(TRACE trace, VOID *v)
+{</p>
+
+<pre><code>for(BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl))
+{
+    if(is_address_in_blacklisted_modules(BBL_Address(bbl)))
+        continue;
+
+    BBL_InsertCall(
+        bbl,
+        IPOINT_ANYWHERE,
+        (AFUNPTR)handle_basic_block,
+        IARG_FAST_ANALYSIS_CALL,
+
+        IARG_UINT32,
+        BBL_NumIns(bbl),
+
+        IARG_ADDRINT,
+        BBL_Address(bbl),
+
+        IARG_END
+    );
+}
+</code></pre>
+
+<p>}
+```</p>
+
+<p>For efficiency reasons, we let decide Pin about where it puts its JITed call to the analysis function <em>handle_basic_block</em> ; we also use the fast linkage (it basically means the function will be called using the <a href="http://msdn.microsoft.com/en-us/library/6xa169sk.aspx">__fastcall</a> calling convention).</p>
+
+<p>The analysis function is also very trivial, we just need to store basic block addresses in a global variable. The method doesn&rsquo;t have any branch, it means Pin will most likely inlining the function, that&rsquo;s also cool for the efficiency.</p>
+
+<p>```cpp
+VOID PIN_FAST_ANALYSIS_CALL handle_basic_block(UINT32 number_instruction_in_bb, ADDRINT address_bb)
+{</p>
+
+<pre><code>basic_blocks_info[address_bb] = number_instruction_in_bb;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>Finally, just before the process ends we serialize our data in a simple JSON report thanks to <a href="http://www.digip.org/jansson/">jansson</a>. You may also want to use a binary serialization to have smaller report.</p>
+
+<p>```cpp
+VOID save_instrumentation_infos()
+{</p>
+
+<pre><code>/// basic_blocks_info section
+json_t *bbls_info = json_object();
+json_t *bbls_list = json_array();
+json_t *bbl_info = json_object();
+// unique_count field
+json_object_set_new(bbls_info, "unique_count", json_integer(basic_blocks_info.size()));
+// list field
+json_object_set_new(bbls_info, "list", bbls_list);
+for(BASIC_BLOCKS_INFO_T::const_iterator it = basic_blocks_info.begin(); it != basic_blocks_info.end(); ++it)
+{
+    bbl_info = json_object();
+    json_object_set_new(bbl_info, "address", json_integer(it-&gt;first));
+    json_object_set_new(bbl_info, "nbins", json_integer(it-&gt;second));
+    json_array_append_new(bbls_list, bbl_info);
+}
+
+/* .. same thing for blacklisted modules, and modules .. */
+/// Building the tree
+json_t *root = json_object();
+json_object_set_new(root, "basic_blocks_info", bbls_info);
+json_object_set_new(root, "blacklisted_modules", blacklisted_modules);
+json_object_set_new(root, "modules", modules);
+
+/// Writing the report
+FILE* f = fopen(KnobOutputPath.Value().c_str(), "w");
+json_dumpf(root, f, JSON_COMPACT | JSON_ENSURE_ASCII);
+fclose(f);
+</code></pre>
+
+<p>}
+```</p>
+
+<p>If like me you are on a x64 Windows system, but you are instrumenting x86 processes you should directly blacklist the area where Windows keeps the <a href="http://www.nynaeve.net/?p=131">SystemCallStub</a> (you know the &ldquo;JMP FAR&rdquo;). To do that, we simply use the <em>__readfsdword</em> intrinsic in order to read the field <a href="http://msdn.moonsols.com/win7rtm_x64/TEB32.html">TEB32.WOW32Reserved</a> that holds the address of that stub. Like that you won&rsquo;t waste your CPU time every time your program is performing a system call.</p>
+
+<p>```cpp
+ADDRINT wow64stub = __readfsdword(0xC0);
+modules_blacklisted.insert(</p>
+
+<pre><code>std::make_pair(
+    std::string("wow64stub"),
+    std::make_pair(
+        wow64stub,
+        wow64stub
+    )
+)
+</code></pre>
+
+<p>);
+```</p>
+
+<p>The entire Pintool source code is here: <a href="https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/pin-code-coverage-measure.cpp">pin-code-coverage-measure.cpp</a>.</p>
+
+<h1>I want to see the results.</h1>
+
+<p>I agree that&rsquo;s neat to have a JSON report with the basic blocks executed by our program, but it&rsquo;s not really readable for a human. We can use an <a href="">IDAPython</a> script that will parse our report, and will color all the instructions executed. It should be considerably better to see the execution path used by your program.</p>
+
+<p>To color an instruction you have to use the functions: <em>idaapi.set_item_color</em> and <em>idaapi.del_item_color</em> (if you want to reset the color). You can also use <em>idc.GetItemSize</em> to know the size of an instruction, like that you can iterate for a specific number of instruction (remember, we stored that in our JSON report!).</p>
+
+<p>``` python idapy_color_path_from_json.py <a href="https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/idapy_color_path_from_json.py">https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/idapy_color_path_from_json.py</a>
+import json
+import idc
+import idaapi</p>
+
+<p>def color(ea, nbins, c):</p>
+
+<pre><code>'''Color 'nbins' instructions starting from ea'''
+colors = defaultdict(int, {
+        'black' : 0x000000,
+        'red' : 0x0000FF,
+        'blue' : 0xFF0000,
+        'green' : 0x00FF00
+    }
+)
+for _ in range(nbins):
+    idaapi.del_item_color(ea)
+    idaapi.set_item_color(ea, colors[c])
+    ea += idc.ItemSize(ea)
+</code></pre>
+
+<p>def main():</p>
+
+<pre><code>f = open(idc.AskFile(0, '*.json', 'Where is the JSON report you want to load ?'), 'r')
+c = idc.AskStr('black', 'Which color do you want ?').lower()
+report = json.load(f)
+for i in report['basic_blocks_info']['list']:
+    print '%x' % i['address'],
+    try:
+        color(i['address'], i['nbins'], c)
+        print 'ok'
+    except Exception, e:
+        print 'fail: %s' % str(e)
+print 'done'    
+return 1
+</code></pre>
+
+<p>if <strong>name</strong> == &lsquo;<strong>main</strong>&rsquo;:</p>
+
+<pre><code>main()
+</code></pre>
+
+<p>```</p>
+
+<p>Here is an example generated by launching &ldquo;ping google.fr&rdquo;, we can clearly see in black the nodes reached by the ping utility:</p>
+
+<p><img class="center" src="/images/some_thoughts_about_code-coverage_measurement_with_pin/ping.png"></p>
+
+<p>You can even start to generate several traces with different options, to see where each argument is handled and analyzed by the program :&ndash;).</p>
+
+<h1>Trace differences</h1>
+
+<p>As you saw previously, it can be handy to actually see the execution path our program took. But if you think about it, it can be even more handy to have a look at the differences between two different executions. It could be used to locate a specific feature of a program: like a license check, where an option is checked, etc.</p>
+
+<p>Now, let&rsquo;s run another trace with for example &ldquo;ping -n 10 google.fr&rdquo;. Here are the two executions traces and the difference between the two others (the previous one, and the new):</p>
+
+<p><img class="center" src="/images/some_thoughts_about_code-coverage_measurement_with_pin/pingboth.png"></p>
+
+<p>You can clearly identify the basic blocks and the functions that use the &ldquo;-n 10&rdquo; argument.
+If you look even closer, you are able very quickly to figure out where the string is converted into an integer:</p>
+
+<p><img class="center" src="/images/some_thoughts_about_code-coverage_measurement_with_pin/strtoul.png"></p>
+
+<p>A lot of software are built around a really annoying GUI (for the reverser at least): it usually generates big binaries, or ships with a lot of external modules (like Qt runtime libraries). The thing is you don&rsquo;t really care about how the GUI is working, you want to focus on the &ldquo;real&rdquo; code not on that &ldquo;noise&rdquo;. Each time you have noise somewhere, you have to figure out a way to filter that noise ; in order to only keep the interesting part. This is exactly what we are doing when we generate different execution traces of the program and the process is every time pretty the same:</p>
+
+<ul>
+<li>You launch the application, and you exit</li>
+<li>You launch the application, you do something and you exit</li>
+<li>You remove the basic blocks executed in the first run in the second trace ; in order to keep only the part that does the &ldquo;do something&rdquo; thing. That way you filter the noise induced by the GUI to focus only on the interesting part.</li>
+</ul>
+
+
+<p>Cool for us because that&rsquo;s pretty easy to implement via IDAPython, here is the script:</p>
+
+<p>``` python idapy_color_diff_from_jsons.py <a href="https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/idapy_color_diff_from_jsons.py">https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/idapy_color_diff_from_jsons.py</a>
+import json
+import idc
+import idaapi
+from collections import defaultdict</p>
+
+<p>def color(ea, nbins, c):</p>
+
+<pre><code>'''Color 'nbins' instructions starting from ea'''
+colors = defaultdict(int, {
+        'black' : 0x000000,
+        'red' : 0x0000FF,
+        'blue' : 0xFF0000,
+        'green' : 0x00FF00
+    }
+)
+for _ in range(nbins):
+    idaapi.del_item_color(ea)
+    idaapi.set_item_color(ea, colors[c])
+    ea += idc.ItemSize(ea)
+</code></pre>
+
+<p>def main():</p>
+
+<pre><code>f = open(idc.AskFile(0, '*.json', 'Where is the first JSON report you want to load ?'), 'r')
+report = json.load(f)
+l1 = report['basic_blocks_info']['list']
+
+f = open(idc.AskFile(0, '*.json', 'Where is the second JSON report you want to load ?'), 'r')
+report = json.load(f)
+l2 = report['basic_blocks_info']['list']
+c = idc.AskStr('black', 'Which color do you want ?').lower()
+
+addresses_l1 = set(r['address'] for r in l1)    
+addresses_l2 = set(r['address'] for r in l2)
+dic_l2 = dict((k['address'], k['nbins']) for k in l2)
+
+diff = addresses_l2 - addresses_l1
+print '%d bbls in the first execution' % len(addresses_l1)
+print '%d bbls in the second execution' % len(addresses_l2)
+print 'Differences between the two executions: %d bbls' % len(diff)
+
+assert(len(addresses_l1) &lt; len(addresses_l2))
+
+funcs = defaultdict(list)
+for i in diff:
+    try:
+        color(i, dic_l2[i], c)
+        funcs[get_func(i).startEA].append(i)
+    except Exception, e:
+        print 'fail %s' % str(e)
+
+print 'A total of %d different sub:' % len(funcs)
+for s in funcs.keys():
+    print '%x' % s
+
+print 'done'    
+return 1
+</code></pre>
+
+<p>if <strong>name</strong> == &lsquo;<strong>main</strong>&rsquo;:</p>
+
+<pre><code>main()
+</code></pre>
+
+<p>```</p>
+
+<p>By the way, you must keep in mind we are only talking about <strong>deterministic</strong> program (will always execute the same path if you give it the same inputs). If the same inputs aren&rsquo;t giving the exact same outputs <strong>every time</strong>, your program is not deterministic.</p>
+
+<p>Also, don&rsquo;t forget about <a href="http://fr.wikipedia.org/wiki/Address_space_layout_randomization">ASLR</a> because if you want to compare basic block addresses executed at two different times, trust me you want your binary loaded at the same base address. However, if you want to patch quickly a simple file I&rsquo;ve made a little Python script that can be handy sometimes: <a href="https://github.com/0vercl0k/stuffz/blob/master/remove_aslr_bin.py">remove_aslr_bin.py</a> ; otherwise, booting your Windows XP virtual machine is the easy solution.</p>
+
+<h1>Does-it scale ?</h1>
+
+<p>These tests have been done on my Windows 7 x64 laptop with Wow64 processes (4GB RAM, i7 Q720 @ 1.6GHz). All the modules living in <em>C:\Windows</em> have been blacklisted. Also, note those tests are not really accurate, I didn&rsquo;t launch each thing thousand times, it&rsquo;s just here to give you a vague idea.</p>
+
+<h2>Portable Python 2.7.5.1</h2>
+
+<h3>Without instrumentation</h3>
+
+<p>```text
+PS D:> Measure-Command {start-process python.exe &ldquo;-c &lsquo;quit()&rsquo;&rdquo; -Wait}</p>
+
+<p>TotalMilliseconds : 73,1953
+```</p>
+
+<h3>With instrumentation and JSON report serialization</h3>
+
+<p>```text
+PS D:> Measure-Command {start-process pin.exe &ldquo;-t pin-code-coverage-measure.dll -o test.json &mdash; python.exe -c &lsquo;quit()&rsquo;&rdquo; -Wait}</p>
+
+<p>TotalMilliseconds : 13122,4683
+```</p>
+
+<h2>VLC 2.0.8</h2>
+
+<h3>Without instrumentation</h3>
+
+<p>```text
+PS D:> Measure-Command {start-process vlc.exe &ldquo;&mdash;play-and-exit hu&rdquo; -Wait}</p>
+
+<p>TotalMilliseconds : 369,4677
+```</p>
+
+<h3>With instrumentation and JSON report serialization</h3>
+
+<p>```text
+PS D:> Measure-Command {start-process pin.exe &ldquo;-t pin-code-coverage-measure.dll -o test.json &mdash; D:\vlc.exe &mdash;play-and-exit hu&rdquo; -Wait}</p>
+
+<p>TotalMilliseconds : 60109,204
+```</p>
+
+<p>To optimize the process you may want to blacklist some of the VLC plugins (there are a tons!), otherwise your VLC instrumented is 160 times slower than the normal one (and I didn&rsquo;t even try to launch the instrumentation when decoding x264 videos).</p>
+
+<h2>Browsers ?</h2>
+
+<p>You don&rsquo;t want to see the overhead here.</p>
+
+<h1>Conclusion</h1>
+
+<p>If you want to use that kind of tool for fuzzing purposes, I definitely encourage you to make a little program that uses the library you are targeting the same way your target does. This way you have a really smaller and less complicate binary to instrument, thus the instrumentation process will be far more efficient. And in this specific case, I really believe you can launch this Pintool on a large set of inputs (thousands) in order to pick inputs that cover better your target. In the other hand, if you do that directly on big software like browsers: it won&rsquo;t scale because you will pass your time instrumenting GUI or stuff you don&rsquo;t care.</p>
+
+<p>Pin is a really powerful and accessible tool. The C++ API is really easy to use, it works with Linux, OSX, Android for x86, (even X86_64 on the important targets), there is also a doxygen documentation. What else seriously ?</p>
+
+<p>Use it, it&rsquo;s good for you.</p>
+
+<h1>References &amp; sources of inspiration</h1>
+
+<p>If you find that subject cool, I&rsquo;ve made a list of cool readings:</p>
+
+<ul>
+<li><a href="http://www.hexblog.com/?p=34">Coverage analyzer</a>: You will see using Pin is <strong>really</strong> easier</li>
+<li><a href="https://github.com/Cr4sh/Code-coverage-analysis-tools">Code-coverage-analysis-tool</a>: That&rsquo;s cool, but it seems to instrument at the routine level ; we wanted to have information at the basic level</li>
+<li><a href="http://media.blackhat.com/bh-us-11/Diskin/BH_US_11_Diskin_Binary_Instrumentation_Slides.pdf">Binary instrumentation for security professionals</a></li>
+<li><a href="http://joxeankoret.com/blog/2010/05/02/mynav-a-python-plugin-for-ida-pro/">MyNav, a python plugin</a></li>
+<li><a href="http://www.zynamics.com/binnavi.html#videos">zynamics BinNavi Videos</a></li>
+<li><a href="http://bitblaze.cs.berkeley.edu/papers/diffslicing_oakland11.pdf">Differential Slicing: Identifying Causal Execution Differences for Security Applications</a> (thanks for the reference <a href="https://twitter.com/joancalvet">j04n</a>!)</li>
+</ul>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Regular expressions obfuscation under the microscope]]></title>
+    <link href="http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/"/>
+    <updated>2013-08-24T12:35:00+01:00</updated>
+    <id>http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>Some months ago I came across a strange couple of functions that was kind of playing with a <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automaton</a> to validate an input. At first glance, I didn&rsquo;t really notice it was in fact a regex being processed, that&rsquo;s exactly why I spent quite some time to understand those routines. You are right to ask yourself: &ldquo;Hmm but the regex string representation should be in the binary shouldn&rsquo;t it?&rdquo;, the thing is it wasn&rsquo;t. The purpose of this post is to focus on those kind of &ldquo;compiled&rdquo; regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.</p>
+
+<p>In this short post, we are going to see how a regular expression looks like in assembly/C, and how you can hide/obfuscate it. I hope you will enjoy the read, and you will both be able to recognize a regular expression compiled in your future reverse-engineering tasks and to obfuscate heavily your regex!</p>
+
+<!--more-->
+
+
+<h1>Bring out the FSM</h1>
+
+<h2>Manually</h2>
+
+<p>Before automating things, let&rsquo;s see how we can implement a simple regex in C. It&rsquo;s always easier to reverse-engineer something you have, at least once in your life, implemented. Even if the actual implementation is slightly different from the one you did.
+Let&rsquo;s say we want to have an automaton that matches &ldquo;Hi-[0-9]{4}&rdquo;.</p>
+
+<p><strong>NOTE</strong>: I just had the chance to have a conversation with <a href="https://plus.google.com/111956453297829313313">Michal</a>, and he is totally right saying that automata ins&rsquo;t <em>really</em> the regex we said it was. Here is an example of what the regex should match: &lsquo;Hi-GARBAGEGARBAGE_Hi-1234&rsquo;. We don&rsquo;t allow our regex to like rewind the state to zero if the input doesn&rsquo;t match the regex. To do so, we could replace the return statements by a &ldquo;state = 0&rdquo; statement :). Thank you to <a href="https://plus.google.com/111956453297829313313">Michal</a> for the remark.</p>
+
+<p>Now, if from that string representation we extract an FSM, we can have that one:</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/FSM_example.png"></p>
+
+<p>Here is this automaton implemented in C:</p>
+
+<p><div class='bogus-wrapper'><notextile><figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+<span class='line-number'>71</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">state</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">do</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="k">switch</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">0</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;H&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">1</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;i&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">2</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;-&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">3</span> <span class="p">...</span> <span class="mi">6</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;&amp;</span> <span class="o">*</span><span class="n">s</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span><span class="o">++</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">7</span>:
+</span><span class='line'>                <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">}</span> <span class="k">while</span><span class="p">(</span><span class="o">*</span><span class="n">s</span><span class="o">++</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div></p>
+
+<p>If we try to execute the program:</p>
+
+<p><div class='bogus-wrapper'><notextile><figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class=''><span class='line'>&lt;/p>
+</span><span class='line'>
+</span><span class='line'>&lt;blockquote>&lt;p>fsm_example.exe garbage-Hi-1337-garbage
+</span><span class='line'>Good boy.&lt;/p>
+</span><span class='line'>
+</span><span class='line'>&lt;p>fsm_example.exe garbage-Hi-1337
+</span><span class='line'>Good boy.&lt;/p>
+</span><span class='line'>
+</span><span class='line'>&lt;p>fsm_example.exe Hi-1337-garbage
+</span><span class='line'>Good boy.&lt;/p>
+</span><span class='line'>
+</span><span class='line'>&lt;p>fsm_example.exe Hi-dudies
+</span><span class='line'>Bad boy.</span></code></pre></td></tr></table></div></figure></notextile></div></p></blockquote>
+
+<p>The purpose of that trivial example was just to show you how a regex string representation can be compiled into something harder to analyze but also more efficient (it doesn&rsquo;t need a compilation step, that&rsquo;s the reason why you may encounter that kind of thing in real (?) softwares). Even if the code seems trivial at the first sight, when you look at it at the assembly level, it takes a bit of time to figure out it&rsquo;s a simple &ldquo;Hi-[0-9]{4}&rdquo; regex.</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/cfg.png"></p>
+
+<p>In that kind of analysis, it&rsquo;s really important to find the &ldquo;state&rdquo; variable that allows the program to pass through the different nodes of the FSM. Then, you have also to figure out how you can reach a specific node, and all the nodes reachable from a specific one. To make it short, at the end of your analysis you really want to have a clean FSM like the one we did earlier. And once you have it, you want to eliminate unreachable nodes, and to minimize it in order to remove some potential automaton obfuscation.</p>
+
+<p><div class='bogus-wrapper'><notextile><figure class='code'><figcaption><span> (fsm_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_example.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+<span class='line-number'>71</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">state</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">do</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="k">switch</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
+</span><span class='line'>        <span class="p">{</span>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">0</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;H&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">1</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;i&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">2</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">==</span> <span class="sc">&#39;-&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span> <span class="o">=</span> <span class="mi">3</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">3</span> <span class="p">...</span> <span class="mi">6</span>:
+</span><span class='line'>            <span class="p">{</span>
+</span><span class='line'>                <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">s</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;&amp;</span> <span class="o">*</span><span class="n">s</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span>
+</span><span class='line'>                    <span class="n">state</span><span class="o">++</span><span class="p">;</span>
+</span><span class='line'>                <span class="k">else</span>
+</span><span class='line'>                    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>                <span class="k">break</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">case</span> <span class="mi">7</span>:
+</span><span class='line'>                <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">}</span> <span class="k">while</span><span class="p">(</span><span class="o">*</span><span class="n">s</span><span class="o">++</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div></p>
+
+<h2>Automatically</h2>
+
+<p>But what if our regex was totally more complex ? It would be a hell to implement manually the FSM. That&rsquo;s why I wanted to find some ways to generate your own FSM from a regex string manipulation.</p>
+
+<h3>With re2c</h3>
+
+<p><a href="http://re2c.org/manual.html">re2c</a> is a cool and simple tool that allows you to describe your regex in a C comment, then it will generate the code of the scanner. As an example, here is the source code to generate the scanner for the previous regex:</p>
+
+<p><div class='bogus-wrapper'><notextile><figure class='code'><figcaption><span> (fsm_re2c_example.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_example.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cm">/* re2c -i fsm_re2c_example.c */</span>
+</span><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">char</span> <span class="o">*</span><span class="n">q</span><span class="p">;</span>
+</span><span class='line'><span class="cm">/*!re2c</span>
+</span><span class='line'><span class="cm">    re2c:define:YYCTYPE = &quot;char&quot;;</span>
+</span><span class='line'><span class="cm">    re2c:define:YYCURSOR = s;</span>
+</span><span class='line'><span class="cm">    re2c:define:YYMARKER = q;</span>
+</span><span class='line'><span class="cm">    re2c:yyfill:enable   = 0;</span>
+</span><span class='line'>
+</span><span class='line'><span class="cm">   &quot;Hi-&quot;[0-9]{4}  { return 1; }</span>
+</span><span class='line'><span class="cm">   [^]            { return 0; }</span>
+</span><span class='line'><span class="cm">*/</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div></p>
+
+<p>Once you feed that source to re2c, it gives you that scanner ready to be compiled:</p>
+
+<p><div class='bogus-wrapper'><notextile><figure class='code'><figcaption><span> (fsm_re2c_generated_non_optimized.c)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_re2c_generated_non_optimized.c'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+<span class='line-number'>71</span>
+<span class='line-number'>72</span>
+<span class='line-number'>73</span>
+<span class='line-number'>74</span>
+<span class='line-number'>75</span>
+<span class='line-number'>76</span>
+<span class='line-number'>77</span>
+<span class='line-number'>78</span>
+<span class='line-number'>79</span>
+<span class='line-number'>80</span>
+<span class='line-number'>81</span>
+<span class='line-number'>82</span>
+<span class='line-number'>83</span>
+<span class='line-number'>84</span>
+<span class='line-number'>85</span>
+<span class='line-number'>86</span>
+<span class='line-number'>87</span>
+<span class='line-number'>88</span>
+<span class='line-number'>89</span>
+<span class='line-number'>90</span>
+<span class='line-number'>91</span>
+<span class='line-number'>92</span>
+<span class='line-number'>93</span>
+<span class='line-number'>94</span>
+<span class='line-number'>95</span>
+<span class='line-number'>96</span>
+<span class='line-number'>97</span>
+<span class='line-number'>98</span>
+<span class='line-number'>99</span>
+<span class='line-number'>100</span>
+<span class='line-number'>101</span>
+<span class='line-number'>102</span>
+<span class='line-number'>103</span>
+<span class='line-number'>104</span>
+<span class='line-number'>105</span>
+<span class='line-number'>106</span>
+<span class='line-number'>107</span>
+<span class='line-number'>108</span>
+<span class='line-number'>109</span>
+<span class='line-number'>110</span>
+<span class='line-number'>111</span>
+<span class='line-number'>112</span>
+<span class='line-number'>113</span>
+<span class='line-number'>114</span>
+<span class='line-number'>115</span>
+<span class='line-number'>116</span>
+<span class='line-number'>117</span>
+<span class='line-number'>118</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cm">/* Generated by re2c 0.13.5 on Sun Aug 25 00:27:48 2013 */</span>
+</span><span class='line'><span class="cp">#include &lt;stdio.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;string.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">unsigned</span> <span class="kt">char</span> <span class="nf">checkinput</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">s</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">char</span> <span class="o">*</span><span class="n">q</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>        <span class="kt">char</span> <span class="n">yych</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;H&#39;</span>:       <span class="k">goto</span> <span class="n">yy2</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy4</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy2:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">q</span> <span class="o">=</span> <span class="o">++</span><span class="n">s</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;i&#39;</span>:       <span class="k">goto</span> <span class="n">yy5</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy3</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy3:</span>
+</span><span class='line'>        <span class="p">{</span> <span class="k">return</span> <span class="mi">0</span><span class="p">;</span> <span class="p">}</span>
+</span><span class='line'><span class="nl">yy4:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">goto</span> <span class="n">yy3</span><span class="p">;</span>
+</span><span class='line'><span class="nl">yy5:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;-&#39;</span>:       <span class="k">goto</span> <span class="n">yy7</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy6:</span>
+</span><span class='line'>        <span class="n">s</span> <span class="o">=</span> <span class="n">q</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">goto</span> <span class="n">yy3</span><span class="p">;</span>
+</span><span class='line'><span class="nl">yy7:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy8</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy8:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy9</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy9:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy10</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy10:</span>
+</span><span class='line'>        <span class="n">yych</span> <span class="o">=</span> <span class="o">*++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">switch</span> <span class="p">(</span><span class="n">yych</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;0&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;1&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;2&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;3&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;4&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;5&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;6&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;7&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;8&#39;</span>:
+</span><span class='line'>        <span class="k">case</span> <span class="sc">&#39;9&#39;</span>:       <span class="k">goto</span> <span class="n">yy11</span><span class="p">;</span>
+</span><span class='line'>        <span class="nl">default:</span>        <span class="k">goto</span> <span class="n">yy6</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'><span class="nl">yy11:</span>
+</span><span class='line'>        <span class="o">++</span><span class="n">s</span><span class="p">;</span>
+</span><span class='line'>        <span class="p">{</span> <span class="k">return</span> <span class="mi">1</span><span class="p">;</span> <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">argc</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;./fsm &lt;string&gt;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">checkinput</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Good boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;Bad boy.</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div></p>
+
+<p>Cool isn&rsquo;t it ? But in fact, if you try to compile and Hexrays it (even with optimizations disabled) you will be completely disappointed: it gets simplified like <strong>really</strong> ; not cool for us (cool for the reverse-engineer though!).</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/hexrays.png"></p>
+
+<h3>By hand</h3>
+
+<p>That&rsquo;s why I tried to generate myself the C code of the scanner. The first thing you need is a <a href="http://osteele.com/software/python/fsa/reCompiler.html">&ldquo;regular-expression string&rdquo; to FSM Python library</a>: a sort-of regex compiler. Then, once you are able to generate a FSM from a regular expression string, you are totally free to do whatever you want with the automaton. You can obfuscate it, try to optimize it, etc. You are also free to generate the C code you want.
+Here is the ugly-buggy-PoC code I wrote to generate the scanner for the regex used previously:</p>
+
+<p><div class='bogus-wrapper'><notextile><figure class='code'><figcaption><span> (generate_c_fsm.py)</span> <a href='/downloads/code/regular_expressions_obfuscation_under_the_microscope/generate_c_fsm.py'>download</a></figcaption>
+ <div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+<span class='line-number'>53</span>
+<span class='line-number'>54</span>
+<span class='line-number'>55</span>
+<span class='line-number'>56</span>
+<span class='line-number'>57</span>
+<span class='line-number'>58</span>
+<span class='line-number'>59</span>
+<span class='line-number'>60</span>
+<span class='line-number'>61</span>
+<span class='line-number'>62</span>
+<span class='line-number'>63</span>
+<span class='line-number'>64</span>
+<span class='line-number'>65</span>
+<span class='line-number'>66</span>
+<span class='line-number'>67</span>
+<span class='line-number'>68</span>
+<span class='line-number'>69</span>
+<span class='line-number'>70</span>
+</pre></td><td class='code'><pre><code class='py'><span class='line'><span class="kn">import</span> <span class="nn">reCompiler</span>
+</span><span class='line'><span class="kn">import</span> <span class="nn">random</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">c</span> <span class="o">=</span> <span class="s">&#39;0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!&quot;#$%&amp;()*+,-./:;&lt;=&gt;?@[</span><span class="se">\\</span><span class="s">]^_`{|}~ </span><span class="se">\t\n\r\x0b\x0c</span><span class="s">&#39;</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">fsm</span> <span class="o">=</span> <span class="n">reCompiler</span><span class="o">.</span><span class="n">compileRE</span><span class="p">(</span><span class="s">&#39;Hi-[0-9][0-9][0-9][0-9]&#39;</span><span class="p">,</span> <span class="n">minimize</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span>
+</span><span class='line'><span class="n">states</span> <span class="o">=</span> <span class="n">fsm</span><span class="o">.</span><span class="n">states</span>
+</span><span class='line'><span class="n">transitions</span> <span class="o">=</span> <span class="n">fsm</span><span class="o">.</span><span class="n">transitions</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">useless_states</span> <span class="o">=</span> <span class="p">[</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mh">0xffffffff</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">))]</span>
+</span><span class='line'><span class="n">states</span> <span class="o">+=</span> <span class="n">useless_states</span>
+</span><span class='line'>
+</span><span class='line'><span class="c"># We don&#39;t want to have dead nodes, so let&#39;s create transition</span>
+</span><span class='line'><span class="n">deadnodes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">useless_states</span><span class="p">)</span>
+</span><span class='line'><span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">deadnodes</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+</span><span class='line'>    <span class="n">s</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">states</span><span class="p">),</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">states</span><span class="p">),</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">transitions</span> <span class="o">+=</span> <span class="p">[(</span><span class="n">s</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">t</span><span class="p">)]</span>
+</span><span class='line'>    <span class="n">deadnodes</span> <span class="o">-=</span> <span class="nb">set</span><span class="p">([</span><span class="n">s</span><span class="p">])</span>
+</span><span class='line'>
+</span><span class='line'><span class="c"># To obfuscate we can use random state number</span>
+</span><span class='line'><span class="n">dic_states</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+</span><span class='line'>    <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mh">0xffffffff</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">states</span>
+</span><span class='line'><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">states</span><span class="p">)</span>
+</span><span class='line'><span class="k">assert</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dic_states</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">dic_states</span><span class="o">.</span><span class="n">values</span><span class="p">())))</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">print</span> <span class="s">&#39;unsigned char checkinput(char *p){</span><span class="se">\n</span><span class="s">unsigned int state = </span><span class="si">%d</span><span class="s">;</span><span class="se">\n</span><span class="s">while(*p)</span><span class="se">\n</span><span class="s">{</span><span class="se">\n</span><span class="s">switch(state)</span><span class="se">\n</span><span class="s">{&#39;</span> <span class="o">%</span> <span class="n">dic_states</span><span class="p">[</span><span class="n">fsm</span><span class="o">.</span><span class="n">initialState</span><span class="p">]</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">states</span><span class="p">:</span>
+</span><span class='line'>    <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">fsm</span><span class="o">.</span><span class="n">finalStates</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">continue</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;case </span><span class="si">%d</span><span class="s">:</span><span class="se">\n</span><span class="s">{&#39;</span> <span class="o">%</span> <span class="n">dic_states</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">is_first</span> <span class="o">=</span> <span class="bp">True</span>
+</span><span class='line'>    <span class="k">for</span> <span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">transitions</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">if</span> <span class="n">src</span> <span class="o">!=</span> <span class="n">i</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">continue</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">if</span> <span class="n">is_first</span> <span class="o">==</span> <span class="bp">False</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;else&#39;</span><span class="p">,</span>
+</span><span class='line'>        <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>            <span class="n">is_first</span> <span class="o">=</span> <span class="bp">False</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="n">r</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\\</span><span class="s">&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="bp">False</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&quot;if(*p == </span><span class="si">%s</span><span class="s">)&quot;</span> <span class="o">%</span> <span class="nb">repr</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">elif</span> <span class="n">r</span> <span class="o">==</span> <span class="s">&#39;</span><span class="se">\\</span><span class="s">d&#39;</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&quot;if(*p &gt;= &#39;0&#39; &amp;&amp; *p &lt;= &#39;9&#39;)&quot;</span>
+</span><span class='line'>        <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s">&#39;Not implemented!&#39;</span><span class="p">)</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;{&#39;</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">if</span> <span class="n">dst</span> <span class="ow">in</span> <span class="n">fsm</span><span class="o">.</span><span class="n">finalStates</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;return 1;&#39;</span>
+</span><span class='line'>        <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>            <span class="k">print</span> <span class="s">&#39;state = </span><span class="si">%d</span><span class="s">; ++p;&#39;</span> <span class="o">%</span> <span class="n">dic_states</span><span class="p">[</span><span class="n">dst</span><span class="p">]</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;}&#39;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c"># Kind of hack to not anchor the regex (not handled by the RE-&gt;FSM)</span>
+</span><span class='line'>    <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">fsm</span><span class="o">.</span><span class="n">initialState</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;else ++p;&#39;</span>
+</span><span class='line'>    <span class="k">else</span><span class="p">:</span>
+</span><span class='line'>        <span class="k">print</span> <span class="s">&#39;else return 0;&#39;</span>
+</span><span class='line'>    <span class="k">print</span> <span class="s">&#39;break;</span><span class="se">\n</span><span class="s">}&#39;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">print</span> <span class="s">&#39;}</span><span class="se">\n</span><span class="s">}</span><span class="se">\n</span><span class="s">return 0;</span><span class="se">\n</span><span class="s">}&#39;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div></p>
+
+<p>Now, if you open it in IDA the CFG will look like this:</p>
+
+<p><img class="center" src="/images/regular_expressions_obfuscation_under_the_microscope/hell_yeah.png"></p>
+
+<p>Not that fun to reverse-engineer I guess. If you are enough curious to look at the complete source, here it is: <a href="/downloads/code/regular_expressions_obfuscation_under_the_microscope/fsm_generated_by_hand_example.c">fsm_generated_by_hand_example.c</a>.</p>
+
+<h2>Thoughts to be more evil: one input to bind all the regex in the darkness</h2>
+
+<p>Keep in mind, the previous examples are really trivial to analyze, even if we had to do it at the assembly level without Hexrays (by the way Hexrays does a really nice job to simplify the assembly code, cool for us!). Even if we have slightly obfuscated the automaton with useless states/transitions, we may want to make things harder.</p>
+
+<p>One interesting idea to bother the reverse-engineer is to use several regex as &ldquo;input filters&rdquo;. You create one first &ldquo;permissive&rdquo; regex that has many possible valid inputs. To reduce the valid inputs set you use another regex as a filter. And you do that until you have only one valid input: your serial. Note that you may also want to build complex regex, because you are evil.</p>
+
+<p>In that case, the reverse-engineer <strong>has to</strong> analyze all the different regex. And if you focus on a specific regex, you will have too many valid inputs whereas only one gives you the good boy (the intersection of all the valid inputs set of the different regex).</p>
+
+<p>If you are interested by the subject, a cool resource I&rsquo;ve seen recently that does similar things was in a CTF task write-up written by <a href="https://plus.google.com/111956453297829313313">Michal Kowalczyk</a>: read <a href="http://blog.dragonsector.pl/2013/07/sigint-ctf-2013-task-fenster-400-pts.html">it</a>, it&rsquo;s awesome.</p>
+
+<p><strong>UPDATE</strong>: You should also read the follow-up made by <a href="https://twitter.com/fdfalcon">@fdfalcon</a> &ldquo;<a href="http://sysexit.wordpress.com/2013/09/04/a-black-box-approach-against-obfuscated-regular-expressions-using-pin/">A black-box approach against obfuscated regular expressions using Pin</a>&rdquo;. Using Pin to defeat the FSM obfuscation, and to prove my obfuscation was a bit buggy: two birds, one stone :)).</p>
+
+<p>Messing with automata is good for you.</p>
+]]></content>
+  </entry>
+  
+</feed>

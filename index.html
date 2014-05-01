@@ -1,0 +1,627 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Diary of a reverse-engineer</title>
+  <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
+
+  
+  <meta name="description" content="Introduction A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://doar-e.github.io">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet' type='text/css'>
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-43481215-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+
+  <style>
+    p { text-align: justify; }
+  </style>
+
+</head>
+<body   class="collapse-sidebar sidebar-footer" >
+  <header role="banner"><img src="/images/sigle-blanc-250px.jpg"></img>
+
+	<div class="header-title"><a href="/">Diary of a reverse-engineer</a></div>
+
+
+	<br><div class="header-subtitle">Because we like to play with weird things.</div>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:doar-e.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/about">About</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div class="blog-index">
+  
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-04-30T21:01:00+01:00" pubdate data-updated="true">Apr 30<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I thought I&rsquo;d explore things a little. I chose the ARM architecture mainly because I thought it would be fun to look at. This article is going to describe how the ARM Exception Vector Table (EVT) can aid in kernel exploitation in case an attacker has a write what-where primitive. It will be covering a local exploit scenario as well as a remote exploit scenario. Please note that corrupting the EVT has been mentioned in the paper &ldquo;Vector Rewrite Attack&rdquo;[1], which briefly talks about how it can be used in NULL pointer dereference vulnerabilities on an ARM RTOS.</p>
+
+<p>The article is broken down into two main sections. First a brief description of the ARM EVT and its implications from an exploitation point of view (please note that a number of things about the EVT will be omitted to keep this article relatively short). We will go over two examples showing how we can abuse the EVT.</p>
+
+<p>I am assuming the reader is familiar with Linux kernel exploitation and knows some ARM assembly (seriously).</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/04/30/corrupting-arm-evt/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Deep Dive Into Python&#8217;s VM: Story of LOAD_CONST Bug</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-04-17T23:22:00+01:00" pubdate data-updated="true">Apr 17<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>A year ago, I&rsquo;ve written a Python script to leverage a bug in Python&rsquo;s virtual machine: the idea was to fully control the Python virtual processor and after that to instrument the VM to execute native codes. The <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a> script wasn&rsquo;t really self-explanatory, so I believe only a few people actually took some time to understood what happened under the hood. The purpose of this post is to give you an explanation of the bug, how you can control the VM and how you can turn the bug into something that can be more useful. It&rsquo;s also a cool occasion to see how works the Python virtual machine from a low-level perspective: what we love so much right?</p>
+
+<p>But before going further, I just would like to clarify a couple of things:</p>
+
+<ul>
+<li>I haven&rsquo;t found this bug, this is quite old and <strong>known</strong> by the Python developers (trading safety for performance), so don&rsquo;t panic this is <strong>not</strong> a 0day or a new bug ; can be a cool CTF trick though</li>
+<li>Obviously, YES I know we can also &ldquo;escape&rdquo; the virtual machine with the <a href="http://docs.python.org/2/library/ctypes.html">ctypes</a> module ; but this is a feature not a bug. In addition, ctypes is always &ldquo;removed&rdquo;  from sandbox implementation in Python</li>
+</ul>
+
+
+<p>Also, keep in mind I will focus Python 2.7.5 x86 on Windows ; but obviously this is adaptable for other systems and architectures, so this is left as an exercise to the interested readers.
+All right, let&rsquo;s move on to the first part: this one will focus the essentials about the VM, and Python objects.</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First Dip Into the Kernel Pool : MS10-058</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-03-11T09:52:37+00:00" pubdate data-updated="true">Mar 11<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>I am currently playing with pool-based memory corruption vulnerabilities. That’s why I wanted to program a PoC exploit for the vulnerability presented by Tarjei Mandt during his first talk “Kernel Pool Exploitation on Windows 7” <a href="http://www.mista.nu/research/MANDT-kernelpool-PAPER.pdf">[3]</a>. I think it&rsquo;s a good exercise to start learning about pool overflows.</p>
+
+<h1>Forewords</h1>
+
+<p>If you want to experiment with this vulnerability, you should read <a href="http://www.itsecdb.com/oval/definition/oval/gov.nist.USGCB.patch/def/11689/MS10-058-Vulnerabilities-in-TCP-IP-Could-Allow-Elevation-of.html">[1]</a> and be sure to have a vulnerable system. I tested my exploit on a VM with Windows 7 32 bits with tcpip.sys 6.1.7600.16385. The Microsoft bulletin dealing with this vulnerability is MS10-058. It has been found by Matthieu Suiche <a href="http://technet.microsoft.com/fr-fr/security/bulletin/ms10-058">[2]</a> and was used as an example on Tarjei Mandt’s paper <a href="http://www.mista.nu/research/MANDT-kernelpool-PAPER.pdf">[3]</a>.</p>
+
+<h1>Triggering the flaw</h1>
+
+<p>An integer overflow in <em>tcpip!IppSortDestinationAddresses</em> allows to allocate a wrong-sized non-paged pool memory chunk. Below you can see the diff between the vulnerable version and the patched version.</p>
+
+<p><img class="center" src="/images/MS10-058/diff.png"></p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a Look at the Windows&#8217; User/Kernel Exceptions Dispatcher</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-10-12T14:03:00+01:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like <a href="http://gynvael.coldwind.pl/">gynvael</a>&rsquo;s <a href="http://gynvael.coldwind.pl/?id=148">ExcpHook</a> but in userland), and to generate a report with information related to the exception. The other purpose is to have a look at the internals of course.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+</pre></td><td class='code'><pre><code class='text'><span class='line'>--Exception detected--
+</span><span class='line'>ExceptionRecord: 0x0028fa2c Context: 0x0028fa7c
+</span><span class='line'>Image Path: D:\Codes\The Sentinel\tests\divzero.exe
+</span><span class='line'>Command Line: ..\tests\divzero.exe divzero.exe
+</span><span class='line'>PID: 0x00000aac
+</span><span class='line'>Exception Code: 0xc0000094 (EXCEPTION_INT_DIVIDE_BY_ZERO)
+</span><span class='line'>Exception Address: 0x00401359
+</span><span class='line'>EAX: 0x0000000a EDX: 0x00000000 ECX: 0x00000001 EBX: 0x7ffde000
+</span><span class='line'>ESI: 0x00000000 EDI: 0x00000000 ESP: 0x0028fee0 EBP: 0x0028ff18
+</span><span class='line'>EIP: 0x00401359
+</span><span class='line'>EFLAGS: 0x00010246
+</span><span class='line'>
+</span><span class='line'>Stack:
+</span><span class='line'>0x767bc265 0x54f3620f 0xfffffffe 0x767a0f5a
+</span><span class='line'>0x767ffc59 0x004018b0 0x0028ff90 0x00000000
+</span><span class='line'>
+</span><span class='line'>Disassembly:
+</span><span class='line'>00401359 (04) f77c241c                 IDIV DWORD [ESP+0x1c]
+</span><span class='line'>0040135d (04) 89442404                 MOV [ESP+0x4], EAX
+</span><span class='line'>00401361 (07) c7042424304000           MOV DWORD [ESP], 0x403024
+</span><span class='line'>00401368 (05) e833080000               CALL 0x401ba0
+</span><span class='line'>0040136d (05) b800000000               MOV EAX, 0x0
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>That&rsquo;s why I divided this post in two big parts:</p>
+
+<ul>
+<li>the first one will talk about Windows internals background required to understand how things work under the hood,</li>
+<li>the last one will talk about <a href="http://research.microsoft.com/en-us/projects/detours/"><em>Detours</em></a> and how to hook <em>ntdll!KiUserExceptionDispatcher</em> toward our purpose. Basically, the library gives programmers a set of APIs to easily hook procedures. It also has a clean and readable documentation, so you should use it! It is usually used for that kind of things:
+
+<ul>
+<li>Hot-patching bugs (no need to reboot),</li>
+<li>Tracing API calls (<a href="http://www.rohitab.com/apimonitor">API Monitor</a> like),</li>
+<li>Monitoring (a bit like our example),</li>
+<li>Pseudo-sandboxing (prevent API calls),</li>
+<li>etc.</li>
+</ul>
+</li>
+</ul>
+
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite&#8217;s Obfuscation: A Static Analysis Approach Relying on Symbolic Execution</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-09-16T11:47:00+01:00" pubdate data-updated="true">Sep 16<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p><em>Kryptonite</em> was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic-preserving transformations in order to not break the original program. One of the main idea was for example to build a home-made 32 bits adder to replace the <em>add</em> LLVM instruction. Instead of having a single asm instruction generated at the end of the pipeline, you will end up with a ton of assembly codes doing only an addition. If you never read my article, and you are interested in it here it is: <a href="http://0vercl0k.tuxfamily.org/bl0g/?p=260">Obfuscation of steel: meet my Kryptonite</a>.</p>
+
+<p><img class="center" src="/images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png"></p>
+
+<p>In this post I wanted to show you how we can manage to break that obfuscation with symbolic execution. We are going to write a really tiny symbolic execution engine with IDAPy, and we will use Z3Py to simplify all our equations. Note that a friend of mine <a href="https://twitter.com/elvanderb">@elvanderb</a> used a similar approach (more generic though) to simplify some parts of the <a href="http://download.tuxfamily.org/overclokblog/Obfuscation%20of%20steel%3a%20meet%20my%20Kryptonite/binaries/">crackme</a> ; but he didn&rsquo;t wanted to publish it, so here is my blog post about it!</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Pinpointing Heap-related Issues: OllyDbg2 Off-by-one Story</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-09-09T09:53:00+01:00" pubdate data-updated="true">Sep 9<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
+As usual, in those type of situations you fire up your debugger in order to understand what is going on under the hood.
+That was a bit weird, to give you a bit of context I was doing some inline x86 assembly, and I&rsquo;ve put on purpose an <em>int3</em> just
+before the piece of assembly code I thought was buggy. Once my file loaded in <a href="http://ollydbg.de/version2.html">OllyDbg2</a>, I hit <em>F9</em> in order to reach quickly the <em>int3</em> I&rsquo;ve slipped into the inline assembly code. A bit of single-stepping, and <strong>BOOM</strong> I got a nasty crash. It happens sometimes, and that&rsquo;s uncool.
+Then, I relaunch my binary and try to reproduce the bug: same actions and <strong>BOOM</strong> again. OK, this time it&rsquo;s cool, I got a reproducible crash in OllyDbg2.</p>
+
+<p>I like when things like that happens to me (remember the crashes I&rsquo;ve found in OllyDbg/IDA here: <a href="http://download.tuxfamily.org/overclokblog/PDB%20ain%27t%20PDD/0vercl0k_pdb_aint_pdd.pdf">PDB Ain&rsquo;t PDD</a>), it&rsquo;s always a nice exercise for me where I&rsquo;ve to:</p>
+
+<ul>
+<li>pinpoint the bug in the application: usually not trivial when it&rsquo;s a real/big application</li>
+<li>reverse-engineer the codes involved in the bug in order to figure out why it&rsquo;s happening (sometimes I got the sources, sometimes I don&rsquo;t like this time)</li>
+</ul>
+
+
+<p>In this post, I will show you how I&rsquo;ve manage to pinpoint where the bug was, using <a href="http://msdn.microsoft.com/en-us/library/windows/hardware/ff549561(v=vs.85).aspx">GFlags, PageHeap</a> and <a href="http://www.windbg.info/">WinDbg</a>. Then, we will reverse-engineer the buggy code in order to understand why the bug is happening, and how we can code a clean trigger.</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/">Some Thoughts About Code-coverage Measurement With Pin</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-31T18:57:00+01:00" pubdate data-updated="true">Aug 31<span>st</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>Sometimes, when you are reverse-engineering binaries you need somehow to measure, or just to have an idea about how much &ldquo;that&rdquo; execution is covering the code of your target. It can be for fuzzing purpose, maybe you have a huge set of inputs (it can be files, network traffic, anything) and you want to have the same coverage with only a subset of them. Or maybe, you are not really interested in the measure, but only with the coverage differences between two executions of your target: to locate where your program is handling a specific feature for example.</p>
+
+<p>But it&rsquo;s not a trivial problem, usually you don&rsquo;t have the source-code of the target, and you want it to be quick. The other thing, is that you don&rsquo;t have an input that covers the whole code base, you don&rsquo;t even know if it&rsquo;s possible ; so you can&rsquo;t compare your analysis to that &ldquo;ideal one&rdquo;. Long story short, you can&rsquo;t say to the user &ldquo;OK, this input covers 10% of your binary&rdquo;. But you can clearly register what your program is doing with input A, what it is doing with input B and then analyzing the differences. With that way you can have a (more precise?) idea about which input seems to have better coverage than another.</p>
+
+<p>Note also, this is a perfect occasion to play with Pin :&ndash;)).</p>
+
+<p>In this post, I will explain briefly how you can build that kind of tool using Pin, and how it can be used for reverse-engineer purposes.</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Regular Expressions Obfuscation Under the Microscope</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-24T12:35:00+01:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>Some months ago I came across a strange couple of functions that was kind of playing with a <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automaton</a> to validate an input. At first glance, I didn&rsquo;t really notice it was in fact a regex being processed, that&rsquo;s exactly why I spent quite some time to understand those routines. You are right to ask yourself: &ldquo;Hmm but the regex string representation should be in the binary shouldn&rsquo;t it?&rdquo;, the thing is it wasn&rsquo;t. The purpose of this post is to focus on those kind of &ldquo;compiled&rdquo; regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.</p>
+
+<p>In this short post, we are going to see how a regular expression looks like in assembly/C, and how you can hide/obfuscate it. I hope you will enjoy the read, and you will both be able to recognize a regular expression compiled in your future reverse-engineering tasks and to obfuscate heavily your regex!</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  <div class="pagination">
+    
+    <a href="/blog/archives">Blog Archives</a>
+    
+  </div>
+</div>
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Deep dive into Python&#8217;s VM: Story of LOAD_CONST bug</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First dip into the kernel pool : MS10-058</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows&#8217; User/Kernel exceptions dispatcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite&#8217;s obfuscation: a static analysis approach relying on symbolic execution</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  
+  </span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>

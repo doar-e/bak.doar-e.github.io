@@ -1,0 +1,619 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: windows internals | Diary of a reverse-engineer]]></title>
+  <link href="http://doar-e.github.io/blog/categories/windows-internals/atom.xml" rel="self"/>
+  <link href="http://doar-e.github.io/"/>
+  <updated>2014-04-30T22:51:21+01:00</updated>
+  <id>http://doar-e.github.io/</id>
+  <author>
+    <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[Having a look at the Windows' User/Kernel exceptions dispatcher]]></title>
+    <link href="http://doar-e.github.io/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/"/>
+    <updated>2013-10-12T14:03:00+01:00</updated>
+    <id>http://doar-e.github.io/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like <a href="http://gynvael.coldwind.pl/">gynvael</a>&rsquo;s <a href="http://gynvael.coldwind.pl/?id=148">ExcpHook</a> but in userland), and to generate a report with information related to the exception. The other purpose is to have a look at the internals of course.</p>
+
+<p>```text
+&mdash;Exception detected&mdash;
+ExceptionRecord: 0x0028fa2c Context: 0x0028fa7c
+Image Path: D:\Codes\The Sentinel\tests\divzero.exe
+Command Line: ..\tests\divzero.exe divzero.exe
+PID: 0x00000aac
+Exception Code: 0xc0000094 (EXCEPTION_INT_DIVIDE_BY_ZERO)
+Exception Address: 0x00401359
+EAX: 0x0000000a EDX: 0x00000000 ECX: 0x00000001 EBX: 0x7ffde000
+ESI: 0x00000000 EDI: 0x00000000 ESP: 0x0028fee0 EBP: 0x0028ff18
+EIP: 0x00401359
+EFLAGS: 0x00010246</p>
+
+<p>Stack:
+0x767bc265 0x54f3620f 0xfffffffe 0x767a0f5a
+0x767ffc59 0x004018b0 0x0028ff90 0x00000000</p>
+
+<p>Disassembly:
+00401359 (04) f77c241c                 IDIV DWORD [ESP+0x1c]
+0040135d (04) 89442404                 MOV [ESP+0x4], EAX
+00401361 (07) c7042424304000           MOV DWORD [ESP], 0x403024
+00401368 (05) e833080000               CALL 0x401ba0
+0040136d (05) b800000000               MOV EAX, 0x0
+```</p>
+
+<p>That&rsquo;s why I divided this post in two big parts:</p>
+
+<ul>
+<li>the first one will talk about Windows internals background required to understand how things work under the hood,</li>
+<li>the last one will talk about <a href="http://research.microsoft.com/en-us/projects/detours/"><em>Detours</em></a> and how to hook <em>ntdll!KiUserExceptionDispatcher</em> toward our purpose. Basically, the library gives programmers a set of APIs to easily hook procedures. It also has a clean and readable documentation, so you should use it! It is usually used for that kind of things:
+
+<ul>
+<li>Hot-patching bugs (no need to reboot),</li>
+<li>Tracing API calls (<a href="http://www.rohitab.com/apimonitor">API Monitor</a> like),</li>
+<li>Monitoring (a bit like our example),</li>
+<li>Pseudo-sandboxing (prevent API calls),</li>
+<li>etc.</li>
+</ul>
+</li>
+</ul>
+
+
+<!--more-->
+
+
+<h1>Lights on <em>ntdll!KiUserExceptionDispatcher</em></h1>
+
+<p>The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85">SEH</a>.aspx)/<a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85">UEF</a>.aspx) mechanisms ; though I&rsquo;m going to focus on Windows 7 x86 because that&rsquo;s the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too many details, just enough to write a working exception sentinel PoC later.</p>
+
+<h2>nt!KiTrap*</h2>
+
+<p>When your userland application does something wrong an exception is raised by your CPU: let&rsquo;s say you are trying to do a division by zero (<em>nt!KiTrap00</em> will handle that case), or you are trying to fetch a memory page that doesn&rsquo;t exist (<em>nt!KiTrap0E</em>).</p>
+
+<p>```text
+kd> !idt -a</p>
+
+<p>Dumping IDT: 80b95400</p>
+
+<p>00:   8464d200 nt!KiTrap00
+01:   8464d390 nt!KiTrap01
+02:   Task Selector = 0x0058
+03:   8464d800 nt!KiTrap03
+04:   8464d988 nt!KiTrap04
+05:   8464dae8 nt!KiTrap05
+06:   8464dc5c nt!KiTrap06
+07:   8464e258 nt!KiTrap07
+08:   Task Selector = 0x0050
+09:   8464e6b8 nt!KiTrap09
+0a:   8464e7dc nt!KiTrap0A
+0b:   8464e91c nt!KiTrap0B
+0c:   8464eb7c nt!KiTrap0C
+0d:   8464ee6c nt!KiTrap0D
+0e:   8464f51c nt!KiTrap0E
+0f:   8464f8d0 nt!KiTrap0F
+10:   8464f9f4 nt!KiTrap10
+11:   8464fb34 nt!KiTrap11
+[&hellip;]
+```
+I&rsquo;m sure you already know that but in x86 Intel processors there is a table called the <a href="http://wiki.osdev.org/Interrupt_Descriptor_Table">IDT</a> that stores the different routines that will handle the exceptions. The virtual address of that table is stored in a special x86 register called <em>IDTR</em>, and that register is accessible only by using the instructions <em>sidt</em> (Stores Interrupt Descriptor Table register) and <em>lidt</em> (Loads Interrupt Descriptor Table register).</p>
+
+<p>Basically there are two important things in an IDT entry: the address of the <a href="https://en.wikipedia.org/wiki/Interrupt_handler">ISR</a>, and the segment selector (remember it&rsquo;s a simple index in the <a href="http://wiki.osdev.org/GDT_Tutorial">GDT</a>) the CPU should use.</p>
+
+<p>```text
+kd> !pcr
+KPCR for Processor 0 at 84732c00:</p>
+
+<pre><code>[...]
+                IDT: 80b95400
+                GDT: 80b95000
+</code></pre>
+
+<p>kd> dt nt!_KIDTENTRY 80b95400
+   +0x000 Offset           : 0xd200
+   +0x002 Selector         : 8
+   +0x004 Access           : 0x8e00
+   +0x006 ExtendedOffset   : 0x8464</p>
+
+<p>kd> ln (0x8464 &lt;&lt; 10) + (0xd200)
+Exact matches:</p>
+
+<pre><code>nt!KiTrap00 (&lt;no parameter info&gt;)
+</code></pre>
+
+<p>kd> !@display_gdt 80b95000</p>
+
+<h6>#</h6>
+
+<h1>Global Descriptor Table (GDT)</h1>
+
+<h6>#</h6>
+
+<p>Processor 00
+Base : 80B95000    Limit : 03FF</p>
+
+<p>Off.  Sel.  Type    Sel.:Base  Limit   Present  DPL  AVL  Informations</p>
+
+<hr />
+
+<p>[&hellip;]
+0008  0008  Code32  00000000  FFFFFFFF  YES     0    0    Execute/Read, accessed  (Ring 0)CS=0008
+[&hellip;]
+```</p>
+
+<p>The entry just above tells us that for the processor 0, if a <em>division-by-zero</em> exception is raised the kernel mode routine nt!KiTrap00 will be called with a flat-model code32 ring0 segment (cf GDT dump).</p>
+
+<p>Once the CPU is in <em>nt!KiTrap00</em>&rsquo;s code it basically does a lot of things, same thing for all the other <em>nt!KiTrap</em> routines, but somehow they (more or less) end up in the kernel mode exceptions dispatcher: <em>nt!KiDispatchException</em> (remember <a href="http://gynvael.coldwind.pl/">gynvael</a>&rsquo;s tool ? He was hooking that method!) once they created the <em>nt!_KTRAP_FRAME</em> structure associated with the fault.</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/butterfly.png" title="nt!KiExceptionDispatch graph from ReactOS" ></p>
+
+<p>Now, you may already have asked yourself how the kernel reaches back to the userland in order to process the exception via the SEH mechanism for example ?</p>
+
+<p>That&rsquo;s kind of simple actually. The trick used by the Windows kernel is to check where the exception took place: if it&rsquo;s from user mode, the kernel mode exceptions dispatcher sets the field <em>eip</em> of the trap frame structure (passed in argument) to the symbol <em>nt!KeUserExceptionDispatcher</em>. Then, <em>nt!KeEloiHelper</em> will use that same trap frame to resume the execution (in our case on <em>nt!KeUserExceptionDispatcher</em>).</p>
+
+<p>But guess what ? That symbol holds the address of <em>ntdll!KiUserExceptionDispatcher</em>, so it makes total sense!
+<code>text
+kd&gt; dps nt!KeUserExceptionDispatcher L1
+847a49a0  77476448 ntdll!KiUserExceptionDispatcher
+</code></p>
+
+<p>If like me you like illustrations, I&rsquo;ve made a WinDbg session where I am going to show what we just talked about. First, let&rsquo;s trigger our <em>division-by-zero</em> exception:</p>
+
+<p><code>text
+kd&gt; bp nt!KiTrap00
+kd&gt; g
+Breakpoint 0 hit
+nt!KiTrap00:
+8464c200 6a00            push    0
+kd&gt; k
+ChildEBP RetAddr  
+8ec9bd98 01141269 nt!KiTrap00
+8ec9bd9c 00000000 divzero+0x1269
+kd&gt; u divzero+0x1269 l1
+divzero+0x1269:
+01141269 f7f0            div     eax,eax
+</code></p>
+
+<p>Now let&rsquo;s go a bit further in the ISR, and more precisely when the <em>nt!_KTRAP_FRAME</em> is built:</p>
+
+<p><code>text
+kd&gt; bp nt!KiTrap00+0x36
+kd&gt; g
+Breakpoint 1 hit
+nt!KiTrap00+0x36:
+8464c236 8bec            mov     ebp,esp
+kd&gt; dt nt!_KTRAP_FRAME @esp
+   +0x000 DbgEbp           : 0x1141267
+   +0x004 DbgEip           : 0x1141267
+   +0x008 DbgArgMark       : 0
+   +0x00c DbgArgPointer    : 0
+   +0x010 TempSegCs        : 0
+   +0x012 Logging          : 0 ''
+   +0x013 Reserved         : 0 ''
+   +0x014 TempEsp          : 0
+   +0x018 Dr0              : 0
+   +0x01c Dr1              : 0
+   +0x020 Dr2              : 0
+   +0x024 Dr3              : 0x23
+   +0x028 Dr6              : 0x23
+   +0x02c Dr7              : 0x1141267
+   +0x030 SegGs            : 0
+   +0x034 SegEs            : 0x23
+   +0x038 SegDs            : 0x23
+   +0x03c Edx              : 0x1141267
+   +0x040 Ecx              : 0
+   +0x044 Eax              : 0
+   +0x048 PreviousPreviousMode : 0
+   +0x04c ExceptionList    : 0xffffffff _EXCEPTION_REGISTRATION_RECORD
+   +0x050 SegFs            : 0x270030
+   +0x054 Edi              : 0
+   +0x058 Esi              : 0
+   +0x05c Ebx              : 0x7ffd3000
+   +0x060 Ebp              : 0x27fd58
+   +0x064 ErrCode          : 0
+   +0x068 Eip              : 0x1141269
+   +0x06c SegCs            : 0x1b
+   +0x070 EFlags           : 0x10246
+   +0x074 HardwareEsp      : 0x27fd50
+   +0x078 HardwareSegSs    : 0x23
+   +0x07c V86Es            : 0
+   +0x080 V86Ds            : 0
+   +0x084 V86Fs            : 0
+   +0x088 V86Gs            : 0
+kd&gt; .trap @esp
+ErrCode = 00000000
+eax=00000000 ebx=7ffd3000 ecx=00000000 edx=01141267 esi=00000000 edi=00000000
+eip=01141269 esp=0027fd50 ebp=0027fd58 iopl=0         nv up ei pl zr na pe nc
+cs=001b  ss=0023  ds=0023  es=0023  fs=0030  gs=0000             efl=00010246
+divzero+0x1269:
+001b:01141269 f7f0            div     eax,eax
+kd&gt; .trap
+Resetting default scope
+</code></p>
+
+<p>The idea now is to track the modification of the <em>nt!_KTRAP_FRAME.Eip</em> field as we discussed earlier (BTW, don&rsquo;t try to put directly a breakpoint on <em>nt!KiDispatchException</em> with VMware, it just blows my guest virtual machine) via a hardware-breakpoint:</p>
+
+<p>```text
+kd> ba w4 esp+68
+kd> g
+Breakpoint 2 hit
+nt!KiDispatchException+0x3d6:
+846c559e c745fcfeffffff  mov     dword ptr [ebp-4],0FFFFFFFEh
+kd> dt nt!_KTRAP_FRAME Eip @esi
+   +0x068 Eip : 0x77b36448
+kd> ln 0x77b36448
+Exact matches:</p>
+
+<pre><code>ntdll!KiUserExceptionDispatcher (&lt;no parameter info&gt;)
+</code></pre>
+
+<p>```</p>
+
+<p>OK, so here we can clearly see the trap frame has been modified (keep in mind WinDbg gives you the control <em>after</em> the actual writing). That basically means that when the kernel will resume the execution via <em>nt!KiExceptionExit</em> (or <em>nt!Kei386EoiHelper</em>, two symbols for one same address) the CPU will directly execute the user mode exceptions dispatcher.</p>
+
+<p>Great, I think we have now enough understanding to move on the second part of the article.</p>
+
+<h1>Serial Detourer</h1>
+
+<p>In this part we are going to talk about Detours, what looks like the API and how you can use it to build a userland exceptions sentinel without too many lines of codes. Here is the list of the features we want:</p>
+
+<ul>
+<li>To hook <em>ntdll!KiUserExceptionDispatcher</em>: we will use Detours for that,</li>
+<li>To generate a tiny readable exception report: for the disassembly part we will use <a href="http://www.ragestorm.net/distorm/">Distorm</a> (yet another easy cool library to use),</li>
+<li>To focus x86 architecture: because unfortunately the express version doesn&rsquo;t work for x86_64.</li>
+</ul>
+
+
+<p>Detours is going to modify the first bytes of the API you want to hook in order to redirect its execution in your piece of code: it&rsquo;s called an <em>inline-hook</em>.</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/detours.png"></p>
+
+<p>Detours can work in two modes:</p>
+
+<ul>
+<li>A first mode where you don&rsquo;t touch to the binary you&rsquo;re going to hook, you will need a DLL module you will inject into your binary&rsquo;s memory. Then, Detours will modify in-memory the code of the APIs you will hook. That&rsquo;s what we are going to use.</li>
+<li>A second mode where you modify the binary file itself, more precisely the <a href="http://sandsprite.com/CodeStuff/Understanding_imports.html">IAT</a>. In that mode, you won&rsquo;t need to have a DLL injecter. If you are interested in details about those tricks they described them in the <em>Detours.chm</em> file in the installation directory, read it!</li>
+</ul>
+
+
+<p>So our sentinel will be divided in two main parts:</p>
+
+<ul>
+<li>A program that will start the target binary and inject our DLL module (that&rsquo;s where all the important things are),</li>
+<li>The sentinel DLL module that will hook the userland exceptions dispatcher and write the exception report.</li>
+</ul>
+
+
+<p>The first one is really easy to implement using <a href="https://github.com/0vercl0k/stuffz/blob/master/The%20Sentinel/ProcessSpawner/main.cpp#L66">DetourCreateProcessWithDll</a>: it&rsquo;s going to create the process and inject the DLL we want.</p>
+
+<p><code>text
+Usage: ./ProcessSpawner &lt;full path dll&gt; &lt;path executable&gt; &lt;excutable name&gt; [args..]
+</code></p>
+
+<p>To successfully hook a function you have to know its address of course, and you have to implement the hook function. Then, you have to call <em>DetourTransactionBegin</em>, <em>DetourUpdateThread</em>, <em>DetourTransactionCommit</em> and you&rsquo;re done, wonderful isn&rsquo;t it ?</p>
+
+<p>The only tricky thing, in our case, is that we want to hook <em>ntdll!KiUserExceptionDispatcher</em>, and that function has its own custom calling convention. Fortunately for us, in the <em>samples</em> directory of Detours you can find how you are supposed to deal with that specific case:</p>
+
+<p>```c KiUserExceptionDispatcher hook
+VOID __declspec(naked) NTAPI KiUserExceptionDispatcher(PEXCEPTION_RECORD ExceptionRecord, PCONTEXT Context)
+{</p>
+
+<pre><code>/* Taken from the Excep's detours sample */
+__asm
+{
+    xor     eax, eax                ; // Create fake return address on stack.
+    push    eax                     ; // (Generally, we are called by the kernel.)
+
+    push    ebp                     ; // Prolog
+    mov     ebp, esp                ;
+    sub     esp, __LOCAL_SIZE       ;
+}
+
+EnterCriticalSection(&amp;critical_section);
+log_exception(ExceptionRecord, Context);
+LeaveCriticalSection(&amp;critical_section);
+
+__asm
+{
+    mov     ebx, ExceptionRecord    ;
+    mov     ecx, Context            ;
+    push    ecx                     ;
+    push    ebx                     ;
+    mov     eax, [TrueKiUserExceptionDispatcher];
+    jmp     eax                     ;
+    //
+    // The above code should never return.
+    //
+    int     3                       ; // Break!
+    mov     esp, ebp                ; // Epilog
+    pop     ebp                     ;
+    ret                             ;
+}
+</code></pre>
+
+<p>}
+```</p>
+
+<p>Here is what looks <em>ntdll!KiUserExceptionDispatcher</em> like in memory after the hook:</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/hook.png"></p>
+
+<p>Disassembling some instructions pointed by the <em>CONTEXT.Eip</em> field is also really straightforward to do with <em>distorm_decode</em>:</p>
+
+<p>```c Use distorm3 to disassemble some codes
+if(IsBadReadPtr((const void*)Context->Eip, SIZE_BIGGEST_X86_INSTR * MAX_INSTRUCTIONS) == 0)
+{
+  <em>DecodeResult res;
+  </em>OffsetType offset = Context->Eip;
+  _DecodedInst decodedInstructions[MAX_INSTRUCTIONS] = {0};
+  unsigned int decodedInstructionsCount = 0;</p>
+
+<p>  res = distorm_decode(</p>
+
+<pre><code>  offset,
+  (const unsigned char*)Context-&gt;Eip,
+  MAX_INSTRUCTIONS * SIZE_BIGGEST_X86_INSTR,
+  Decode32Bits,
+  decodedInstructions,
+  MAX_INSTRUCTIONS,
+  &amp;decodedInstructionsCount
+</code></pre>
+
+<p>  );</p>
+
+<p>  if(res == DECRES_SUCCESS || res == DECRES_MEMORYERR)
+  {</p>
+
+<pre><code>fprintf(f, "\nDisassembly:\n");
+for(unsigned int i = 0; i &lt; decodedInstructionsCount; ++i)
+{
+  fprintf(
+    f,
+    "%.8I64x (%.2d) %-24s %s%s%s\n",
+    decodedInstructions[i].offset,
+    decodedInstructions[i].size,
+    (char*)decodedInstructions[i].instructionHex.p,
+    (char*)decodedInstructions[i].mnemonic.p,
+    decodedInstructions[i].operands.length != 0 ? " " : "",
+    (char*)decodedInstructions[i].operands.p
+  );
+}
+</code></pre>
+
+<p>  }
+}
+```</p>
+
+<p>So the prototype works pretty great like that.</p>
+
+<p><code>text
+D:\Codes\The Sentinel\Release&gt;ProcessSpawner.exe "D:\Codes\The Sentinel\Release\ExceptionMonitorDll.dll" ..\tests\divzero.exe divzero.exe
+D:\Codes\The Sentinel\Release&gt;ls -l D:\Crashs\divzero.exe
+total 4
+-rw-rw-rw-  1 0vercl0k 0 863 2013-10-16 22:58 exceptionaddress_401359pid_2732tick_258597468timestamp_1381957116.txt
+</code></p>
+
+<p>But once I&rsquo;ve encountered a behavior that I didn&rsquo;t plan on: there was like a stack-corruption in a stack-frame protected by the <em>/GS</em> cookie. If the cookie has been, somehow, rewritten the program calls <em>___report_gs_failure</em> (sometimes the implementation is directly inlined, thus you can find the definition of the function in your binary) in order to kill the program because the stack-frame is broken. Long story short, I was also hooking <em>kernel32!UnhandleExceptionFilter</em> to not miss that kind of exceptions, but I noticed while writing this post that it doesn&rsquo;t work anymore. We are going to see why in the next part.</p>
+
+<h1>The untold story: Win8 and <em>nt!KiFastFailDispatch</em></h1>
+
+<h2>Introduction</h2>
+
+<p>When I was writing this little post I did also some tests on my personal machine: a Windows 8 host. But the test for the <em>/GS</em> thing we just talked about wasn&rsquo;t working at all as I said. So I started my investigation by looking at the code of <em>__report_gsfailure</em> (generated with a VS2012) and I saw this:</p>
+
+<p>```c <strong>report_gsfailure
+void </strong>usercall __report_gsfailure(unsigned int a1<ebx>, unsigned int a2<edi>, unsigned int a3<esi>, char a4)
+{
+  unsigned int v4; // eax@1
+  unsigned int v5; // edx@1
+  unsigned int v6; // ecx@1
+  unsigned int v11; // [sp-4h] [bp-328h]@1
+  unsigned int v12; // [sp+324h] [bp+0h]@0
+  void *v13; // [sp+328h] [bp+4h]@3</p>
+
+<p>  v4 = IsProcessorFeaturePresent(0x17u);
+  // [&hellip;]
+  if ( v4 )
+  {</p>
+
+<pre><code>v6 = 2;
+__asm { int     29h             ; DOS 2+ internal - FAST PUTCHAR }
+</code></pre>
+
+<p>  }
+  [&hellip;]
+  __raise_securityfailure(&amp;GS_ExceptionPointers);
+}
+```</p>
+
+<p>The first thing I asked myself was about that weird <em>int 29h</em>. Next thing I did was to download a fresh Windows 8 VM <a href="http://www.modern.ie/fr-fr/virtualization-tools#downloads">here</a> and attached a kernel debugger in order to check the IDT entry 0x29:</p>
+
+<p>```text
+kd> vertarget
+Windows 8 Kernel Version 9200 MP (2 procs) Free x86 compatible
+Built by: 9200.16424.x86fre.win8_gdr.120926-1855
+Machine Name:
+Kernel base = 0x8145c000 PsLoadedModuleList = 0x81647e68
+Debug session time: Thu Oct 17 11:30:18.772 2013 (UTC + 2:00)
+System Uptime: 0 days 0:02:55.784
+kd> !idt 29</p>
+
+<p>Dumping IDT: 809da400</p>
+
+<p>29: 8158795c nt!KiRaiseSecurityCheckFailure
+```</p>
+
+<p>As opposed I was used to see on my Win7 machine:</p>
+
+<p>```text
+kd> vertarget
+Windows 7 Kernel Version 7600 MP (1 procs) Free x86 compatible
+Product: WinNt, suite: TerminalServer SingleUserTS
+Built by: 7600.16385.x86fre.win7_rtm.090713-1255
+Machine Name:
+Kernel base = 0x84646000 PsLoadedModuleList = 0x8478e810
+Debug session time: Thu Oct 17 14:25:40.969 2013 (UTC + 2:00)
+System Uptime: 0 days 0:00:55.203
+kd> !idt 29</p>
+
+<p>Dumping IDT: 80b95400</p>
+
+<p>29: 00000000
+```</p>
+
+<p>I&rsquo;ve opened my favorite IDE and I wrote a bit of code to test if there was a different behavior between Win7 and Win8 regarding this exception handling:</p>
+
+<p>```c gs.c</p>
+
+<h1>include &lt;stdio.h></h1>
+
+<h1>include &lt;windows.h></h1>
+
+<p>int main()
+{
+  __try
+  {</p>
+
+<pre><code>__asm int 0x29
+</code></pre>
+
+<p>  }
+  __except(EXCEPTION_EXECUTE_HANDLER)
+  {</p>
+
+<pre><code>printf("SEH catched the exception!\n");
+</code></pre>
+
+<p>  }
+  return 0;
+}
+```</p>
+
+<p>On Win7 I&rsquo;m able to catch the exception via a SEH handler: it means the Windows kernel calls the user mode exception dispatcher for further processing by the user exception handlers (as we saw at the beginning of the post). But on Win8, at my surprise, I don&rsquo;t get the message ; the process is killed directly after displaying the usual message box &ldquo;a program has stopped&rdquo;. Definitely weird.</p>
+
+<h2>What happens on Win7</h2>
+
+<p>When the interruption 0x29 is triggered by my code, the CPU is going to check if there is an IDT entry for that interruption, and if there isn&rsquo;t it&rsquo;s going to raise a #GP (<em>nt!KiTrap0d</em>) that will end up in <em>nt!KiDispatchException</em>.</p>
+
+<p>And as previously, the function is going to check where the fault happened and because it happened in userland it will modify the trap frame structure to reach <em>ntdll!KiUserExceptionDispatcher</em>. That&rsquo;s why we can catch it in our <em>__except</em> scope.</p>
+
+<p><code>text
+kd&gt; r
+eax=0000000d ebx=86236d40 ecx=862b48f0 edx=0050e600 esi=00000000 edi=0029b39f
+eip=848652dd esp=9637fd34 ebp=9637fd34 iopl=0         nv up ei pl zr na pe nc
+cs=0008  ss=0010  ds=0023  es=0023  fs=0030  gs=0000             efl=00000246
+nt!KiTrap0D+0x471:
+848652dd e80ddeffff      call    nt!CommonDispatchException+0x123 (848630ef)
+kd&gt; k 2
+ChildEBP RetAddr  
+9637fd34 0029b39f nt!KiTrap0D+0x471
+0016fc1c 0029be4c gs+0x2b39f
+kd&gt; u gs+0x2b39f l1
+gs+0x2b39f:
+0029b39f cd29            int     29h
+</code></p>
+
+<h2>What happens on Win8</h2>
+
+<p>This time the kernel has defined an ISR for the interruption 0x29: <em>nt!KiRaiseSecurityCheckFailure</em>. This function is going to call <em>nt!KiFastFailDispatch</em>, and this one is going to call <em>nt!KiDispatchException</em>:</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/kifastfaildispatch.png"></p>
+
+<p>BUT the exception is going to be processed as a <strong>second-chance</strong> exception because of the way <em>nt!KiFastFailDispatch</em> calls the kernel mode exception dispatcher. And if we look at the source of <em>nt!KiDispatchException</em> in ReactOS we can see that this exception won&rsquo;t have the chance to reach back the userland as in Win7 :)):</p>
+
+<p>```c KiDispatchException from ReactOS
+VOID
+NTAPI
+KiDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,</p>
+
+<pre><code>                IN PKEXCEPTION_FRAME ExceptionFrame,
+                IN PKTRAP_FRAME TrapFrame,
+                IN KPROCESSOR_MODE PreviousMode,
+                IN BOOLEAN FirstChance)
+</code></pre>
+
+<p>{</p>
+
+<pre><code>CONTEXT Context;
+EXCEPTION_RECORD LocalExceptRecord;
+</code></pre>
+
+<p>// [&hellip;]</p>
+
+<pre><code>/* Handle kernel-mode first, it's simpler */
+if (PreviousMode == KernelMode)
+{
+</code></pre>
+
+<p>// [&hellip;]</p>
+
+<pre><code>}
+else
+{
+    /* User mode exception, was it first-chance? */
+    if (FirstChance)
+    {
+</code></pre>
+
+<p>// [&hellip;]
+// that&rsquo;s in this branch the kernel reaches back to the user mode exception dispatcher
+// but if FirstChance=0, we won&rsquo;t have that chance</p>
+
+<pre><code>      /* Set EIP to the User-mode Dispatcher */
+      TrapFrame-&gt;Eip = (ULONG)KeUserExceptionDispatcher;
+
+      /* Dispatch exception to user-mode */
+      _SEH2_YIELD(return);
+    }
+
+    /* Try second chance */
+    if (DbgkForwardException(ExceptionRecord, TRUE, TRUE))
+    {
+        /* Handled, get out */
+        return;
+    }
+    else if (DbgkForwardException(ExceptionRecord, FALSE, TRUE))
+    {
+        /* Handled, get out */
+        return;
+    }
+</code></pre>
+
+<p>// [&hellip;]</p>
+
+<pre><code>return;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>To convince yourself you can even modify the <em>FirstChance</em> argument passed to <em>nt!KiDispatchException</em> from <em>nt!KiFastFailDispatch</em>. You will see the SEH handler is called like in Win7:</p>
+
+<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/win8.png"></p>
+
+<p>Cool, we have now our answer to the weird behavior! I guess if you want to monitor <em>/GS</em> exception you are going to find another trick :)).</p>
+
+<h1>Conclusion</h1>
+
+<p>I hope you enjoyed this little trip in the Windows' exception world both in user and kernel mode. You will find the seems-to-be-working PoC on my github account here: <a href="https://github.com/0vercl0k/stuffz/tree/master/The%20Sentinel">The sentinel</a>. By the way, you are highly encouraged to improve it, or to modify it in order to suit your use-case!</p>
+
+<p>If you liked the subject of the post, I&rsquo;ve made a list of really cool/interesting links you should check out:</p>
+
+<ul>
+<li><a href="http://www.alex-ionescu.com/?p=69">New Security Assertions in Windows 8</a> &ndash; <a href="https://twitter.com/aionescu">@aionescu</a> endless source of inspiration</li>
+<li><a href="http://www.uninformed.org/?v=4&amp;a=5&amp;t=txt">Exploiting the Otherwise Unexploitable on Windows</a> &ndash; Yet another awesome article by <a href="http://www.nynaeve.net/">Skywing</a> and <a href="http://uninformed.org/">skape</a></li>
+<li><a href="http://www.nynaeve.net/?p=201">A catalog of NTDLL kernel mode to user mode callbacks, part 2: KiUserExceptionDispatcher</a></li>
+<li><a href="http://dralu.com/?p=167">Windows Exceptions, Part II: Exception Dispatching</a></li>
+<li><a href="https://easyhook.codeplex.com/">EasyHook</a> &ndash; &ldquo;EasyHook starts where Microsoft Detours ends.&rdquo;</li>
+</ul>
+
+
+<p>High five to my friend <a href="https://twitter.com/Ivanlef0u">@Ivanlef0u</a> for helping me to troubleshoot the weird behavior, and <a href="https://twitter.com/__x86">@__x86</a> for the review!</p>
+]]></content>
+  </entry>
+  
+</feed>

