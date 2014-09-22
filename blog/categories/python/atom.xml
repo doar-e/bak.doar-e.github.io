@@ -4,7 +4,7 @@
   <title><![CDATA[Category: python | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/python/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-04-30T22:51:21+01:00</updated>
+  <updated>2014-09-22T18:29:00+01:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -12,6 +12,1158 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[Dissection of Quarkslab's 2014 security challenge]]></title>
+    <link href="http://doar-e.github.io/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/"/>
+    <updated>2014-09-06T20:37:00+01:00</updated>
+    <id>http://doar-e.github.io/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>As the blog was a bit silent for quite some time, I figured it would be cool to put together a post ; so here it is folks, dig in!</p>
+
+<p>The French company <a href="http://blog.quarkslab.com/you-like-python-security-challenge-and-traveling-win-a-free-ticket-to-hitb-kul.html">Quarkslab</a> <a href="https://twitter.com/quarkslab/status/507457671386394624">recently</a> <a href="https://twitter.com/HITBSecConf/status/507458788522094592">released</a> a security challenge to win a free entrance to attend the upcoming <a href="https://conference.hitb.org/hitbsecconf2014kul/">HITBSecConf</a> conference in Kuala Lumpur from the 13th of October until the 16th.</p>
+
+<p>The challenge has been written by <a href="http://blog.quarkslab.com/author/serge-guelton.html">Serge Guelton</a>, a R&amp;D engineer specialized in compilers/parallel computations. At the time of writing, already eight different people manage to solve the challenge, and one of the ticket seems to have been won by <code>hackedd</code>, so congrats to him!</p>
+
+<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/woot.png"></p>
+
+<p>According to the description of the challenge Python is heavily involved, which is a good thing for at least two reasons:</p>
+
+<ul>
+<li>first because I already had <a href="https://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">the occasion</a> to look at its source code in the past,</li>
+<li>and because I so am a <a href="https://github.com/0vercl0k/stuffz/tree/master/Python's%20internals">big fan of Python</a>.</li>
+</ul>
+
+
+<p>In this post I will describe how I tackled this problem, how I managed to solve it. And to make up for me being slow at solving it I tried to make it fairly detailed.</p>
+
+<p>At first it was supposed to be quite short though, but well..I decided to analyze fully the challenge even if it wasn&rsquo;t needed to find the key unfortunately, so it is a bit longer than expected :&ndash;).</p>
+
+<p>Anyway, sit down, make yourself at home and let me pour you a cup of tea before we begin :&ndash;).</p>
+
+<!--more-->
+
+
+<h1>Finding the URL of the challenge</h1>
+
+<h2>Very one-liner, much lambdas, such a pain</h2>
+
+<p>The first part of the challenge is to retrieve an url hidden in the following Python one-liner:</p>
+
+<p>`&ldquo;python Very one-liner, much lambdas
+(lambda g, c, d: (lambda <em>: (</em>.<strong>setitem</strong>(&lsquo;$&rsquo;, &rdquo;.join([(<em>[&lsquo;chr&rsquo;] if (&lsquo;chr&rsquo;
+in </em>) else chr)((<em>[&lsquo;</em>&rsquo;] if (&lsquo;<em>&rsquo; in </em>) else <em>)) for </em>[&lsquo;<em>&rsquo;] in (</em>[&rsquo;s'] if (&rsquo;s'
+in <em>) else s)[::(-1)]])), </em>)[-1])( (lambda <em>: (lambda f, </em>: f(f, <em>))((lambda
+__,</em>: ((lambda <em>: <strong>(</strong>, </em>))((lambda <em>: (</em>.<strong>setitem</strong>(&lsquo;i&rsquo;, ((<em>[&lsquo;i&rsquo;] if (&lsquo;i&rsquo;
+in </em>) else i) + 1)),<em>)[(-1)])((lambda </em>: (<em>.<strong>setitem</strong>(&rsquo;s',((</em>[&rsquo;s'] if (&rsquo;s'
+in <em>) else s) + [((</em>[&lsquo;l&rsquo;] if (&lsquo;l&rsquo; in <em>) else l)[(</em>[&lsquo;i&rsquo;] if (&lsquo;i&rsquo; in <em>) else i
+)] ^ (</em>[&lsquo;c&rsquo;] if (&lsquo;c&rsquo; in <em>) else c))])), </em>)[-1])(<em>))) if (((</em>[&lsquo;g&rsquo;] if (&lsquo;g&rsquo; in
+<em>) else g) % 4) and ((</em>[&lsquo;i&rsquo;] if (&lsquo;i&rsquo; in <em>) else i)&lt; (</em>[&lsquo;len&rsquo;] if (&lsquo;len&rsquo; in _
+) else len)((<em>[&lsquo;l&rsquo;] if (&lsquo;l&rsquo; in </em>) else l)))) else <em>)), </em>) ) ( (lambda <em>: (</em>.
+<strong>setitem</strong>(&lsquo;!&rsquo;, []), <em>.<strong>setitem</strong>(&rsquo;s', </em>[&lsquo;!&rsquo;]), <em>)[(-1)] ) ((lambda </em>: (<em>.
+<strong>setitem</strong>(&lsquo;!&rsquo;, ((</em>[&rsquo;d'] if (&rsquo;d' in <em>) else d) ^ (</em>[&rsquo;d'] if (&rsquo;d' in <em>) else
+d))), </em>.<strong>setitem</strong>(&lsquo;i&rsquo;, <em>[&lsquo;!&rsquo;]), </em>)[(-1)])((lambda <em>: (</em>.<strong>setitem</strong>(&lsquo;!&rsquo;, [
+(<em>[&lsquo;j&rsquo;] if (&lsquo;j&rsquo; in </em>) else j) for  <em>[ &lsquo;i&rsquo;] in (</em>[&lsquo;zip&rsquo;] if (&lsquo;zip&rsquo; in <em>) else
+zip)((</em>[&lsquo;l0&rsquo;] if (&lsquo;l0&rsquo; in <em>) else l0), (</em>[&lsquo;l1&rsquo;] if (&lsquo;l1&rsquo; in <em>) else l1)) for
+</em>[&lsquo;j&rsquo;] in (<em>[&lsquo;i&rsquo;] if (&lsquo;i&rsquo; in </em>) else i)]), <em>.<strong>setitem</strong>(&lsquo;l&rsquo;, </em>[&lsquo;!&rsquo;]), <em>)[-1
+])((lambda </em>: (<em>.<strong>setitem</strong>(&lsquo;!&rsquo;, [1373, 1281, 1288, 1373, 1290, 1294, 1375,
+1371,1289, 1281, 1280, 1293, 1289, 1280, 1373, 1294, 1289, 1280, 1372, 1288,
+1375,1375, 1289, 1373, 1290, 1281, 1294, 1302, 1372, 1355, 1366, 1372, 1302,
+1360, 1368, 1354, 1364, 1370, 1371, 1365, 1362, 1368, 1352, 1374, 1365, 1302
+]), </em>.<strong>setitem</strong>(&lsquo;l1&rsquo;,<em>[&lsquo;!&rsquo;]), </em>)[-1])((lambda <em>: (</em>.<strong>setitem</strong>(&lsquo;!&rsquo;,[1375,
+1368, 1294, 1293, 1373, 1295, 1290, 1373, 1290, 1293, 1280, 1368, 1368,1294,
+1293, 1368, 1372, 1292, 1290, 1291, 1371, 1375, 1280, 1372, 1281, 1293,1373,
+1371, 1354, 1370, 1356, 1354, 1355, 1370, 1357, 1357, 1302, 1366, 1303,1368,
+1354, 1355, 1356, 1303, 1366, 1371]), <em>.<strong>setitem</strong>(&lsquo;l0&rsquo;, </em>[&lsquo;!&rsquo;]), _)[(-1)])</p>
+
+<pre><code>        ({ 'g': g, 'c': c, 'd': d, '$': None})))))))['$'])
+</code></pre>
+
+<p>```</p>
+
+<p>I think that was the first time I was seeing obfuscated Python and believe me I did a really strange face when seeing that snippet. But well, with a bit of patience we should manage to get a better understanding of how it is working, let&rsquo;s get to it!</p>
+
+<h2>Tidying up the last one..</h2>
+
+<p>Before doing that here are things we can directly observe just by looking closely at the snippet:</p>
+
+<ul>
+<li>We know this function has three arguments ; we don&rsquo;t know them at this point though</li>
+<li>The snippet seems to reuse <em>__setitem__</em> quite a lot ; it may mean two things for us:
+
+<ul>
+<li>The only standard Python object I know of with a <em>__setitem__</em> function is <em>dictionary</em>,</li>
+<li>The way the snippet looks like, it seems that once we will understand one of those <em>__setitem__</em> call, we will understand them all</li>
+</ul>
+</li>
+<li>The following standard functions are used: <em>chr</em>, <em>len</em>, <em>zip</em>
+
+<ul>
+<li>That means manipulation of strings, integers and iterables</li>
+</ul>
+</li>
+<li>There are two noticeable operators: <em>mod</em> and <em>xor</em></li>
+</ul>
+
+
+<p>With all that information in our sleeve, the first thing I did was to try to clean it up, starting from the last lambda in the snippet. It gives something like:</p>
+
+<p>```python Last lambda cleaned
+tab0 = [</p>
+
+<pre><code>1375, 1368, 1294, 1293, 1373, 1295, 1290, 1373, 1290, 1293,
+1280, 1368, 1368, 1294, 1293, 1368, 1372, 1292, 1290, 1291,
+1371, 1375, 1280, 1372, 1281, 1293, 1373, 1371, 1354, 1370,
+1356, 1354, 1355, 1370, 1357, 1357, 1302, 1366, 1303, 1368,
+1354, 1355, 1356, 1303, 1366, 1371
+</code></pre>
+
+<p>]</p>
+
+<p>z = lambda x: (</p>
+
+<pre><code>x.__setitem__('!', tab0),
+x.__setitem__('l0', x['!']),
+x
+</code></pre>
+
+<p>)[-1]
+```</p>
+
+<p>That lambda takes a dictionary <em>x</em>, sets two items, generates a tuple with a reference to the dictionary at the end of the tuple ; finally the lambda is going to return that same dictionary.
+It also uses <em>x[&lsquo;!&rsquo;]</em> as a temporary variable to then assign its value to <em>x[&lsquo;l0&rsquo;]</em>.</p>
+
+<p>Long story short, it basically takes a dictionary, updates it and returns it to the caller: clever trick to pass that same object across lambdas. We can also see that easily in Python directly:</p>
+
+<p><code>text lambda, dictionary &amp; setitem
+In [8]: d = {}
+In [9]: z(d)
+Out[9]:
+{'!': [1375,
+  ...
+ 'l0': [1375,
+  ...
+}
+</code></p>
+
+<p>That lambda is even called with a dictionary that will contain, among other things, the three user controlled variable: <em>g</em>, <em>c</em>, <em>d</em>.
+That dictionary seems to be some kind of storage used to keep track of all the variables that will be used across those lambdas.</p>
+
+<p>```python lambda &amp; the resulting dictionary</p>
+
+<h1>Returns { &lsquo;g&rsquo; : g, &lsquo;c&rsquo;, &rsquo;d': d, &lsquo;$&rsquo;:None, &lsquo;!&rsquo;:tab0, &lsquo;l0&rsquo;:tab0}</h1>
+
+<p>last_res = (</p>
+
+<pre><code>(
+    lambda x: (
+        x.__setitem__('!', tab0),
+        x.__setitem__('l0', x['!']),
+        x
+    )[-1]
+)
+({ 'g': g, 'c': c, 'd': d, '$': None})
+</code></pre>
+
+<p>)
+```</p>
+
+<h2>..then the one before&hellip;</h2>
+
+<p>Now if we repeat that same operation with the one before the last lambda, we have the exact same pattern:</p>
+
+<p>```python lambda before the last one
+tab1 = [</p>
+
+<pre><code>1373, 1281, 1288, 1373, 1290, 1294, 1375, 1371, 1289, 1281,
+1280, 1293, 1289, 1280, 1373, 1294, 1289, 1280, 1372, 1288,
+1375, 1375, 1289, 1373, 1290, 1281, 1294, 1302, 1372, 1355,
+1366, 1372, 1302, 1360, 1368, 1354, 1364, 1370, 1371, 1365,
+1362, 1368, 1352, 1374, 1365, 1302
+</code></pre>
+
+<p>]</p>
+
+<p>zz = lambda x: (</p>
+
+<pre><code>x.__setitem__('!', tab1),
+x.__setitem__('l1', x['!']),
+x
+</code></pre>
+
+<p>)[-1]
+```</p>
+
+<p>Perfect, now let&rsquo;s repeat the same operations over and over again. At some point, the whole thing becomes crystal clear (sort-of):</p>
+
+<p>```python cleaned nested lambdas</p>
+
+<h1>Returns {</h1>
+
+<p>  # &lsquo;g&rsquo;:g, &lsquo;c&rsquo;:c, &rsquo;d':d,
+  # &lsquo;!&rsquo;:[],
+  # &rsquo;s':[],
+  # &lsquo;l&rsquo;:[j for i in zip(tab0, tab1) for j in i],
+  # &lsquo;l1&rsquo;:tab1,
+  # &lsquo;l0&rsquo;:tab0,
+  # &lsquo;i&rsquo;: 0,
+  # &lsquo;j&rsquo;: 1302,
+  # &lsquo;$&rsquo;:None</p>
+
+<h1>}</h1>
+
+<p>res_after_all_operations = (
+  (</p>
+
+<pre><code>lambda x: (
+    x.__setitem__('!', []),
+    x.__setitem__('s', x['!']),
+    x
+)[-1]
+</code></pre>
+
+<p>  )
+  # ..
+  (</p>
+
+<pre><code>(
+  lambda x: (
+      x.__setitem__('!', ((x['d'] if ('d' in x) else d) ^ (x['d'] if ('d' in x) else d))),
+      x.__setitem__('i', x['!']),
+      x
+  )[-1]
+)
+# ..
+(
+  (
+    lambda x: (
+        x.__setitem__('!', [(x['j'] if ('j' in x) else j) for x[ 'i'] in (x['zip'] if ('zip' in x) else zip)((x['l0'] if ('l0' in x) else l0), (x['l1'] if ('l1' in x) else l1)) for x['j'] in (x['i'] if ('i' in x) else i)]),
+        x.__setitem__('l', x['!']),
+        x
+    )[-1]
+  )
+  # Returns { 'g':g, 'c':c, 'd':d, '!':tab1, 'l1':tab1, 'l0':tab0, '$':None}
+  (
+    (
+      lambda x: (
+          x.__setitem__('!', tab1),
+          x.__setitem__('l1', x['!']),
+          x
+      )[-1]
+    )
+    # Return { 'g' : g, 'c', 'd': d, '!':tab0, 'l0':tab0, '$':None }
+    (
+      (
+        lambda x: (
+            x.__setitem__('!', tab0),
+            x.__setitem__('l0', x['!']),
+            x
+        )[-1]
+      )
+      ({ 'g': g, 'c': c, 'd': d, '$': None})
+    )
+  )
+)
+</code></pre>
+
+<p>  )
+)
+```</p>
+
+<h2>Putting it all together</h2>
+
+<p>After doing all of that, we know now the types of the three variables the function needs to work properly (and we don&rsquo;t really need more to be honest):</p>
+
+<ul>
+<li><em>g</em> is an integer that will be mod 4
+
+<ul>
+<li>if the value is divisible by 4, the function returns nothing ; so we will need to have this variable sets to 1 for example</li>
+</ul>
+</li>
+<li><em>c</em> is another integer that looks like a xor key ; if we look at the snippet, this variable is used to xor each byte of <em>x[&lsquo;l&rsquo;]</em> (which is the table with tab0 and tab1)
+
+<ul>
+<li>this is the interesting parameter</li>
+</ul>
+</li>
+<li><em>d</em> is another integer that we can also ignore: it&rsquo;s only used to set <em>x[&lsquo;i&rsquo;]</em> to zero by xoring <em>x[&rsquo;d']</em> by itself.</li>
+</ul>
+
+
+<p>We don&rsquo;t need anything else really now: no more lambdas, no more pain, no more tears. It is time to write what I call, an <a href="https://github.com/0vercl0k/stuffz/blob/master/ql-chall-python-2014/bf_with_lambdas_cleaned.py"><em>educated</em> brute-forcer</a>, to find the correct value of <em>c</em>:
+```python bf_with_lambdas_cleaned.py
+import sys</p>
+
+<p>def main(argc, argv):</p>
+
+<pre><code>tab0 = [1375, 1368, 1294, 1293, 1373, 1295, 1290, 1373, 1290, 1293, 1280, 1368, 1368,1294, 1293, 1368, 1372, 1292, 1290, 1291, 1371, 1375, 1280, 1372, 1281, 1293,1373, 1371, 1354, 1370, 1356, 1354, 1355, 1370, 1357, 1357, 1302, 1366, 1303,1368, 1354, 1355, 1356, 1303, 1366, 1371]
+tab1 = [1373, 1281, 1288, 1373, 1290, 1294, 1375, 1371,1289, 1281, 1280, 1293, 1289, 1280, 1373, 1294, 1289, 1280, 1372, 1288, 1375,1375, 1289, 1373, 1290, 1281, 1294, 1302, 1372, 1355, 1366, 1372, 1302, 1360, 1368, 1354, 1364, 1370, 1371, 1365, 1362, 1368, 1352, 1374, 1365, 1302]
+
+func = (
+    lambda g, c, d: 
+    (
+        lambda x: (
+            x.__setitem__('$', ''.join([(x['chr'] if ('chr' in x) else chr)((x['_'] if ('_' in x) else x)) for x['_'] in (x['s'] if ('s' in x) else s)[::-1]])),
+            x
+        )[-1]
+    )
+    (
+        (
+            lambda x: 
+                (lambda f, x: f(f, x))
+            (
+                (
+                    lambda __, x: 
+                    (
+                        (lambda x: __(__, x))
+                        (
+                            # i += 1
+                            (
+                                lambda x: (
+                                    x.__setitem__('i', ((x['i'] if ('i' in x) else i) + 1)),
+                                    x
+                                )[-1]
+                            )
+                            (
+                                # s += [c ^ l[i]]
+                                (
+                                    lambda x: (
+                                        x.__setitem__('s', (
+                                                (x['s'] if ('s' in x) else s) +
+                                                [((x['l'] if ('l' in x) else l)[(x['i'] if ('i' in x) else i)] ^ (x['c'] if ('c' in x) else c))]
+                                            )
+                                        ),
+                                        x
+                                    )[-1]
+                                )
+                                (x)
+                            )
+                        )
+                        # if ((x['g'] % 4) and (x['i'] &lt; len(l))) else x
+                        if (((x['g'] if ('g' in x) else g) % 4) and ((x['i'] if ('i' in x) else i)&lt; (x['len'] if ('len' in x) else len)((x['l'] if ('l' in x) else l))))
+                        else x
+                    )
+                ),
+                x
+            )
+        )
+        # Returns { 'g':g, 'c':c, 'd':d, '!':zip(tab1, tab0), 'l':zip(tab1, tab0), l1':tab1, 'l0':tab0, 'i': 0, 'j': 1302, '!':0, 's':[] }
+        (
+            (
+                lambda x: (
+                    x.__setitem__('!', []),
+                    x.__setitem__('s', x['!']),
+                    x
+                )[-1]
+            )
+            # Returns { 'g':g, 'c':c, 'd':d, '!':zip(tab1, tab0), 'l':zip(tab1, tab0), l1':tab1, 'l0':tab0, 'i': 0, 'j': 1302, '!':0}
+            (
+                (
+                    lambda x: (
+                        x.__setitem__('!', ((x['d'] if ('d' in x) else d) ^ (x['d'] if ('d' in x) else d))),
+                        x.__setitem__('i', x['!']),
+                        x
+                    )[-1]
+                )
+                # Returns { 'g' : g, 'c', 'd': d, '!':zip(tab1, tab0), 'l':zip(tab1, tab0), l1':tab1, 'l0':tab0, 'i': (1371, 1302), 'j': 1302}
+                (
+                    (
+                        lambda x: (
+                            x.__setitem__('!', [(x['j'] if ('j' in x) else j) for x[ 'i'] in (x['zip'] if ('zip' in x) else zip)((x['l0'] if ('l0' in x) else l0), (x['l1'] if ('l1' in x) else l1)) for x['j'] in (x['i'] if ('i' in x) else i)]),
+                            x.__setitem__('l', x['!']),
+                            x
+                        )[-1]
+                    )
+                    # Returns { 'g' : g, 'c', 'd': d, '!':tab1, 'l1':tab1, 'l0':tab0}
+                    (
+                        (
+                            lambda x: (
+                                x.__setitem__('!', tab1),
+                                x.__setitem__('l1', x['!']),
+                                x
+                            )[-1]
+                        )
+                        # Return { 'g' : g, 'c', 'd': d, '!' : tab0, 'l0':tab0}
+                        (
+                            (
+                                lambda x: (
+                                    x.__setitem__('!', tab0),
+                                    x.__setitem__('l0', x['!']),
+                                    x
+                                )[-1]
+                            )
+                            ({ 'g': g, 'c': c, 'd': d, '$': None})
+                        )
+                    )
+                )
+            )
+        )
+    )['$']
+)
+
+for i in range(0x1000):
+    try:
+        ret = func(1, i, 0)
+        if 'quarks' in ret:
+            print ret
+    except:
+        pass
+return 1
+</code></pre>
+
+<p>if <strong>name</strong> == &lsquo;<strong>main</strong>&rsquo;:</p>
+
+<pre><code>sys.exit(main(len(sys.argv), sys.argv))
+</code></pre>
+
+<p>```</p>
+
+<p>And after running it, we are good to go:
+<code>text w00tw00t
+D:\Codes\challenges\ql-python&gt;bf_with_lambdas_cleaned.py
+/blog.quarkslab.com/static/resources/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+</code></p>
+
+<h1>A custom ELF64 Python interpreter you shall debug</h1>
+
+<h2>Recon</h2>
+
+<p>All right, here we are: we now have the real challenge. First, let&rsquo;s see what kind of information we get for free:
+<code>bash recon
+overclok@wildout:~/chall/ql-py$ file b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf: ELF 64-bit LSB  executable, x86-64, version 1 (SYSV), dynamically linked (uses shared libs),
+for GNU/Linux 2.6.26, not stripped
+overclok@wildout:~/chall/ql-py$ ls -lah b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+-rwxrw-r-x 1 overclok overclok 7.9M Sep  8 21:03 b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+</code></p>
+
+<p>The binary is quite big, not good for us. But on the other hand, the binary isn&rsquo;t stripped so we might find useful debugging information at some point.</p>
+
+<p>```bash ./b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+overclok@wildout:~/chall/ql-py$ /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+Python 2.7.8+ (nvcs/newopcodes:a9bd62e4d5f2+, Sep  1 2014, 11:41:46)
+[GCC 4.8.2] on linux2
+Type &ldquo;help&rdquo;, &ldquo;copyright&rdquo;, &ldquo;credits&rdquo; or &ldquo;license&rdquo; for more information.</p>
+
+<blockquote><blockquote><blockquote><p>```</p></blockquote></blockquote></blockquote>
+
+<p>That does explain the size of the binary then: we basically have something that looks like a custom Python interpreter. Note that I also remembered reading <em><a href="http://blog.quarkslab.com/building-an-obfuscated-python-interpreter-we-need-more-opcodes.html">Building an obfuscated Python interpreter: we need more opcodes</a></em> on <em>Quarkslab</em>&rsquo;s blog where Serge described how you could tweak the interpreter sources to add / change some opcodes either for optimization or obfuscation purposes.</p>
+
+<h2>Finding the interesting bits</h2>
+
+<p>The next step is to figure out what part of the binary is interesting, what functions have been modified, and where we find the problem we need to solve to get the flag. My idea for that was to use a <em>binary-diffing</em> tool between an original <em>Python278</em> interpreter and the one we were given.</p>
+
+<p>To do so I just grabbed <em>Python278</em>&rsquo;s sources and compiled them by myself:</p>
+
+<p><code>bash compiling Py278
+overclok@wildout:~/chall/ql-py$ wget https://www.python.org/ftp/python/2.7.8/Python-2.7.8.tgz &amp;&amp; tar xzvf Python-2.7.8.tgz
+overclok@wildout:~/chall/ql-py$ tar xzvf Python-2.7.8.tgz
+overclok@wildout:~/chall/ql-py$ cd Python-2.7.8/ &amp;&amp; ./configure &amp;&amp; make
+overclok@wildout:~/chall/ql-py/Python-2.7.8$ ls -lah ./python
+-rwxrwxr-x 1 overclok overclok 8.0M Sep  5 00:13 ./python
+</code></p>
+
+<p>The resulting binary has a similar size, so it should do the job even if I&rsquo;m not using <em>GCC 4.8.2</em> and the same compilation/optimization options. To perform the <em>diffing</em> I used <em>IDA Pro</em> and <a href="https://code.google.com/p/patchdiff2/">Patchdiff v2.0.10</a>.</p>
+
+<h2>```text Patchdiff result</h2>
+
+<p>PatchDiff Plugin v2.0.10
+Copyright &copy; 2010-2011, Nicolas Pouvesle</p>
+
+<h2>Copyright &copy; 2007-2009, Tenable Network Security, Inc</h2>
+
+<p>Scanning for functions &hellip;
+parsing second idb&hellip;
+parsing first idb&hellip;
+diffing&hellip;
+Identical functions:   2750
+Matched functions:     176
+Unmatched functions 1: 23
+Unmatched functions 2: 85
+done!
+```</p>
+
+<p>Once the tool has finished its analysis we just have to check the list of unmatched function names (around one hundred of them, so it&rsquo;s pretty quick), and eventually we see that:</p>
+
+<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/initdo_not_run_me.png"></p>
+
+<p>That function directly caught my eyes (you can even check it doesn&rsquo;t exist in the <em>Python278</em> source tree obviously :&ndash;)), and it appears this function is just setting up a Python module called <em>do_not_run_me</em>.</p>
+
+<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/initdonotrunme_assembly.png"></p>
+
+<p>Let&rsquo;s import it:</p>
+
+<p>```python do_not_run_me module
+overclok@wildout:~/chall/ql-py$ /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+iPython 2.7.8+ (nvcs/newopcodes:a9bd62e4d5f2+, Sep  1 2014, 11:41:46)
+[GCC 4.8.2] on linux2
+Type &ldquo;help&rdquo;, &ldquo;copyright&rdquo;, &ldquo;credits&rdquo; or &ldquo;license&rdquo; for more information.</p>
+
+<blockquote><blockquote><blockquote><p>import do_not_run_me
+print do_not_run_me.<strong>doc</strong>
+None
+dir(do_not_run_me)
+[&lsquo;<strong>doc</strong>&rsquo;, &lsquo;<strong>name</strong>&rsquo;, &lsquo;<strong>package</strong>&rsquo;, &lsquo;run_me&rsquo;]
+print do_not_run_me.run_me.<strong>doc</strong>
+There are two kinds of people in the world: those who say there is no such thing as infinite recursion, and those who say ``There are two kinds of people in the world: those who say there is no such thing as infinite recursion, and those who say &hellip;
+do_not_run_me.run_me(&lsquo;doar-e&rsquo;)
+Segmentation fault
+```</p></blockquote></blockquote></blockquote>
+
+<p>All right, we now have something to look at and we are going to do so from a low level point of view because that&rsquo;s what I like ; so don&rsquo;t expect big/magic hacks here :).</p>
+
+<p>If you are not really familiar with Python&rsquo;s VM structures I would advise you to read quickly through this article <em><a href="https://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Deep Dive Into Python’s VM: Story of LOAD_CONST Bug</a></em>, and you should be all set for the next parts.</p>
+
+<h2>do_not_run_me.run_me</h2>
+
+<p>The function is quite small, so it should be pretty quick to analyze:</p>
+
+<ol>
+<li>the first part makes sure that we pass a string as an argument when calling <em>run_me</em>,</li>
+<li>then a custom <em>marshaled</em> function is loaded, a function is created out of it, and called,</li>
+<li>after that it creates another function from the string we pass to the function (which explains the <em>segfault</em> just above),</li>
+<li>finally, a last function is created from another hardcoded <em>marshaled</em> string.</li>
+</ol>
+
+
+<h3>First marshaled function</h3>
+
+<p>To understand it we have to dump it first, to unmarshal it and to analyze the resulting code object:</p>
+
+<p>```text unmarshaling the first function
+overclok@wildout:~/chall/ql-py$ gdb -q /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+Reading symbols from /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf&hellip;done.
+gdb$ set disassembly-flavor intel
+gdb$ disass run_me
+Dump of assembler code for function run_me:
+   0x0000000000513d90 &lt;+0>:     push   rbp
+   0x0000000000513d91 &lt;+1>:     mov    rdi,rsi
+   0x0000000000513d94 &lt;+4>:     xor    eax,eax
+   0x0000000000513d96 &lt;+6>:     mov    esi,0x56c70b
+   0x0000000000513d9b &lt;+11>:    push   rbx
+   0x0000000000513d9c &lt;+12>:    sub    rsp,0x28
+   0x0000000000513da0 &lt;+16>:    lea    rcx,[rsp+0x10]
+   0x0000000000513da5 &lt;+21>:    mov    rdx,rsp</p>
+
+<p>   ; Parses the arguments we gave, it expects a string object
+   0x0000000000513da8 &lt;+24>:    call   0x4cf430 &lt;PyArg_ParseTuple>
+   0x0000000000513dad &lt;+29>:    xor    edx,edx
+   0x0000000000513daf &lt;+31>:    test   eax,eax
+   0x0000000000513db1 &lt;+33>:    je     0x513e5e &lt;run_me+206></p>
+
+<p>   0x0000000000513db7 &lt;+39>:    mov    rax,QWORD PTR [rip+0x2d4342]
+   0x0000000000513dbe &lt;+46>:    mov    esi,0x91
+   0x0000000000513dc3 &lt;+51>:    mov    edi,0x56c940
+   0x0000000000513dc8 &lt;+56>:    mov    rax,QWORD PTR [rax+0x10]
+   0x0000000000513dcc &lt;+60>:    mov    rbx,QWORD PTR [rax+0x30]</p>
+
+<p>   ; Creates a code object from the marshaled string
+   ; PyObject<em> PyMarshal_ReadObjectFromString(char </em>string, Py_ssize_t len)
+   0x0000000000513dd0 &lt;+64>:    call   0x4dc020 &lt;PyMarshal_ReadObjectFromString>
+   0x0000000000513dd5 &lt;+69>:    mov    rdi,rax
+   0x0000000000513dd8 &lt;+72>:    mov    rsi,rbx</p>
+
+<p>   ; Creates a function object from the marshaled string
+   0x0000000000513ddb &lt;+75>:    call   0x52c630 &lt;PyFunction_New>
+   0x0000000000513de0 &lt;+80>:    xor    edi,edi
+[&hellip;]
+gdb$ r -c &lsquo;import do_not_run_me as v; v.run_me(&ldquo;&rdquo;)&rsquo;
+Starting program: /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf -c &lsquo;import do_not_run_me as v; v.run_me(&ldquo;&rdquo;)&rsquo;
+[&hellip;]
+```</p>
+
+<p>To start, we can set two software breakpoints <em>@0x0000000000513dd0</em> and <em>@0x0000000000513dd5</em> to inspect both the marshaled string and the resulting code object.</p>
+
+<p>Just a little reminder though on the <em>Linux/x64 ABI</em>: &ldquo;The first six integer or pointer arguments are passed in registers RDI, RSI, RDX, RCX, R8, and R9&rdquo;.</p>
+
+<p><code>text unmarshaled string inspection
+gdb$ p /x $rsi
+$2 = 0x91
+gdb$ x/145bx $rdi
+0x56c940 &lt;+00&gt;:  0x63    0x00    0x00    0x00    0x00    0x01    0x00    0x00
+0x56c948 &lt;+08&gt;:  0x00    0x02    0x00    0x00    0x00    0x43    0x00    0x00
+0x56c950 &lt;+16&gt;:  0x00    0x73    0x14    0x00    0x00    0x00    0x64    0x01
+0x56c958 &lt;+24&gt;:  0x00    0x87    0x00    0x00    0x7c    0x00    0x00    0x64
+0x56c960 &lt;+32&gt;:  0x01    0x00    0x3c    0x61    0x00    0x00    0x7c    0x00
+0x56c968 &lt;+40&gt;:  0x00    0x1b    0x28    0x02    0x00    0x00    0x00    0x4e
+0x56c970 &lt;+48&gt;:  0x69    0x01    0x00    0x00    0x00    0x28    0x01    0x00
+0x56c978 &lt;+56&gt;:  0x00    0x00    0x74    0x04    0x00    0x00    0x00    0x54
+0x56c980 &lt;+64&gt;:  0x72    0x75    0x65    0x28    0x01    0x00    0x00    0x00
+0x56c988 &lt;+72&gt;:  0x74    0x0e    0x00    0x00    0x00    0x52    0x6f    0x62
+0x56c990 &lt;+80&gt;:  0x65    0x72    0x74    0x5f    0x46    0x6f    0x72    0x73
+0x56c998 &lt;+88&gt;:  0x79    0x74    0x68    0x28    0x00    0x00    0x00    0x00
+0x56c9a0 &lt;+96&gt;:  0x28    0x00    0x00    0x00    0x00    0x73    0x10    0x00
+0x56c9a8 &lt;+104&gt;: 0x00    0x00    0x6f    0x62    0x66    0x75    0x73    0x63
+0x56c9b0 &lt;+112&gt;: 0x61    0x74    0x65    0x2f    0x67    0x65    0x6e    0x2e
+0x56c9b8 &lt;+120&gt;: 0x70    0x79    0x74    0x03    0x00    0x00    0x00    0x66
+0x56c9c0 &lt;+128&gt;: 0x6f    0x6f    0x05    0x00    0x00    0x00    0x73    0x06
+0x56c9c8 &lt;+136&gt;: 0x00    0x00    0x00    0x00    0x01    0x06    0x02    0x0a
+0x56c9d0 &lt;+144&gt;: 0x01
+</code></p>
+
+<p>And obviously you can&rsquo;t use the Python <em>marshal</em> module to load &amp; inspect the resulting object as the author seems to have removed the methods <em>loads</em> and <em>dumps</em>:</p>
+
+<p>```text fuu
+overclok@wildout:~/chall/ql-py$ /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+Python 2.7.8+ (nvcs/newopcodes:a9bd62e4d5f2+, Sep  1 2014, 11:41:46)
+[GCC 4.8.2] on linux2
+Type &ldquo;help&rdquo;, &ldquo;copyright&rdquo;, &ldquo;credits&rdquo; or &ldquo;license&rdquo; for more information.</p>
+
+<blockquote><blockquote><blockquote><p>import marshal
+dir(marshal)
+[&lsquo;<strong>doc</strong>&rsquo;, &lsquo;<strong>name</strong>&rsquo;, &lsquo;<strong>package</strong>&rsquo;, &lsquo;version&rsquo;]
+```</p></blockquote></blockquote></blockquote>
+
+<p>We could still try to run the marshaled string in our fresh compiled original Python though:
+```python unmarshal in an original Python278</p>
+
+<blockquote><blockquote><blockquote><p>import marshal
+part_1 = marshal.loads(&lsquo;c\x00\x00\x00\x00\x01\x00\x00\x00\x02\x00\x00\x00C\x00\x00\x00s\x14\x00\x00\x00d\x01\x00\x87\x00\x00|\x00\x00d\x01\x00&lt;a\x00\x00|\x00\x00\x1b(\x02\x00\x00\x00Ni\x01\x00\x00\x00(\x01\x00\x00\x00t\x04\x00\x00\x00True(\x01\x00\x00\x00t\x0e\x00\x00\x00Robert_Forsyth(\x00\x00\x00\x00(\x00\x00\x00\x00s\x10\x00\x00\x00obfuscate/gen.pyt\x03\x00\x00\x00foo\x05\x00\x00\x00s\x06\x00\x00\x00\x00\x01\x06\x02\n\x01&rsquo;)
+part_1.co_code
+&rsquo;d\x01\x00\x87\x00\x00|\x00\x00d\x01\x00&lt;a\x00\x00|\x00\x00\x1b'
+part_1.co_varnames
+(&lsquo;Robert_Forsyth&rsquo;,)
+part_1.co_names
+(&lsquo;True&rsquo;,)
+```</p></blockquote></blockquote></blockquote>
+
+<p>We can also go further by trying to create a function out of this code object, to call it and/or to disassemble it even:
+```python fuu2</p>
+
+<blockquote><blockquote><blockquote><p>from types import FunctionType
+def a():
+&hellip;     pass
+&hellip;
+f = FunctionType(part_1, a.func_globals)
+f()
+Traceback (most recent call last):
+  File &ldquo;<stdin>&rdquo;, line 1, in <module>
+  File &ldquo;obfuscate/gen.py&rdquo;, line 8, in foo
+UnboundLocalError: local variable &lsquo;Robert_Forsyth&rsquo; referenced before assignment
+import dis
+dis.dis(f)
+  6           0 LOAD_CONST               1 (1)</p>
+
+<pre><code>          3 LOAD_CLOSURE             0
+</code></pre>
+
+<p>Traceback (most recent call last):
+  File &ldquo;<stdin>&rdquo;, line 1, in <module>
+  File &ldquo;/home/overclok/chall/ql-py/Python-2.7.8/Lib/dis.py&rdquo;, line 43, in dis</p>
+
+<pre><code>disassemble(x)
+</code></pre>
+
+<p>  File &ldquo;/home/overclok/chall/ql-py/Python-2.7.8/Lib/dis.py&rdquo;, line 107, in disassemble</p>
+
+<pre><code>print '(' + free[oparg] + ')',
+</code></pre>
+
+<p>IndexError: tuple index out of range
+```</p></blockquote></blockquote></blockquote>
+
+<h3>Introducing <em>dpy.py</em></h3>
+
+<p>All right, as expected this does not work at all: seems like the custom interpreter uses different opcodes which the original virtual CPU doesn&rsquo;t know about.
+Anyway, let&rsquo;s have a look at this object directly from memory because we like low level things (remember?):</p>
+
+<p>```text inspecting the code object created
+gdb$ p <em>(PyObject</em>)$rax
+$3 = {ob_refcnt = 0x1, ob_type = 0x7d3da0 &lt;PyCode_Type>}</p>
+
+<p>; Ok it is a code object, let&rsquo;s dump entirely the object now
+gdb$ p <em>(PyCodeObject</em>)$rax
+$4 = {
+  ob_refcnt = 0x1,
+  ob_type = 0x7d3da0 &lt;PyCode_Type>,
+  co_argcount = 0x0, co_nlocals = 0x1, co_stacksize = 0x2, co_flags = 0x43,
+  co_code = 0x7ffff7f09df0,
+  co_consts = 0x7ffff7ee2908,
+  co_names = 0x7ffff7f8e390,
+  co_varnames = 0x7ffff7f09ed0,
+  co_freevars = 0x7ffff7fa7050, co_cellvars = 0x7ffff7fa7050,
+  co_filename = 0x7ffff70a9b58,
+  co_name = 0x7ffff7f102b0,
+  co_firstlineno = 0x5,
+  co_lnotab = 0x7ffff7e59900,
+  co_zombieframe = 0x0,
+  co_weakreflist = 0x0
+}
+```</p>
+
+<p>Perfect, and you can do that for every single field of this structure:</p>
+
+<ul>
+<li>to dump the bytecode,</li>
+<li>the constants used,</li>
+<li>the variable names,</li>
+<li>etc.</li>
+</ul>
+
+
+<p>Yes, this is annoying, very much so. That is exactly why there is <em><a href="https://github.com/0vercl0k/stuffz/blob/master/ql-chall-python-2014/dpy.py">dpy</a></em>, a <em>GDB</em> Python command I wrote to dump Python objects in a much easy way directly from memory:</p>
+
+<p>```text show-casing dpy
+gdb$ r
+Starting program: /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+[&hellip;]</p>
+
+<blockquote><blockquote><blockquote><p>a = { 1 : [1,2,3], &lsquo;two&rsquo; : 31337, 3 : (1,&lsquo;lul&rsquo;, [3,4,5])}
+print hex(id(a))
+0x7ffff7ef1050
+^C
+Program received signal SIGINT, Interrupt.
+gdb$ dpy 0x7ffff7ef1050
+dict &ndash;> {1: [1, 2, 3], 3: (1, &lsquo;lul&rsquo;, [3, 4, 5]), &lsquo;two&rsquo;: 31337}
+```</p></blockquote></blockquote></blockquote>
+
+<h3>I need a disassembler now dad</h3>
+
+<p>But let&rsquo;s get back to our second breakpoint now, and see what <em>dpy</em> gives us with the resulting code object:</p>
+
+<p><code>text dpy code object
+gdb$ dpy $rax
+code -&gt; {'co_code': 'd\x01\x00\x87\x00\x00|\x00\x00d\x01\x00&lt;a\x00\x00|\x00\x00\x1b',
+ 'co_consts': (None, 1),
+ 'co_name': 'foo',
+ 'co_names': ('True',),
+ 'co_varnames': ('Robert_Forsyth',)}
+</code></p>
+
+<p>Because we know the bytecode used by this interpreter is different than the original one, we have to figure out the equivalent between the instructions and their opcodes:</p>
+
+<ol>
+<li>Either we can reverse-engineer each handler of the virtual CPU,</li>
+<li>Either we can create functions in both interpreters, disassemble those (thanks to <em>dpy</em>) and match the equivalent opcodes</li>
+</ol>
+
+
+<p>I guess we can mix both of them to be more efficient:</p>
+
+<p>```text deducing equivalent opcodes
+Python 2.7.8 (default, Sep  5 2014, 00:13:07)
+[GCC 4.8.2] on linux2
+Type &ldquo;help&rdquo;, &ldquo;copyright&rdquo;, &ldquo;credits&rdquo; or &ldquo;license&rdquo; for more information.</p>
+
+<blockquote><blockquote><blockquote><p>def assi(x):
+&hellip;     x = &lsquo;hu&rsquo;
+&hellip;
+def add(x):
+&hellip;     return x + 31337
+&hellip;
+import dis
+dis.dis(assi)
+  2           0 LOAD_CONST               1 (&lsquo;hu&rsquo;)</p>
+
+<pre><code>          3 STORE_FAST               0 (x)
+          6 LOAD_CONST               0 (None)
+          9 RETURN_VALUE
+</code></pre>
+
+<p>dis.dis(add)
+  2           0 LOAD_FAST                0 (x)</p>
+
+<pre><code>          3 LOAD_CONST               1 (31337)
+          6 BINARY_ADD
+          7 RETURN_VALUE
+</code></pre>
+
+<p>assi.func_code.co_code
+&rsquo;d\x01\x00}\x00\x00d\x00\x00S'
+add.func_code.co_code
+&lsquo;|\x00\x00d\x01\x00\x17S&rsquo;</p></blockquote></blockquote></blockquote>
+
+<h1>In the custom interpreter</h1>
+
+<p>gdb$ r
+Starting program: /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library &ldquo;/lib/x86_64-linux-gnu/libthread_db.so.1&rdquo;.
+Python 2.7.8+ (nvcs/newopcodes:a9bd62e4d5f2+, Sep  1 2014, 11:41:46)
+[GCC 4.8.2] on linux2
+Type &ldquo;help&rdquo;, &ldquo;copyright&rdquo;, &ldquo;credits&rdquo; or &ldquo;license&rdquo; for more information.</p>
+
+<blockquote><blockquote><blockquote><p>def assi(x):
+&hellip;     x = &lsquo;hu&rsquo;
+&hellip;
+def add(x):
+&hellip;     return x + 31337
+&hellip;
+print hex(id(assi))
+0x7ffff7f0c578
+print hex(id(add))
+0x7ffff7f0c5f0
+^C
+Program received signal SIGINT, Interrupt.
+gdb$ dpy 0x7ffff7f0c578
+function &ndash;> {&lsquo;func_code&rsquo;: {&lsquo;co_code&rsquo;: &rsquo;d\x01\x00\x87\x00\x00d\x00\x00\x1b',</p>
+
+<pre><code>           'co_consts': (None, 'hu'),
+           'co_name': 'assi',
+           'co_names': (),
+           'co_varnames': ('x',)},
+</code></pre>
+
+<p> &lsquo;func_dict&rsquo;: None,
+ &lsquo;func_doc&rsquo;: None,
+ &lsquo;func_module&rsquo;: &lsquo;<strong>main</strong>&rsquo;,
+ &lsquo;func_name&rsquo;: &lsquo;assi&rsquo;}
+gdb$ dpy 0x7ffff7f0c5f0
+function &ndash;> {&lsquo;func_code&rsquo;: {&lsquo;co_code&rsquo;: &lsquo;\x8f\x00\x00d\x01\x00=\x1b&rsquo;,</p>
+
+<pre><code>           'co_consts': (None, 31337),
+           'co_name': 'add',
+           'co_names': (),
+           'co_varnames': ('x',)},
+</code></pre>
+
+<p> &lsquo;func_dict&rsquo;: None,
+ &lsquo;func_doc&rsquo;: None,
+ &lsquo;func_module&rsquo;: &lsquo;<strong>main</strong>&rsquo;,
+ &lsquo;func_name&rsquo;: &lsquo;add&rsquo;}</p></blockquote></blockquote></blockquote>
+
+<p> # From here we have:
+ # 0x64 &ndash;> LOAD_CONST
+ # 0x87 &ndash;> STORE_FAST
+ # 0x1b &ndash;> RETURN_VALUE
+ # 0x8f &ndash;> LOAD_FAST
+ # 0x3d &ndash;> BINARY_ADD
+```</p>
+
+<p>OK I think you got the idea, and if you don&rsquo;t manage to find all of them you can just debug the virtual CPU by putting a software breakpoint <em>@0x4b0960</em>:
+<code>text opcode fetching
+=&gt; 0x4b0923 &lt;PyEval_EvalFrameEx+867&gt;:   movzx  eax,BYTE PTR [r13+0x0]
+</code></p>
+
+<p>For the interested readers: there is at least one interesting opcode that you wouldn&rsquo;t find in a normal Python interpreter, check what <em>0xA0</em> is doing especially when followed by <em>0x87</em> :&ndash;).</p>
+
+<h3>Back to the first marshaled function with all our tooling now</h3>
+
+<p>Thanks to our <a href="https://github.com/0vercl0k/stuffz/blob/master/ql-chall-python-2014/disassembler_ql_chall.py">disassembler.py</a>, we can now disassemble easily the first part:</p>
+
+<p>```text disassembling
+PS D:\Codes\ql-chall-python-2014> python .\disassembler_ql_chall.py
+  6           0 LOAD_CONST               1 (1)</p>
+
+<pre><code>          3 STORE_FAST               0 (Robert_Forsyth)
+</code></pre>
+
+<p>  8           6 LOAD_GLOBAL              0 (True)</p>
+
+<pre><code>          9 LOAD_CONST               1 (1)
+         12 INPLACE_ADD
+         13 STORE_GLOBAL             0 (True)
+</code></pre>
+
+<p>  9          16 LOAD_GLOBAL              0 (True)</p>
+
+<pre><code>         19 RETURN_VALUE
+</code></pre>
+
+<p>================================================================================
+```</p>
+
+<p>It seems the author has been really (too) kind with us: the function is really small and we can rewrite it in Python straightaway:</p>
+
+<p>```python part_1
+def part1():</p>
+
+<pre><code>global True
+Robert_Forsyth = 1
+True += 1
+</code></pre>
+
+<p>```</p>
+
+<p>You can also make sure with <a href="https://github.com/0vercl0k/stuffz/blob/master/ql-chall-python-2014/dpy.py">dpy</a> that the code of <em>part1</em> is the exact same than the unmarshaled function we dumped earlier.</p>
+
+<p>```text part_1 successfully decompiled</p>
+
+<blockquote><blockquote><blockquote><p>def part_1():
+&hellip;  global True
+&hellip;  Robert_Forsyth = 1
+&hellip;  True += 1
+&hellip;
+print hex(id(part_1))
+0x7ffff7f0f578
+^C
+Program received signal SIGINT, Interrupt.
+gdb$ dpy 0x7ffff7f0f578
+function &ndash;> {&lsquo;func_code&rsquo;: {&lsquo;co_code&rsquo;: &rsquo;d\x01\x00\x87\x00\x00|\x00\x00d\x01\x00&lt;a\x00\x00d\x00\x00\x1b',</p>
+
+<pre><code>           'co_consts': (None, 1),
+           'co_name': 'part_1',
+           'co_names': ('True',),
+           'co_varnames': ('Robert_Forsyth',)},
+</code></pre>
+
+<p> &lsquo;func_dict&rsquo;: None,
+ &lsquo;func_doc&rsquo;: None,
+ &lsquo;func_module&rsquo;: &lsquo;<strong>main</strong>&rsquo;,
+ &lsquo;func_name&rsquo;: &lsquo;part_1&rsquo;}
+```</p></blockquote></blockquote></blockquote>
+
+<h3>Run my bytecode</h3>
+
+<p>The second part is also quite simple according to the following disassembly:</p>
+
+<p>```text run my bytecode
+gdb$ disass run_me
+Dump of assembler code for function run_me:
+[&hellip;]
+   ; Parses the arguments we gave, it expects a string object
+   0x0000000000513da0 &lt;+16>:    lea    rcx,[rsp+0x10]
+   0x0000000000513da5 &lt;+21>:    mov    rdx,rsp
+   0x0000000000513da8 &lt;+24>:    call   0x4cf430 &lt;PyArg_ParseTuple>
+   0x0000000000513dad &lt;+29>:    xor    edx,edx
+   0x0000000000513daf &lt;+31>:    test   eax,eax
+   0x0000000000513db1 &lt;+33>:    je     0x513e5e &lt;run_me+206></p>
+
+<p>   0x0000000000513db7 &lt;+39>:    mov    rax,QWORD PTR [rip+0x2d4342]
+   0x0000000000513dbe &lt;+46>:    mov    esi,0x91
+   0x0000000000513dc3 &lt;+51>:    mov    edi,0x56c940
+   0x0000000000513dc8 &lt;+56>:    mov    rax,QWORD PTR [rax+0x10]
+   0x0000000000513dcc &lt;+60>:    mov    rbx,QWORD PTR [rax+0x30]</p>
+
+<p>[&hellip;]
+   ; Part1
+[&hellip;]</p>
+
+<p>   0x0000000000513df7 &lt;+103>:   mov    rsi,QWORD PTR [rsp+0x10]
+   0x0000000000513dfc &lt;+108>:   mov    rdi,QWORD PTR [rsp]
+   ; Uses the string passed as argument to run_me as a marshaled object
+   ; PyObject<em> PyMarshal_ReadObjectFromString(char </em>string, Py_ssize_t len)
+   0x0000000000513e00 &lt;+112>:   call   0x4dc020 &lt;PyMarshal_ReadObjectFromString></p>
+
+<p>   0x0000000000513e05 &lt;+117>:   mov    rsi,rbx
+   0x0000000000513e08 &lt;+120>:   mov    rdi,rax</p>
+
+<p>   ; Creates a function out of it
+   0x0000000000513e0b &lt;+123>:   call   0x52c630 &lt;PyFunction_New>
+   0x0000000000513e10 &lt;+128>:   xor    edi,edi
+   0x0000000000513e12 &lt;+130>:   mov    rbp,rax
+   0x0000000000513e15 &lt;+133>:   call   0x478f80 &lt;PyTuple_New></p>
+
+<p>   ; Calls it
+   ; PyObject<em> PyObject_Call(PyObject </em>callable_object, PyObject <em>args, PyObject </em>kw)
+   0x0000000000513e1a &lt;+138>:   xor    edx,edx
+   0x0000000000513e1c &lt;+140>:   mov    rdi,rbp
+   0x0000000000513e1f &lt;+143>:   mov    rsi,rax
+   0x0000000000513e22 &lt;+146>:   call   0x422b40 &lt;PyObject_Call>
+```</p>
+
+<p>Basically, the string you pass to <em>run_me</em> is treated as a marshaled function: it explains why you get <em>segmentation faults</em> when you call the function with random strings.
+We can just <em>jump over</em> that part of the function because we don&rsquo;t really need it so far: <em>set $eip=0x513e27</em> and job done!</p>
+
+<h3>Second &amp; last marshaled function</h3>
+
+<p>By the way I hope you are still reading &mdash; hold tight, we are nearly done!
+Let&rsquo;s dump the function object with <a href="https://github.com/0vercl0k/stuffz/blob/master/ql-chall-python-2014/dpy.py">dpy</a>:</p>
+
+<p>```text Second part inspection with dpy
+&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&ndash;[regs]
+  RAX: 0x00007FFFF7FA7050  RBX: 0x00007FFFF7F0F758  RBP: 0x00000000007B0270  RSP: 0x00007FFFFFFFE040  o d I t s Z a P c
+  RDI: 0x00007FFFF7F0F758  RSI: 0x00007FFFF7FA7050  RDX: 0x0000000000000000  RCX: 0x0000000000000828  RIP: 0x0000000000513E56
+  R8 : 0x0000000000880728  R9 : 0x00007FFFF7F8D908  R10: 0x00007FFFF7FA7050  R11: 0x00007FFFF7FA7050  R12: 0x00007FFFF7FD0F48
+  R13: 0x00000000007EF0A0  R14: 0x00007FFFF7F3CB00  R15: 0x00007FFFF7F07ED0
+  CS: 0033  DS: 0000  ES: 0000  FS: 0000  GS: 0000  SS: 002B
+&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&ndash;[code]</p>
+
+<h2>=> 0x513e56 &lt;run_me+198>:       call   0x422b40 &lt;PyObject_Call></h2>
+
+<p>gdb$ dpy $rdi
+function &ndash;> {&lsquo;func_code&rsquo;: {&lsquo;co_code&rsquo;: &lsquo;\x7c\x00\x00\x64\x01\x00\x6b\x03\x00\x72\x19\x00\x7c\x00\x00\x64\x02\x00\x55\x61\x00\x00\x6e\x6e\x00\x7c\x01\x00\x6a\x02\x00\x64\x03\x00\x6a\x03\x00\x64\x04\x00\x77\x00\x00\xa0\x05\x00\xc8\x06\x00\xa0\x07\x00\xb2\x08\x00\xa0\x09\x00\xea\x0a\x00\xa0\x0b\x00\x91\x08\x00\xa0\x0c\x00\x9e\x0b\x00\xa0\x0d\x00\xd4\x08\x00\xa0\x0e\x00\xd5\x0f\x00\xa0\x10\x00\xdd\x11\x00\xa0\x07\x00\xcc\x08\x00\xa0\x12\x00\x78\x0b\x00\xa0\x13\x00\x87\x0f\x00\xa0\x14\x00\x5b\x15\x00\xa0\x16\x00\x97\x17\x00\x67\x1a\x00\x53\x86\x01\x00\x86\x01\x00\x86\x01\x00\x54\x64\x00\x00\x1b&rsquo;,
+   &lsquo;co_consts&rsquo;: (None,</p>
+
+<pre><code> 3,
+ 1,
+ '',
+ {'co_code': '\\x8f\\x00\\x00\\x5d\\x15\\x00\\x87\\x01\\x00\\x7c\\x00\\x00\\x8f\\x01\\x00\\x64\\x00\\x00\\x4e\\x86\\x01\\x00\\x59\\x54\\x71\\x03\\x00\\x64\\x01\\x00\\x1b',
+  'co_consts': (13, None),
+  'co_name': '&lt;genexpr&gt;',
+  'co_names': ('chr',),
+  'co_varnames': ('.0', '_')},
+ 75,
+ 98,
+ 127,
+ 45,
+ 89,
+ 101,
+ 104,
+ 67,
+ 122,
+ 65,
+ 120,
+ 99,
+ 108,
+ 95,
+ 125,
+ 111,
+ 97,
+ 100,
+ 110),
+</code></pre>
+
+<p>   &lsquo;co_name&rsquo;: &lsquo;foo&rsquo;,
+   &lsquo;co_names&rsquo;: (&lsquo;True&rsquo;, &lsquo;quarkslab&rsquo;, &lsquo;append&rsquo;, &lsquo;join&rsquo;),
+   &lsquo;co_varnames&rsquo;: ()},
+ &lsquo;func_dict&rsquo;: None,
+ &lsquo;func_doc&rsquo;: None,
+ &lsquo;func_module&rsquo;: &lsquo;<strong>main</strong>&rsquo;,
+ &lsquo;func_name&rsquo;: &lsquo;foo&rsquo;}
+```</p>
+
+<p>Even before studying / disassembling the code, we see some interesting things: <em>chr</em>, <em>quarkslab</em>, <em>append</em>, <em>join</em>, etc. It definitely feels like that function is generating the flag we are looking for.</p>
+
+<p>Seeing <em>append</em>, <em>join</em> and another code object (in <em>co_consts</em>) suggests that a <em>generator</em> is used to populate the variable <em>quarkslab</em>. We also can guess that the bunch of bytes we are seeing may be the flag encoded/encrypted &mdash; anyway we can infer <strong>too much information to me</strong> just by dumping/looking at the object.</p>
+
+<p>Let&rsquo;s use our magic <a href="https://github.com/0vercl0k/stuffz/blob/master/ql-chall-python-2014/disassembler_ql_chall.py">disassembler.py</a> to see those codes objects:</p>
+
+<p>```text part2 &amp; its generator disassembled
+ 19     >>    0 LOAD_GLOBAL              0 (True)</p>
+
+<pre><code>          3 LOAD_CONST               1 (3)
+          6 COMPARE_OP               3 (!=)
+          9 POP_JUMP_IF_FALSE       25
+</code></pre>
+
+<p> 20          12 LOAD_GLOBAL              0 (True)</p>
+
+<pre><code>         15 LOAD_CONST               2 (1)
+         18 INPLACE_SUBTRACT
+         19 STORE_GLOBAL             0 (True)
+         22 JUMP_FORWARD           110 (to 135)
+</code></pre>
+
+<p> 22     >>   25 LOAD_GLOBAL              1 (quarkslab)</p>
+
+<pre><code>         28 LOAD_ATTR                2 (append)
+         31 LOAD_CONST               3 ('')
+         34 LOAD_ATTR                3 (join)
+         37 LOAD_CONST               4 (&lt;code object &lt;genexpr&gt; at 023A84A0, file "obfuscate/gen.py", line 22&gt;)
+         40 MAKE_FUNCTION            0
+         43 LOAD_CONST2              5 (75)
+         46 LOAD_CONST3              6 (98)
+         49 LOAD_CONST2              7 (127)
+         52 LOAD_CONST5              8 (45)
+         55 LOAD_CONST2              9 (89)
+         58 LOAD_CONST4             10 (101)
+         61 LOAD_CONST2             11 (104)
+         64 LOAD_CONST6              8 (45)
+         67 LOAD_CONST2             12 (67)
+         70 LOAD_CONST7             11 (104)
+         73 LOAD_CONST2             13 (122)
+         76 LOAD_CONST8              8 (45)
+         79 LOAD_CONST2             14 (65)
+         82 LOAD_CONST10            15 (120)
+         85 LOAD_CONST2             16 (99)
+         88 LOAD_CONST9             17 (108)
+         91 LOAD_CONST2              7 (127)
+         94 LOAD_CONST11             8 (45)
+         97 LOAD_CONST2             18 (95)
+        100 LOAD_CONST12            11 (104)
+        103 LOAD_CONST2             19 (125)
+        106 LOAD_CONST16            15 (120)
+        109 LOAD_CONST2             20 (111)
+        112 LOAD_CONST14            21 (97)
+        115 LOAD_CONST2             22 (100)
+        118 LOAD_CONST15            23 (110)
+        121 BUILD_LIST              26
+        124 GET_ITER
+        125 CALL_FUNCTION            1
+        128 CALL_FUNCTION            1
+        131 CALL_FUNCTION            1
+        134 POP_TOP
+    &gt;&gt;  135 LOAD_CONST               0 (None)
+        138 RETURN_VALUE
+</code></pre>
+
+<p>================================================================================
+ 22           0 LOAD_FAST                0 (.0)</p>
+
+<pre><code>    &gt;&gt;    3 FOR_ITER                21 (to 27)
+          6 LOAD_CONST16             1 (None)
+          9 LOAD_GLOBAL              0 (chr)
+         12 LOAD_FAST                1 (_)
+         15 LOAD_CONST               0 (13)
+         18 BINARY_XOR
+         19 CALL_FUNCTION            1
+         22 YIELD_VALUE
+         23 POP_TOP
+         24 JUMP_ABSOLUTE            3
+    &gt;&gt;   27 LOAD_CONST               1 (None)
+         30 RETURN_VALUE
+</code></pre>
+
+<p>```</p>
+
+<p>Great, that definitely sounds like what we described earlier.</p>
+
+<h3>I need a decompiler dad</h3>
+
+<p>Now because we really like to hack things, I decided to patch a Python decompiler to support the opcodes defined in this challenge in order to fully decompile the codes we saw so far.</p>
+
+<p>I won&rsquo;t bother you with how I managed to do it though ; long story short: it is built it on top of <a href="https://github.com/gdelugre/fupy">fupy.py</a> which is a readable hackable Python 2.7 decompiler written by the awesome <a href="https://github.com/gdelugre">Guillaume Delugre</a> &mdash; Cheers to my mate <a href="https://twitter.com/Myst3rie">@Myst3rie</a> for telling about this project!</p>
+
+<p>So here is <a href="https://github.com/0vercl0k/stuffz/blob/master/ql-chall-python-2014/decompiler_ql_chall.py">decompiler.py</a> working on the two code objects of the challenge:</p>
+
+<p>```text decompiiiiiilation
+PS D:\Codes\ql-chall-python-2014> python .\decompiler_ql_chall.py
+PART1 ====================
+Robert_Forsyth = 1
+True = True + 1</p>
+
+<p>PART2 ====================
+if True != 3:</p>
+
+<pre><code>True = True - 1
+</code></pre>
+
+<p>else:</p>
+
+<pre><code>quarkslab.append(''.join(chr(_ ^ 13) for _ in [75, 98, 127, 45, 89, 101, 104, 45, 67, 104, 122, 45, 65, 120, 99, 108, 127, 45, 95, 104, 125, 120, 111, 97, 100, 110]))
+</code></pre>
+
+<p>```</p>
+
+<p>Brilliant &mdash; time to get a flag now :&ndash;).
+Here are the things we need to do:</p>
+
+<ol>
+<li>Set <em>True</em> to 2 (so that it&rsquo;s equal to 3 in the part 2)</li>
+<li>Declare a <em>list</em> named <em>quarkslab</em></li>
+<li>Jump over the middle part of the function where it will run the bytecode you gave as argument (or give a valid marshaled string that won&rsquo;t crash the interpreter)</li>
+<li>Profit!</li>
+</ol>
+
+
+<p>```text win
+overclok@wildout:~/chall/ql-py$ /usr/bin/b7d8438de09fffb12e3950e7ad4970a4a998403bdf3763dd4178adf
+Python 2.7.8+ (nvcs/newopcodes:a9bd62e4d5f2+, Sep  1 2014, 11:41:46)
+[GCC 4.8.2] on linux2
+Type &ldquo;help&rdquo;, &ldquo;copyright&rdquo;, &ldquo;credits&rdquo; or &ldquo;license&rdquo; for more information.</p>
+
+<blockquote><blockquote><blockquote><p>True = 2
+quarkslab = list()
+import do_not_run_me as v
+v.run_me(&ldquo;c\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00C\x00\x00\x00s\x04\x00\x00\x00d\x00\x00\x1B(\x01\x00\x00\x00N(\x00\x00\x00\x00(\x00\x00\x00\x00(\x00\x00\x00\x00(\x00\x00\x00\x00s\x07\x00\x00\x00rstdinrt\x01\x00\x00\x00a\x01\x00\x00\x00s\x02\x00\x00\x00\x00\x01&rdquo;)
+quarkslab
+[&lsquo;For The New Lunar Republic&rsquo;]
+```</p></blockquote></blockquote></blockquote>
+
+<h1>Conclusion</h1>
+
+<p>This was definitely entertaining, so thanks to Serge and <a href="http://blog.quarkslab.com/">Quarkslab</a> for putting this challenge together! I feel like it would have been cooler to force people to write a disassembler or/and a decompiler to study the code of <em>run_me</em> though ; because as I mentioned at the very beginning of the article you don&rsquo;t really need any tool to guess/know roughly where the flag is, and how to get it. I still did write all those little scripts because it was fun and cool that&rsquo;s all!</p>
+
+<p>Anyway, the codes I talked about are available on my github as usual if you want to have a look at them. You can also have look at <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/wildfire.py">wildfire.py</a> if you like weird/wild/whatever Python beasts!</p>
+
+<p>That&rsquo;s all for today guys, I hope it wasn&rsquo;t too long and that you did enjoy the read.</p>
+
+<p>By the way, we still think it would be cool to have more people posting on that blog, so if you are interested feel free to <a href="https://doar-e.github.io/about/">contact us</a>!</p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Deep dive into Python's VM: Story of LOAD_CONST bug]]></title>
@@ -130,7 +1282,7 @@ case STORE_FAST:
 <p>  }
 ```</p>
 
-<p>The machine also uses a virtual stack to pass/return object to the different opcodes. So it really looks like an architecture we are used to deal with, nothing exotic.</p>
+<p>The machine also uses a virtual stack to pass/return object to the different opcodes. So it really looks like an architecture we are used to dealing with, nothing exotic.</p>
 
 <h2>Everything is an object</h2>
 
@@ -231,7 +1383,7 @@ By the way, all the native objects are implemented in the <a href="https://githu
 
 <h3>Debugging session: stepping the VM. The hard way.</h3>
 
-<p>It&rsquo;s time for us to go a little bit deeper, at the assembly level, where we belong to ; so let&rsquo;s define a dummy function like this one:</p>
+<p>It&rsquo;s time for us to go a little bit deeper, at the assembly level, where we belong ; so let&rsquo;s define a dummy function like this one:</p>
 
 <p><code>python dummy function
 def a(b, c):
@@ -261,7 +1413,7 @@ In [25]: opcode.opname[0x53]
 Out[25]: &lsquo;RETURN_VALUE&rsquo;
 ```</p>
 
-<p>Keep in mind, as we said earlier, that everything is object ; so a function is an object, and bytecode is an object as well:</p>
+<p>Keep in mind, as we said earlier, that everything is an object ; so a function is an object, and bytecode is an object as well:</p>
 
 <p>```c PyFunctionObject PyCodeObject
 typedef struct {
@@ -478,7 +1630,7 @@ python27!PyEval_EvalFrameEx+0x2b2:
 1e0ec562 0fb601          movzx   eax,byte ptr [ecx]         ds:002b:025ea91a=17
 </code></p>
 
-<p>Here it&rsquo;s supposed to retrieve the two objects on the top-of-stack, and to add them.
+<p>Here it&rsquo;s supposed to retrieve the two objects on the top-of-stack, and add them.
 The C code looks like this:</p>
 
 <p>```c BINARY_ADD</p>
@@ -585,9 +1737,9 @@ python27!PyEval_EvalFrameEx+0x2b2:
 1e0ec562 0fb601          movzx   eax,byte ptr [ecx]         ds:002b:025ea91b=53
 </code></p>
 
-<p>All right, at least now you have a more precise idea about how that Python virtual machine works, and more importantly how you can directly debug it without symbols. Of course, you can download the debug symbols on Linux and use those information into gdb ; it should make your life easier (&hellip;.but I hate gdb man&hellip;).</p>
+<p>All right, at least now you have a more precise idea about how that Python virtual machine works, and more importantly how you can directly debug it without symbols. Of course, you can download the debug symbols on Linux and use that information in gdb ; it should make your life easier (&hellip;.but I hate gdb man&hellip;).</p>
 
-<p>Note that I would love very much to have a debugger at the Python bytecode level, it would be really easier than instrumenting the interpreter ; if you know one ping me! If you build one ping me too :&ndash;).</p>
+<p>Note that I would love very much to have a debugger at the Python bytecode level, it would be much easier than instrumenting the interpreter. If you know one ping me! If you build one ping me too :&ndash;).</p>
 
 <h1>The bug</h1>
 
@@ -649,13 +1801,13 @@ python27!PyEval_EvalFrameEx+0x347:
 
 <p>OK, so if you look only at the faulting instruction you could say that the bug is minor and we won&rsquo;t be able to turn it into something &ldquo;useful&rdquo;. But the essential piece when you want to exploit a software is to actually completely understand how it works. Then you are more capable of turning bugs that seems useless into interesting primitives.</p>
 
-<p>As we said several times, from Python code you can&rsquo;t really push any value you want onto the Python virtual stack, obviously. The machine is only dealing with Python object, so that means with this bug we can corrupt the virtual stack by pushing arbitrary data that we control. And if you do that well, you can end up to instrument the Python VM to call whatever address you want and that&rsquo;s exactly what I did back when I wrote <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a>.</p>
+<p>As we said several times, from Python code you can&rsquo;t really push any value you want onto the Python virtual stack, obviously. The machine is only dealing with Python objects. However, with this bug we can corrupt the virtual stack by pushing arbitrary data that we control. If you do that well, you can end up causing the Python VM to call whatever address you want. That&rsquo;s exactly what I did back when I wrote <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a>.</p>
 
-<p>In Python we are really lucky because we can control a lot of thing in memory and we have natively a way to &ldquo;leak&rdquo; (I shouldn&rsquo;t call that a leak though because it&rsquo;s a feature) the address of a Python object with the function <em>id</em>. So basically we can do stuff, we can do it reliably and we can manage to not break the interpreter, like bosses.</p>
+<p>In Python we are really lucky because we can control a lot of things in memory and we have natively a way to &ldquo;leak&rdquo; (I shouldn&rsquo;t call that a leak though because it&rsquo;s a feature) the address of a Python object with the function <em>id</em>. So basically we can do stuff, we can do it reliably and we can manage to not break the interpreter, like bosses.</p>
 
 <h2>Pushing attacker-controlled data on the virtual stack</h2>
 
-<p>We control <em>oparg</em> and the content of the tuple <em>consts</em>. We can also know the address of that tuple. So we can have a Python string object that stores an arbitrary value, let&rsquo;s say <em>0xdeadbeef</em> and it will be pushed on the virtual stack.</p>
+<p>We control <em>oparg</em> and the content of the tuple <em>consts</em>. We can also find out the address of that tuple. So we can have a Python string object that stores an arbitrary value, let&rsquo;s say <em>0xdeadbeef</em> and it will be pushed on the virtual stack.</p>
 
 <p>Let&rsquo;s do that in Python now:</p>
 
@@ -729,7 +1881,7 @@ Perfect, we control a part of the virtual stack :).</p>
 
 <h2>Game over, LOAD_FUNCTION</h2>
 
-<p>Once you control the virtual stack the only limit is your imagination and the ability you have to find interesting spot in the virtual machine. My idea was to use the <em>CALL_FUNCTION</em> opcode to craft a <em>PyFunctionObject</em> somehow, to push it onto the virtual stack and to use the magic opcode.</p>
+<p>Once you control the virtual stack, the only limit is your imagination and the ability you have to find an interesting spot in the virtual machine. My idea was to use the <em>CALL_FUNCTION</em> opcode to craft a <em>PyFunctionObject</em> somehow, push it onto the virtual stack and to use the magic opcode.</p>
 
 <p><code>c PyFunctionObject definition
 typedef struct {
@@ -746,9 +1898,9 @@ typedef struct {
 } PyFunctionObject;
 </code></p>
 
-<p>The thing is as we saw earlier the virtual machine usually ensures the type of the object it handles, and if the type checking fails, the function bails out and we are not happy, at all. It means we would need an information-leak to obtain a pointer to the PyFunction_Type static variable.</p>
+<p>The thing is, as we saw earlier, the virtual machine usually ensures the type of the object it handles. If the type checking fails, the function bails out and we are not happy, at all. It means we would need an information-leak to obtain a pointer to the PyFunction_Type static variable.</p>
 
-<p>Fortunately for us the CALL_FUNCTION can still be abused without knowing that magic pointer to craft correctly our object. Let&rsquo;s go over the source code to illustrate my sayings:</p>
+<p>Fortunately for us, the CALL_FUNCTION can still be abused without knowing that magic pointer to craft correctly our object. Let&rsquo;s go over the source code to illustrate my sayings:</p>
 
 <p>```c CALL_FUNCTION
 case CALL_FUNCTION:
@@ -821,7 +1973,7 @@ result = (*call)(func, arg, kw);
 </ol>
 
 
-<p>This is fairly trivial to do and that will give us an absolute-call primitive without crashing the interpreter: s.w.e.e.t.</p>
+<p>This is fairly trivial to do and will give us an absolute-call primitive without crashing the interpreter: s.w.e.e.t.</p>
 
 <p>```python absolute call via CALL_FUNCTION
 import opcode
@@ -877,11 +2029,11 @@ deadbeef ??              ???
 
 <h1>Conclusion, Ideas</h1>
 
-<p>After that little post you are now aware that if you want to sandbox efficiently Python, you should do it outside of Python, and not preventing to use some modules or things like that: this is broken by design. The virtual machine is not enough safe to built a strong sandbox inside Python, so don&rsquo;t rely on such thing if you don&rsquo;t want to have some surprises. An article about that exact same thing has been written here if you are interested: <a href="https://lwn.net/Articles/574215/">The failure of pysandbox</a>.</p>
+<p>After reading this little post you are now aware that if you want to sandbox efficiently Python, you should do it outside of Python and not by preventing the use of some modules or things like that: this is broken by design. The virtual machine is not safe enough to build a strong sandbox inside Python, so don&rsquo;t rely on such thing if you don&rsquo;t want to get surprised. An article about that exact same thing was written here if you are interested: <a href="https://lwn.net/Articles/574215/">The failure of pysandbox</a>.</p>
 
-<p>You also may want to look at <a href="http://pypy.org/features.html#sandboxing">PyPy&rsquo;s sandboxing capability</a> if you are interested to execute untrusted Python code. Otherwise, you can build your own <a href="https://code.google.com/p/seccompsandbox/wiki/overview">SECCOMP</a>-based system :).</p>
+<p>You also may want to look at <a href="http://pypy.org/features.html#sandboxing">PyPy&rsquo;s sandboxing capability</a> if you are interested in executing untrusted Python code. Otherwise, you can build your own <a href="https://code.google.com/p/seccompsandbox/wiki/overview">SECCOMP</a>-based system :).</p>
 
-<p>On the other hand, I had a lot of fun to deep dive into Python&rsquo;s source code, and I hope you had some too! If you would like to know more about the low level aspects of Python here are a list of interesting posts:</p>
+<p>On the other hand, I had a lot of fun taking a deep dive into Python&rsquo;s source code and I hope you had some too! If you would like to know more about the low level aspects of Python here are a list of interesting posts:</p>
 
 <ul>
 <li><a href="http://www.jmcneil.net/2012/04/debugging-your-python-with-gdb-ftw/">Debugging Your Python With GDB (FTW!)</a></li>

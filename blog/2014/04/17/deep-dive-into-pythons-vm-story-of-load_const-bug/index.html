@@ -286,7 +286,7 @@ Now all the Python code you write is being <em>compiled</em>, at some point, int
 </span></code></pre></td></tr></table></div></figure>
 
 
-<p>The machine also uses a virtual stack to pass/return object to the different opcodes. So it really looks like an architecture we are used to deal with, nothing exotic.</p>
+<p>The machine also uses a virtual stack to pass/return object to the different opcodes. So it really looks like an architecture we are used to dealing with, nothing exotic.</p>
 
 <h2>Everything is an object</h2>
 
@@ -427,7 +427,7 @@ By the way, all the native objects are implemented in the <a href="https://githu
 
 <h3>Debugging session: stepping the VM. The hard way.</h3>
 
-<p>It&rsquo;s time for us to go a little bit deeper, at the assembly level, where we belong to ; so let&rsquo;s define a dummy function like this one:</p>
+<p>It&rsquo;s time for us to go a little bit deeper, at the assembly level, where we belong ; so let&rsquo;s define a dummy function like this one:</p>
 
 <figure class='code'><figcaption><span>dummy function</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -471,7 +471,7 @@ By the way, all the native objects are implemented in the <a href="https://githu
 </span></code></pre></td></tr></table></div></figure>
 
 
-<p>Keep in mind, as we said earlier, that everything is object ; so a function is an object, and bytecode is an object as well:</p>
+<p>Keep in mind, as we said earlier, that everything is an object ; so a function is an object, and bytecode is an object as well:</p>
 
 <figure class='code'><figcaption><span>PyFunctionObject PyCodeObject</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -777,7 +777,7 @@ We can type-check the object and dump the string stored in it:</p>
 </span></code></pre></td></tr></table></div></figure>
 
 
-<p>Here it&rsquo;s supposed to retrieve the two objects on the top-of-stack, and to add them.
+<p>Here it&rsquo;s supposed to retrieve the two objects on the top-of-stack, and add them.
 The C code looks like this:</p>
 
 <figure class='code'><figcaption><span>BINARY_ADD</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
@@ -945,9 +945,9 @@ The C code looks like this:</p>
 </span></code></pre></td></tr></table></div></figure>
 
 
-<p>All right, at least now you have a more precise idea about how that Python virtual machine works, and more importantly how you can directly debug it without symbols. Of course, you can download the debug symbols on Linux and use those information into gdb ; it should make your life easier (&hellip;.but I hate gdb man&hellip;).</p>
+<p>All right, at least now you have a more precise idea about how that Python virtual machine works, and more importantly how you can directly debug it without symbols. Of course, you can download the debug symbols on Linux and use that information in gdb ; it should make your life easier (&hellip;.but I hate gdb man&hellip;).</p>
 
-<p>Note that I would love very much to have a debugger at the Python bytecode level, it would be really easier than instrumenting the interpreter ; if you know one ping me! If you build one ping me too :&ndash;).</p>
+<p>Note that I would love very much to have a debugger at the Python bytecode level, it would be much easier than instrumenting the interpreter. If you know one ping me! If you build one ping me too :&ndash;).</p>
 
 <h1>The bug</h1>
 
@@ -1036,13 +1036,13 @@ The C code looks like this:</p>
 
 <p>OK, so if you look only at the faulting instruction you could say that the bug is minor and we won&rsquo;t be able to turn it into something &ldquo;useful&rdquo;. But the essential piece when you want to exploit a software is to actually completely understand how it works. Then you are more capable of turning bugs that seems useless into interesting primitives.</p>
 
-<p>As we said several times, from Python code you can&rsquo;t really push any value you want onto the Python virtual stack, obviously. The machine is only dealing with Python object, so that means with this bug we can corrupt the virtual stack by pushing arbitrary data that we control. And if you do that well, you can end up to instrument the Python VM to call whatever address you want and that&rsquo;s exactly what I did back when I wrote <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a>.</p>
+<p>As we said several times, from Python code you can&rsquo;t really push any value you want onto the Python virtual stack, obviously. The machine is only dealing with Python objects. However, with this bug we can corrupt the virtual stack by pushing arbitrary data that we control. If you do that well, you can end up causing the Python VM to call whatever address you want. That&rsquo;s exactly what I did back when I wrote <a href="https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py">python27_abuse_vm_to_execute_x86_code.py</a>.</p>
 
-<p>In Python we are really lucky because we can control a lot of thing in memory and we have natively a way to &ldquo;leak&rdquo; (I shouldn&rsquo;t call that a leak though because it&rsquo;s a feature) the address of a Python object with the function <em>id</em>. So basically we can do stuff, we can do it reliably and we can manage to not break the interpreter, like bosses.</p>
+<p>In Python we are really lucky because we can control a lot of things in memory and we have natively a way to &ldquo;leak&rdquo; (I shouldn&rsquo;t call that a leak though because it&rsquo;s a feature) the address of a Python object with the function <em>id</em>. So basically we can do stuff, we can do it reliably and we can manage to not break the interpreter, like bosses.</p>
 
 <h2>Pushing attacker-controlled data on the virtual stack</h2>
 
-<p>We control <em>oparg</em> and the content of the tuple <em>consts</em>. We can also know the address of that tuple. So we can have a Python string object that stores an arbitrary value, let&rsquo;s say <em>0xdeadbeef</em> and it will be pushed on the virtual stack.</p>
+<p>We control <em>oparg</em> and the content of the tuple <em>consts</em>. We can also find out the address of that tuple. So we can have a Python string object that stores an arbitrary value, let&rsquo;s say <em>0xdeadbeef</em> and it will be pushed on the virtual stack.</p>
 
 <p>Let&rsquo;s do that in Python now:</p>
 
@@ -1166,7 +1166,7 @@ The C code looks like this:</p>
 
 <h2>Game over, LOAD_FUNCTION</h2>
 
-<p>Once you control the virtual stack the only limit is your imagination and the ability you have to find interesting spot in the virtual machine. My idea was to use the <em>CALL_FUNCTION</em> opcode to craft a <em>PyFunctionObject</em> somehow, to push it onto the virtual stack and to use the magic opcode.</p>
+<p>Once you control the virtual stack, the only limit is your imagination and the ability you have to find an interesting spot in the virtual machine. My idea was to use the <em>CALL_FUNCTION</em> opcode to craft a <em>PyFunctionObject</em> somehow, push it onto the virtual stack and to use the magic opcode.</p>
 
 <figure class='code'><figcaption><span>PyFunctionObject definition</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -1195,9 +1195,9 @@ The C code looks like this:</p>
 </span></code></pre></td></tr></table></div></figure>
 
 
-<p>The thing is as we saw earlier the virtual machine usually ensures the type of the object it handles, and if the type checking fails, the function bails out and we are not happy, at all. It means we would need an information-leak to obtain a pointer to the PyFunction_Type static variable.</p>
+<p>The thing is, as we saw earlier, the virtual machine usually ensures the type of the object it handles. If the type checking fails, the function bails out and we are not happy, at all. It means we would need an information-leak to obtain a pointer to the PyFunction_Type static variable.</p>
 
-<p>Fortunately for us the CALL_FUNCTION can still be abused without knowing that magic pointer to craft correctly our object. Let&rsquo;s go over the source code to illustrate my sayings:</p>
+<p>Fortunately for us, the CALL_FUNCTION can still be abused without knowing that magic pointer to craft correctly our object. Let&rsquo;s go over the source code to illustrate my sayings:</p>
 
 <figure class='code'><figcaption><span>CALL_FUNCTION</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -1304,7 +1304,7 @@ The C code looks like this:</p>
 </ol>
 
 
-<p>This is fairly trivial to do and that will give us an absolute-call primitive without crashing the interpreter: s.w.e.e.t.</p>
+<p>This is fairly trivial to do and will give us an absolute-call primitive without crashing the interpreter: s.w.e.e.t.</p>
 
 <figure class='code'><figcaption><span>absolute call via CALL_FUNCTION</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
 <span class='line-number'>2</span>
@@ -1402,11 +1402,11 @@ The C code looks like this:</p>
 
 <h1>Conclusion, Ideas</h1>
 
-<p>After that little post you are now aware that if you want to sandbox efficiently Python, you should do it outside of Python, and not preventing to use some modules or things like that: this is broken by design. The virtual machine is not enough safe to built a strong sandbox inside Python, so don&rsquo;t rely on such thing if you don&rsquo;t want to have some surprises. An article about that exact same thing has been written here if you are interested: <a href="https://lwn.net/Articles/574215/">The failure of pysandbox</a>.</p>
+<p>After reading this little post you are now aware that if you want to sandbox efficiently Python, you should do it outside of Python and not by preventing the use of some modules or things like that: this is broken by design. The virtual machine is not safe enough to build a strong sandbox inside Python, so don&rsquo;t rely on such thing if you don&rsquo;t want to get surprised. An article about that exact same thing was written here if you are interested: <a href="https://lwn.net/Articles/574215/">The failure of pysandbox</a>.</p>
 
-<p>You also may want to look at <a href="http://pypy.org/features.html#sandboxing">PyPy&rsquo;s sandboxing capability</a> if you are interested to execute untrusted Python code. Otherwise, you can build your own <a href="https://code.google.com/p/seccompsandbox/wiki/overview">SECCOMP</a>-based system :).</p>
+<p>You also may want to look at <a href="http://pypy.org/features.html#sandboxing">PyPy&rsquo;s sandboxing capability</a> if you are interested in executing untrusted Python code. Otherwise, you can build your own <a href="https://code.google.com/p/seccompsandbox/wiki/overview">SECCOMP</a>-based system :).</p>
 
-<p>On the other hand, I had a lot of fun to deep dive into Python&rsquo;s source code, and I hope you had some too! If you would like to know more about the low level aspects of Python here are a list of interesting posts:</p>
+<p>On the other hand, I had a lot of fun taking a deep dive into Python&rsquo;s source code and I hope you had some too! If you would like to know more about the low level aspects of Python here are a list of interesting posts:</p>
 
 <ul>
 <li><a href="http://www.jmcneil.net/2012/04/debugging-your-python-with-gdb-ftw/">Debugging Your Python With GDB (FTW!)</a></li>
@@ -1479,6 +1479,10 @@ The C code looks like this:</p>
   <ul id="recent_posts">
     
       <li class="post">
+        <a href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Dissection of Quarkslab's 2014 security challenge</a>
+      </li>
+    
+      <li class="post">
         <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
       </li>
     
@@ -1492,10 +1496,6 @@ The C code looks like this:</p>
     
       <li class="post">
         <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows' User/Kernel exceptions dispatcher</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite's obfuscation: a static analysis approach relying on symbolic execution</a>
       </li>
     
   </ul>

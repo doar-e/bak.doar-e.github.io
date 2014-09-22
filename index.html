@@ -9,7 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I &hellip;">
+  <meta name="description" content="Introduction As the blog was a bit silent for quite some time, I figured it would be cool to put together a post ; so here it is folks, dig in! The &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -90,6 +90,71 @@
   <header>
   
     
+      <h1 class="entry-title"><a href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Dissection of Quarkslab&#8217;s 2014 Security Challenge</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-09-06T20:37:00+01:00" pubdate data-updated="true">Sep 6<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>As the blog was a bit silent for quite some time, I figured it would be cool to put together a post ; so here it is folks, dig in!</p>
+
+<p>The French company <a href="http://blog.quarkslab.com/you-like-python-security-challenge-and-traveling-win-a-free-ticket-to-hitb-kul.html">Quarkslab</a> <a href="https://twitter.com/quarkslab/status/507457671386394624">recently</a> <a href="https://twitter.com/HITBSecConf/status/507458788522094592">released</a> a security challenge to win a free entrance to attend the upcoming <a href="https://conference.hitb.org/hitbsecconf2014kul/">HITBSecConf</a> conference in Kuala Lumpur from the 13th of October until the 16th.</p>
+
+<p>The challenge has been written by <a href="http://blog.quarkslab.com/author/serge-guelton.html">Serge Guelton</a>, a R&amp;D engineer specialized in compilers/parallel computations. At the time of writing, already eight different people manage to solve the challenge, and one of the ticket seems to have been won by <code>hackedd</code>, so congrats to him!</p>
+
+<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/woot.png"></p>
+
+<p>According to the description of the challenge Python is heavily involved, which is a good thing for at least two reasons:</p>
+
+<ul>
+<li>first because I already had <a href="https://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">the occasion</a> to look at its source code in the past,</li>
+<li>and because I so am a <a href="https://github.com/0vercl0k/stuffz/tree/master/Python's%20internals">big fan of Python</a>.</li>
+</ul>
+
+
+<p>In this post I will describe how I tackled this problem, how I managed to solve it. And to make up for me being slow at solving it I tried to make it fairly detailed.</p>
+
+<p>At first it was supposed to be quite short though, but well..I decided to analyze fully the challenge even if it wasn&rsquo;t needed to find the key unfortunately, so it is a bit longer than expected :&ndash;).</p>
+
+<p>Anyway, sit down, make yourself at home and let me pour you a cup of tea before we begin :&ndash;).</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
       <h1 class="entry-title"><a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a></h1>
       
       
@@ -116,7 +181,7 @@
 
   <div class="entry-content"><h1>Introduction</h1>
 
-<p>A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I thought I&rsquo;d explore things a little. I chose the ARM architecture mainly because I thought it would be fun to look at. This article is going to describe how the ARM Exception Vector Table (EVT) can aid in kernel exploitation in case an attacker has a write what-where primitive. It will be covering a local exploit scenario as well as a remote exploit scenario. Please note that corrupting the EVT has been mentioned in the paper &ldquo;Vector Rewrite Attack&rdquo;[1], which briefly talks about how it can be used in NULL pointer dereference vulnerabilities on an ARM RTOS.</p>
+<p>A few months ago, I was writing a Linux kernel exploitation challenge on ARM in an attempt to learn about kernel exploitation and I thought I&rsquo;d explore things a little. I chose the ARM architecture mainly because I thought it would be fun to look at. This article is going to describe how the ARM Exception Vector Table (EVT) can aid in kernel exploitation in case an attacker has a write what-where primitive. It will be covering a local exploit scenario as well as a remote exploit scenario. Please note that corrupting the EVT has been mentioned in the paper &ldquo;Vector Rewrite Attack&rdquo;<a href="http://cansecwest.com/slides07/Vector-Rewrite-Attack.pdf">[1]</a>, which briefly talks about how it can be used in NULL pointer dereference vulnerabilities on an ARM RTOS.</p>
 
 <p>The article is broken down into two main sections. First a brief description of the ARM EVT and its implications from an exploitation point of view (please note that a number of things about the EVT will be omitted to keep this article relatively short). We will go over two examples showing how we can abuse the EVT.</p>
 
@@ -572,6 +637,10 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
   <ul id="recent_posts">
     
       <li class="post">
+        <a href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Dissection of Quarkslab&#8217;s 2014 security challenge</a>
+      </li>
+    
+      <li class="post">
         <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
       </li>
     
@@ -585,10 +654,6 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     
       <li class="post">
         <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows&#8217; User/Kernel exceptions dispatcher</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite&#8217;s obfuscation: a static analysis approach relying on symbolic execution</a>
       </li>
     
   </ul>
