@@ -5,6 +5,7 @@ comments: true
 sharing: true
 footer: true
 ---
+# How to contribute
 If you like code obfuscation, breaking protection schemes, weird machines, anti-debugging tricks, packers, bug-exploitation or anything about binaries, get in touch with us if you are willing to get involved somehow! As a writer, a correcter, ideas-giver, ..anything!
 
 See that blog as a micro-blogging platform where you can speak about binaries-related subjects. We don't want to use it to write long papers, because a lot of us have already their personnal blogs ; use it for stuff you don't publish on your blogs.
@@ -23,3 +24,9 @@ We are also hanging out on IRC ([#doar-e@irc.w3challs.com](irc://#doar-e@irc.w3c
 [4]: https://github.com/JonathanSalwan/
 [5]: https://twitter.com/__x86
 [6]: https://github.com/JeremyFetiveau
+
+# Wall of fame
+
+ * Awesome *Amat Cama* for his [Corrupting the ARM Exception Vector Table](https://doar-e.github.io/blog/2014/04/30/corrupting-arm-evt/) article:
+   * Personal blog: [acez.re](http://acez.re/)
+   * Twitter account: [@amatcama](https://twitter.com/amatcama)
