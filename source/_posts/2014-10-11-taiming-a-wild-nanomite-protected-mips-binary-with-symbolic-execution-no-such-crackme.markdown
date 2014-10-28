@@ -1366,7 +1366,7 @@ KEY = 322644EF941077AB1115AB575363AE87F58E6D9AFE5C62CC
 
 ## Alternative solution - conclusion
 
-I chose this solution not only to get acquainted with Miasm, but also because it required much less effort and pain :). It fits into approximately 20 lines of GDB script, and 120 of python using Miasm and Z3. You can find all of those in this [archive](archive_emilien.zip).
+I chose this solution not only to get acquainted with Miasm, but also because it required much less effort and pain :). It fits into approximately 20 lines of GDB script, and 120 of python using Miasm and Z3. You can find all of those in this [folder](https://github.com/egirault/challs/tree/master/NoSuchCon2014).
 I hope it gave you an understandable example of symbolic execution and what you can do with it. However I strongly encourage you to dig into Miasm's code and examples if you want to really understand what's going on under the hood.
 
 # War's over, the final words
@@ -1374,6 +1374,6 @@ I guess this is where I thank both [@elvanderb](https://twitter.com/elvanderb) f
 
 Also, special thanks to [@__x86](https://twitter.com/__x86) and [@jonathansalwan](https://twitter.com/jonathansalwan) for proofreading!
 
-The codes/traces/tools developed in this post are all available on github [here](https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2014) and [here]()!
+The codes/traces/tools developed in this post are all available on github [here](https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2014) and [here](https://github.com/egirault/challs/tree/master/NoSuchCon2014)!
 
 By the way, don't hesitate to contact a member of the staff if you have a cool post you would like to see here -- you too can end up in [doar-e's wall of fame](https://doar-e.github.io/about/) :-).
