@@ -3,3 +3,17 @@
 {% include google_plus_one.html %}
 {% include twitter_sharing.html %}
 {% include custom/after_footer.html %}
+
+{% if index %}
+  {% comment %}
+  No table of contents on the index page.
+  {% endcomment %}
+
+{% elsif page.toc == true %}
+  <script type="text/javascript">
+  jQuery(document).ready(function() {
+    // Put a TOC right before the entry content.
+    generateTOC('.entry-content-toc', null);
+  });
+  </script>
+{% endif %}
