@@ -30,3 +30,8 @@ We are also hanging out on IRC ([#doar-e@irc.w3challs.com](irc://#doar-e@irc.w3c
  * Awesome *Amat Cama* for his [Corrupting the ARM Exception Vector Table](https://doar-e.github.io/blog/2014/04/30/corrupting-arm-evt/) article:
    * Personal blog: [acez.re](http://acez.re/)
    * Twitter account: [@amatcama](https://twitter.com/amatcama)
+   * Github account: [acama](https://github.com/acama)
+ * Brilliant *Emilien Girault* for co-authoring [Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme](https://doar-e.github.io/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/):
+   * Personal blog: [segmentationfault.fr](http://www.segmentationfault.fr/)
+   * Twitter account: [@emiliengirault](https://twitter.com/emiliengirault)
+   * Github account: [egirault](https://github.com/egirault)
