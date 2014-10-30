@@ -6,6 +6,7 @@ comments: true
 categories: [python, virtual machine]
 author: Axel "0vercl0k" Souchet
 published: true
+toc: true
 ---
 # Introduction #
 A year ago, I've written a Python script to leverage a bug in Python's virtual machine: the idea was to fully control the Python virtual processor and after that to instrument the VM to execute native codes. The [python27_abuse_vm_to_execute_x86_code.py](https://github.com/0vercl0k/stuffz/blob/master/Python's%20internals/python27_abuse_vm_to_execute_x86_code.py) script wasn't really self-explanatory, so I believe only a few people actually took some time to understood what happened under the hood. The purpose of this post is to give you an explanation of the bug, how you can control the VM and how you can turn the bug into something that can be more useful. It's also a cool occasion to see how works the Python virtual machine from a low-level perspective: what we love so much right?
@@ -17,6 +18,8 @@ But before going further, I just would like to clarify a couple of things:
 
 Also, keep in mind I will focus Python 2.7.5 x86 on Windows ; but obviously this is adaptable for other systems and architectures, so this is left as an exercise to the interested readers.
 All right, let's move on to the first part: this one will focus the essentials about the VM, and Python objects.
+
+<div class='entry-content-toc'></div>
 
 <!--more-->
 

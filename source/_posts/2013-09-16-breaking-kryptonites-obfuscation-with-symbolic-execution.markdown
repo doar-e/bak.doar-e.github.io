@@ -6,6 +6,7 @@ comments: true
 categories: [reverse-engineering]
 author: Axel "0vercl0k" Souchet
 published: true
+toc: true
 ---
 # Introduction
 *Kryptonite* was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic-preserving transformations in order to not break the original program. One of the main idea was for example to build a home-made 32 bits adder to replace the *add* LLVM instruction. Instead of having a single asm instruction generated at the end of the pipeline, you will end up with a ton of assembly codes doing only an addition. If you never read my article, and you are interested in it here it is: [Obfuscation of steel: meet my Kryptonite](http://0vercl0k.tuxfamily.org/bl0g/?p=260).
@@ -14,6 +15,9 @@ published: true
 
 
 In this post I wanted to show you how we can manage to break that obfuscation with symbolic execution. We are going to write a really tiny symbolic execution engine with IDAPy, and we will use Z3Py to simplify all our equations. Note that a friend of mine [@elvanderb](https://twitter.com/elvanderb) used a similar approach (more generic though) to simplify some parts of the [crackme](http://download.tuxfamily.org/overclokblog/Obfuscation%20of%20steel%3a%20meet%20my%20Kryptonite/binaries/) ; but he didn't wanted to publish it, so here is my blog post about it!
+
+<div class='entry-content-toc'></div>
+
 <!--more-->
 
 # The target

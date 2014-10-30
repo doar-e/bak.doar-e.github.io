@@ -6,11 +6,14 @@ comments: true
 categories: [reverse-engineering, obfuscation]
 author: Axel "0vercl0k" Souchet
 published: true
+toc: true
 ---
 # Introduction #
 Some months ago I came across a strange couple of functions that was kind of playing with a [finite-state automaton](http://en.wikipedia.org/wiki/Finite-state_machine) to validate an input. At first glance, I didn't really notice it was in fact a regex being processed, that's exactly why I spent quite some time to understand those routines. You are right to ask yourself: "Hmm but the regex string representation should be in the binary shouldn't it?", the thing is it wasn't. The purpose of this post is to focus on those kind of "compiled" regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.
 
 In this short post, we are going to see how a regular expression looks like in assembly/C, and how you can hide/obfuscate it. I hope you will enjoy the read, and you will both be able to recognize a regular expression compiled in your future reverse-engineering tasks and to obfuscate heavily your regex!
+
+<div class='entry-content-toc'></div>
 
 <!--more-->
 

@@ -6,6 +6,7 @@ comments: true
 categories: [python, virtual machine, reverse-engineering]
 author: Axel "0vercl0k" Souchet
 published: true
+toc: true
 ---
 # Introduction #
 
@@ -28,6 +29,7 @@ At first it was supposed to be quite short though, but well..I decided to analyz
 
 Anyway, sit down, make yourself at home and let me pour you a cup of tea before we begin :-).
 
+<div class='entry-content-toc'></div>
 
 <!--more-->
 

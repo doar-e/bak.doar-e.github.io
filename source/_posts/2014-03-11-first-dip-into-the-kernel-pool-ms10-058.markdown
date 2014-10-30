@@ -4,7 +4,8 @@ title: "First dip into the kernel pool : MS10-058"
 date: 2014-03-11 10:52:37 +0100
 author: Jeremy "__x86" Fetiveau
 comments: true
-categories: 
+categories: [reverse-engineering, exploitation, kernel pool, ms10-058, tcpip.sys]
+toc: true
 ---
 
 # Introduction
@@ -20,6 +21,8 @@ If you want to experiment with this vulnerability, you should read [[1]](http://
 An integer overflow in *tcpip!IppSortDestinationAddresses* allows to allocate a wrong-sized non-paged pool memory chunk. Below you can see the diff between the vulnerable version and the patched version.
 
 {%img center /images/MS10-058/diff.png %}
+
+<div class='entry-content-toc'></div>
 
 <!--more-->
 

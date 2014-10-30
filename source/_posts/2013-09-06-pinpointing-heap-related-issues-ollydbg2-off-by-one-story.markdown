@@ -6,6 +6,7 @@ comments: true
 categories: [reverse-engineering, debugging]
 published: true
 author: Axel "0vercl0k" Souchet
+toc: true
 ---
 # Introduction
 Yesterday afternoon, I was peacefully coding some stuff you know but I couldn't make my code working.
@@ -20,6 +21,8 @@ I like when things like that happens to me (remember the crashes I've found in O
 * reverse-engineer the codes involved in the bug in order to figure out why it's happening (sometimes I got the sources, sometimes I don't like this time)
 
 In this post, I will show you how I've manage to pinpoint where the bug was, using [GFlags, PageHeap](http://msdn.microsoft.com/en-us/library/windows/hardware/ff549561(v=vs.85\).aspx) and [WinDbg](http://www.windbg.info/). Then, we will reverse-engineer the buggy code in order to understand why the bug is happening, and how we can code a clean trigger.
+
+<div class='entry-content-toc'></div>
 
 <!--more-->
 

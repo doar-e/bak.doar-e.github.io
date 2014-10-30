@@ -6,6 +6,7 @@ comments: true
 categories: [coding, hooking, windows internals]
 author: Axel "0vercl0k" Souchet
 published: true
+toc: true
 ---
 # Introduction
 The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like [gynvael](http://gynvael.coldwind.pl/)'s [ExcpHook](http://gynvael.coldwind.pl/?id=148) but in userland), and to generate a report with information related to the exception. The other purpose is to have a look at the internals of course.
@@ -44,6 +45,8 @@ That's why I divided this post in two big parts:
    * Monitoring (a bit like our example),
    * Pseudo-sandboxing (prevent API calls),
    * etc.
+
+<div class='entry-content-toc'></div>
 
 <!--more-->
 

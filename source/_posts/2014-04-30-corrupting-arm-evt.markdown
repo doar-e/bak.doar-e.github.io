@@ -6,6 +6,7 @@ comments: true
 categories: [exploitation, kernel]
 author: Amat "acez" Cama
 published: true
+toc: true
 ---
 
 Introduction
@@ -15,6 +16,8 @@ A few months ago, I was writing a Linux kernel exploitation challenge on ARM in 
 The article is broken down into two main sections. First a brief description of the ARM EVT and its implications from an exploitation point of view (please note that a number of things about the EVT will be omitted to keep this article relatively short). We will go over two examples showing how we can abuse the EVT.
 
 I am assuming the reader is familiar with Linux kernel exploitation and knows some ARM assembly (seriously).
+
+<div class='entry-content-toc'></div>
 
 <!--more-->
 

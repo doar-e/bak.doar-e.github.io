@@ -6,6 +6,7 @@ comments: true
 categories: [reverse-engineering, dynamic-binary-instrumentation]
 author: Axel "0vercl0k" Souchet
 published: true
+toc: true
 ---
 # Introduction
 Sometimes, when you are reverse-engineering binaries you need somehow to measure, or just to have an idea about how much "that" execution is covering the code of your target. It can be for fuzzing purpose, maybe you have a huge set of inputs (it can be files, network traffic, anything) and you want to have the same coverage with only a subset of them. Or maybe, you are not really interested in the measure, but only with the coverage differences between two executions of your target: to locate where your program is handling a specific feature for example.
@@ -15,6 +16,8 @@ But it's not a trivial problem, usually you don't have the source-code of the ta
 Note also, this is a perfect occasion to play with Pin :-)).
 
 In this post, I will explain briefly how you can build that kind of tool using Pin, and how it can be used for reverse-engineer purposes.
+
+<div class='entry-content-toc'></div>
 
 <!--more-->
 
