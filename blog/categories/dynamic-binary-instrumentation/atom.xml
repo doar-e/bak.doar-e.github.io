@@ -4,7 +4,7 @@
   <title><![CDATA[Category: dynamic-binary-instrumentation | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/dynamic-binary-instrumentation/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-09-22T18:45:29+01:00</updated>
+  <updated>2014-11-03T09:04:13+00:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -27,6 +27,11 @@
 <p>Note also, this is a perfect occasion to play with Pin :&ndash;)).</p>
 
 <p>In this post, I will explain briefly how you can build that kind of tool using Pin, and how it can be used for reverse-engineer purposes.</p>
+
+<div class='entry-content-toc'></div>
+
+
+
 
 <!--more-->
 

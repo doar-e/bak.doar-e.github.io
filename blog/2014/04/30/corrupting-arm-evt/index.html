@@ -26,6 +26,9 @@
   <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
   <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
   <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <script src="/javascripts/jquery.tableofcontents.min.js" type="text/javascript"></script>
+  <script src="/javascripts/generate-toc.js" type="text/javascript"></script>
+
   <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
 <link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
 <link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
@@ -118,6 +121,11 @@
 <p>The article is broken down into two main sections. First a brief description of the ARM EVT and its implications from an exploitation point of view (please note that a number of things about the EVT will be omitted to keep this article relatively short). We will go over two examples showing how we can abuse the EVT.</p>
 
 <p>I am assuming the reader is familiar with Linux kernel exploitation and knows some ARM assembly (seriously).</p>
+
+<div class='entry-content-toc'></div>
+
+
+
 
 <!--more-->
 
@@ -498,6 +506,10 @@ Cheers, <a href="https://twitter.com/amatcama">@amatcama</a></p>
   <ul id="recent_posts">
     
       <li class="post">
+        <a href="/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/">Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme</a>
+      </li>
+    
+      <li class="post">
         <a href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Dissection of Quarkslab's 2014 security challenge</a>
       </li>
     
@@ -511,10 +523,6 @@ Cheers, <a href="https://twitter.com/amatcama">@amatcama</a></p>
     
       <li class="post">
         <a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First dip into the kernel pool : MS10-058</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/">Having a look at the Windows' User/Kernel exceptions dispatcher</a>
       </li>
     
   </ul>
@@ -549,6 +557,15 @@ Cheers, <a href="https://twitter.com/amatcama">@amatcama</a></p>
 
 
 
+
+
+  <script type="text/javascript">
+  jQuery(document).ready(function() {
+    // Put a TOC right before the entry content.
+    if(jQuery('div[id="tocBlock"]').length == 0)
+        generateTOC('.entry-content-toc', null);
+  });
+  </script>
 
 </body>
 </html>

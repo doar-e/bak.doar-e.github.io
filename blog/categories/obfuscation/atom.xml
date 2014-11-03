@@ -4,7 +4,7 @@
   <title><![CDATA[Category: obfuscation | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/obfuscation/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-09-22T18:45:29+01:00</updated>
+  <updated>2014-11-03T09:04:13+00:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -23,6 +23,11 @@
 <p>Some months ago I came across a strange couple of functions that was kind of playing with a <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automaton</a> to validate an input. At first glance, I didn&rsquo;t really notice it was in fact a regex being processed, that&rsquo;s exactly why I spent quite some time to understand those routines. You are right to ask yourself: &ldquo;Hmm but the regex string representation should be in the binary shouldn&rsquo;t it?&rdquo;, the thing is it wasn&rsquo;t. The purpose of this post is to focus on those kind of &ldquo;compiled&rdquo; regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.</p>
 
 <p>In this short post, we are going to see how a regular expression looks like in assembly/C, and how you can hide/obfuscate it. I hope you will enjoy the read, and you will both be able to recognize a regular expression compiled in your future reverse-engineering tasks and to obfuscate heavily your regex!</p>
+
+<div class='entry-content-toc'></div>
+
+
+
 
 <!--more-->
 
