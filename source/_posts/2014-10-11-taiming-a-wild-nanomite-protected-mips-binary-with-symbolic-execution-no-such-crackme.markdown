@@ -8,7 +8,7 @@ author: Axel "0vercl0k" Souchet & Emilien "tr4nce" Girault
 published: true
 toc: true
 ---
-As last year, the French conference [No Such Con](http://www.nosuchcon.org/#challenge) returns for its second edition in Paris from the 19th of November until the 21th of November. And again, the brilliant [Eloi Vanderbeken](https://twitter.com/elvanderb) put together a series of three security challenges especially for this occasion.
+As last year, the French conference [No Such Con](http://www.nosuchcon.org/#challenge) returns for its second edition in Paris from the 19th of November until the 21th of November. And again, the brilliant [Eloi Vanderbeken](https://twitter.com/elvanderb) & his mates at [Synacktiv](http://synacktiv.fr/en/index.html) put together a series of three security challenges especially for this occasion.
 Apparently, the three tasks have already been [solved](https://twitter.com/Synacktiv/status/515174845844582401) by awesome [@0xfab](https://twitter.com/0xf4b) which won the competition, hats off :).
 
 To be honest I couldn't resist to try at least the first step, as I know that [Eloi](https://twitter.com/elvanderb) always builds [really twisted](http://0vercl0k.tuxfamily.org/bl0g/?p=253) and [nice binaries](http://www.nosuchcon.org/2013/#challenge) ; so I figured I should just give it a go!
