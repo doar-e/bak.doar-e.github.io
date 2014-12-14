@@ -16,7 +16,7 @@ You can also contact the owners:
   - Jonathan Salwan: [twitter][3], [github][4]
   - Jérémy Fetiveau: [twitter][5], [github][6]
 
-We are also hanging out on IRC ([#doar-e@irc.w3challs.com](irc://#doar-e@irc.w3challs.com)) and on twitter ([@doar_e](https://twitter.com/doar_e)).
+We are also hanging out on IRC ([#doar-e@irc.w3challs.com](irc://#doar-e@irc.w3challs.com)), on twitter ([@doar_e](https://twitter.com/doar_e)) and we are currently experimenting a [googlegroup](https://groups.google.com/forum/#!forum/doare) ; don't be shy & join us!
 
 [1]: https://twitter.com/0vercl0k
 [2]: https://github.com/0vercl0k
@@ -27,11 +27,12 @@ We are also hanging out on IRC ([#doar-e@irc.w3challs.com](irc://#doar-e@irc.w3c
 
 # Wall of fame
 
- * Awesome *Amat Cama* for his [Corrupting the ARM Exception Vector Table](https://doar-e.github.io/blog/2014/04/30/corrupting-arm-evt/) article:
+ * Awesome **Amat Cama** for his [Corrupting the ARM Exception Vector Table](https://doar-e.github.io/blog/2014/04/30/corrupting-arm-evt/) article:
    * Personal blog: [acez.re](http://acez.re/)
    * Twitter account: [@amatcama](https://twitter.com/amatcama)
    * Github account: [acama](https://github.com/acama)
- * Brilliant *Emilien Girault* for co-authoring [Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme](https://doar-e.github.io/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/):
+<br />
+ * Brilliant **Emilien Girault** for co-authoring [Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme](https://doar-e.github.io/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/):
    * Personal blog: [segmentationfault.fr](http://www.segmentationfault.fr/)
    * Twitter account: [@emiliengirault](https://twitter.com/emiliengirault)
    * Github account: [egirault](https://github.com/egirault)
