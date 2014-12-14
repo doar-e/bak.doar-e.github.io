@@ -4,7 +4,7 @@
   <title><![CDATA[Category: reverse-engineering | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/reverse-engineering/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-11-06T21:26:19+00:00</updated>
+  <updated>2014-12-14T12:34:36+00:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -68,7 +68,7 @@ qemu-system-mipsel -M malta -kernel vmlinux-3.2.0-4-4kc-malta -hda debian_wheezy
 overclok@wildout:~/chall/nsc2014$ ./start_vm.sh
 [    0.000000] Initializing cgroup subsys cpuset
 [    0.000000] Initializing cgroup subsys cpu
-[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#x6d;&#x61;&#105;&#x6c;&#116;&#x6f;&#x3a;&#x64;&#x65;&#x62;&#105;&#97;&#x6e;&#x2d;&#107;&#x65;&#114;&#110;&#x65;&#108;&#x40;&#108;&#105;&#x73;&#x74;&#x73;&#x2e;&#x64;&#x65;&#x62;&#105;&#97;&#x6e;&#46;&#x6f;&#x72;&#x67;">&#x64;&#101;&#x62;&#105;&#97;&#110;&#45;&#x6b;&#101;&#114;&#110;&#101;&#x6c;&#x40;&#x6c;&#x69;&#x73;&#116;&#115;&#x2e;&#100;&#x65;&#98;&#105;&#x61;&#x6e;&#46;&#x6f;&#114;&#x67;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
+[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#x6d;&#97;&#x69;&#x6c;&#116;&#111;&#x3a;&#100;&#101;&#x62;&#x69;&#97;&#110;&#x2d;&#x6b;&#101;&#x72;&#x6e;&#x65;&#108;&#64;&#108;&#x69;&#115;&#116;&#x73;&#46;&#100;&#x65;&#x62;&#105;&#x61;&#110;&#46;&#x6f;&#114;&#103;">&#100;&#101;&#x62;&#x69;&#97;&#x6e;&#x2d;&#107;&#101;&#114;&#x6e;&#x65;&#x6c;&#64;&#108;&#105;&#x73;&#x74;&#x73;&#46;&#100;&#x65;&#x62;&#105;&#x61;&#x6e;&#x2e;&#x6f;&#x72;&#x67;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
 [&hellip;]
 debian-mipsel login: root
 Password:
@@ -323,7 +323,7 @@ Let&rsquo;s not focus on what the block is actually doing though, we will develo
 
 <p>Anyway, after this long theoretical speech let&rsquo;s have a look at some code. The first important job of the engine is to be able to parse MIPS assembly: fortunately for us this is really easy. We are directly feeding plain-text MIPS disassembly directly copied from IDA to our engine:</p>
 
-<p>```python <a href="&#x6d;&#97;&#105;&#108;&#116;&#x6f;&#x3a;&#109;&#x69;&#x6e;&#x69;&#x5f;&#x6d;&#105;&#x70;&#115;&#x5f;&#115;&#121;&#x6d;&#x65;&#120;&#101;&#99;&#x5f;&#x65;&#110;&#x67;&#105;&#x6e;&#x65;&#46;&#112;&#121;&#64;&#77;&#x69;&#x6e;&#105;&#77;&#105;&#x70;&#115;&#x53;&#121;&#x6d;&#x45;&#120;&#x65;&#99;&#x45;&#x6e;&#103;&#x69;&#x6e;&#101;&#46;&#95;&#112;&#x61;&#x72;&#x73;&#101;&#95;&#108;&#105;&#x6e;&#101;">&#109;&#105;&#x6e;&#105;&#95;&#109;&#x69;&#112;&#115;&#x5f;&#115;&#x79;&#109;&#x65;&#120;&#101;&#99;&#x5f;&#101;&#x6e;&#x67;&#105;&#x6e;&#101;&#46;&#x70;&#121;&#64;&#77;&#105;&#x6e;&#105;&#77;&#105;&#112;&#x73;&#x53;&#x79;&#109;&#69;&#x78;&#101;&#99;&#69;&#110;&#103;&#x69;&#110;&#101;&#46;&#95;&#x70;&#x61;&#114;&#x73;&#101;&#x5f;&#108;&#x69;&#110;&#x65;</a>
+<p>```python <a href="&#x6d;&#97;&#x69;&#108;&#116;&#x6f;&#58;&#109;&#105;&#x6e;&#x69;&#x5f;&#x6d;&#x69;&#112;&#x73;&#95;&#115;&#121;&#109;&#101;&#x78;&#101;&#99;&#95;&#101;&#110;&#103;&#105;&#110;&#x65;&#x2e;&#112;&#121;&#x40;&#77;&#105;&#x6e;&#105;&#x4d;&#105;&#112;&#115;&#x53;&#x79;&#x6d;&#69;&#120;&#101;&#99;&#x45;&#x6e;&#103;&#x69;&#110;&#x65;&#46;&#95;&#112;&#x61;&#x72;&#x73;&#x65;&#95;&#108;&#x69;&#110;&#101;">&#109;&#105;&#110;&#x69;&#95;&#x6d;&#105;&#112;&#x73;&#x5f;&#x73;&#121;&#109;&#x65;&#120;&#x65;&#99;&#x5f;&#101;&#110;&#x67;&#x69;&#x6e;&#101;&#x2e;&#112;&#121;&#x40;&#x4d;&#x69;&#110;&#105;&#x4d;&#105;&#112;&#115;&#x53;&#x79;&#109;&#69;&#120;&#101;&#99;&#69;&#110;&#103;&#x69;&#x6e;&#x65;&#x2e;&#95;&#112;&#97;&#x72;&#x73;&#x65;&#x5f;&#x6c;&#105;&#110;&#101;</a>
 def _parse_line(self, line):
   addr_seg, instr, rest = line.split(None, 2)
   args = rest.split(&lsquo;,&rsquo;)
