@@ -7,6 +7,6 @@ footer: true
 ---
 # Presentations given by members
 
- * **Jonathan Salwan** for his [bla](presentations/) talk given at [Security Day](https://securitydaylille1.github.io/) in Lille, 2015.
+ * **Jonathan Salwan** for his "[Program analysis: dynamic binary analysis and instrumentation]({{ root_url }} presentations/securityday2015/)" talk given at [Security Day](https://securitydaylille1.github.io/) in Lille, 2015.
 <br />
- * **Axel Souchet** for his [bla]({{ root_url }} presentations/securityday2015/SecDay-Lille-2015-Axel-0vercl0k-Souchet.html) talk given at [Security Day](https://securitydaylille1.github.io/) in Lille, 2015.
+ * **Axel Souchet** for his "[Theorem prover, symbolic execution and practical reverse-engineering]({{ root_url }} presentations/securityday2015/SecDay-Lille-2015-Axel-0vercl0k-Souchet.html)" talk given at [Security Day](https://securitydaylille1.github.io/) in Lille, 2015.

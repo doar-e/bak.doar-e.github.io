@@ -46,11 +46,12 @@
             <div class="slides">
                 <section>
                     <h2>Theorem prover, symbolic execution and practical reverse-engineering</h2>
-                    <h3>Security Day 2015 - Lille 1 University - France</h3>
-                    <h4>16th of January 2015</h4>
+                    <h4>Security Day 2015 - Lille 1 University - France</h4>
+                    <h5>16th of January 2015</h5>
                     <p>
                         <small>Axel '<a href='https://twitter.com/0vercl0k'>@0vercl0k</a>' Souchet</small>
                     </p>
+                    <a href="https://twitter.com/0vercl0k" target="_blank"><img style='float:center ; border:0' height='20%' width='20%' src="./pics/avatar.png"></a>
                 </section>
 
                 <section>
@@ -86,16 +87,15 @@
                             <li><p>..and its Python bindings</p></li>
                             <li><p>Symbolic execution</p></li>
                             <li><p>Assemblies: <a href="https://en.wikipedia.org/wiki/X86">Intel x86</a> & <a href="https://en.wikipedia.org/wiki/MIPS_instruction_set">MIPS</a></p></li>
-                            <li><p>Long story short: how Z3 & symbolic execution can help you tackle reverse-engineering / security problems</p></li>
+                            <li><p>Long story short: how Z3 & symbolic execution can help you tackle reverse-engineering / security problems in an elegant way</p></li>
                         </ul>
                     </section>
 
                     <section>
                         <h2>What we won't talk about?</h2>
                         <ul>
-                            <li><p>Won't bother you with too many theoretical stuff ;-)</p></li>
+                            <li><p>Won't bother you with theoretical stuff ;-)</p></li>
                             <li><p>Won't talk about how theorem provers do their magic</p></li>
-                            <li><p>Students: don't be afraid by the "complicated" terms, we'll deal with only practical things</p></li>
                         </ul>
                     </section>
                 </section>
@@ -119,7 +119,7 @@
                         <h2>Why on earth do you need that?</h2>
                         <ul>
                             <li>
-                                Verify specific properties of a function, a program
+                                Verify specific properties of a program, a function, a basic-block
                                 <ul>
                                     <li>Does that piece of code respect the spec?</li>
                                 </ul>
@@ -128,7 +128,7 @@
                                 Reachability problem
                                 <ul>
                                     <li>Can we reach this basic block assuming I can control this variable?</li>
-                                    <li>Achieve maximum coverage</li>
+                                    <li>Achieve maximum code coverage</li>
                                 </ul>
                             </li>
                             <li>
@@ -196,7 +196,7 @@ else:
                         <h2>Z3py Hello-World: Explanations I</h2>
                         <ul>
                             <li><p>BitVecs are basically arrays of 0 & 1's</p></li>
-                            <li><p>It is the type the most close from what your CPU handles</p></li>
+                            <li><p>It is the type the closest from what your CPU handles</p></li>
                             <li><p>A <code>BitVec8</code> is basically the equivalent of an <code>unsigned char</code> variable in C</p></li>
                             <li><p>A solver instance holds a set of constraints you want to apply</p></li>
                             <li><p>Obviously, you can apply constraints only on Z3 variables: not on normal Python variables</p></li>
@@ -206,12 +206,20 @@ else:
                     <section>
                         <h2>Z3py Hello-World: Explanations II</h2>
                         <ul>
-                            <li><p>BitVecs aren't the only type available, you can also use: Ints, Bools, Arrays, etc.</p></li>
-                            <li><p>Z3 integers are integers like in math: they are infinite ; as opposed to BitVecs</p></li>
-                        </ul>
+                            <li>
+                                <p>BitVecs are not the only type available, you can also use: Ints, Bools, Arrays, etc.</p>
+                                <ul>
+                                    <li><p>Note that Z3 integers are integers like in math: they are infinite ; as opposed to BitVecs</p></li>
+                                </ul>
+                            </li>
                         <img style='border: 0' class="fragment" src="./pics/z3-bitvec-wrap.png">
-                        <p class="fragment">Why :-)?</p>
-                        <p class="fragment">BitVecs can wrap, like CPU registers or C integers</p>
+                            <li>
+                                <p class="fragment">Why :-)?</p>
+                                <ul>
+                                    <li><p class="fragment">BitVecs do wrap, like CPU registers or C integers</p></li>
+                                </ul>
+                            </li>
+                        </ul>
                         <img style='border: 0' class="fragment" src="./pics/z3-bitvec-wrap-py.png">
                     </section>
 
@@ -252,8 +260,8 @@ else:
                         <h2>Z3py tips: simplify</h2>
                         <ul>
                             <li><p>This function is something really important: as the name suggests it can simplify Z3 expressions</p></li>
-                            <li><p>Keep in mind it's not magic though: sometimes with big expressions the simplification is only "partial" (cf <a href='https://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/'>Breaking Kryptonite's Obfuscation</a>)</p></li>
-                            <li><p>A lot of algorithms / heuristics that can help simplify to do better its job can be enabled / disabled ; call help_simplify() to have the whole list</p></li>
+                            <li><p>Keep in mind it's not magic though: the returned expression does not have to be the most simplified expression (cf <a href='https://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/'>Breaking Kryptonite's Obfuscation</a>)</p></li>
+                            <li><p>A lot of options can be enabled / disabled to help simplify to do a better job at simplifying ; call help_simplify()</p></li>
                         </ul>
                         <img style='border: 0' class="fragment" src="./pics/z3-simplify.png">
                     </section>
@@ -274,7 +282,7 @@ else:
                             <li><p>Another couple of useful functions:</p></li>
                             <ul>
                                 <li><p>Extract: Extract some bits from a BitVec</p></li>
-                                <li><p>Concat: Concatenate two BitVecs</p></li>
+                                <li><p>Concat: Concatenate BitVecs</p></li>
                             </ul>
                             <li><p>Z3 operators need operands of the same size ; Extract/Concat/ZeroSignExt can help you to meet this requirement</p></li>
                         </ul>
@@ -293,8 +301,7 @@ else:
                         <h2>Z3py tips: prove</h2>
                         <ul>
                             <li><p>Another quite cool & important function is <a href=''>prove</a></p></li>
-                            <li><p>The function basically checks that the given equation is <b>always</b> true</p></li>
-                            <li><p>No matter what kind of crazy concrete values you can have in your inputs variables</p></li>
+                            <li><p>The function basically checks the given equation is <b>always</b> true</p></li>
                             <li><p>If not proven, Z3 will give you a counterexample</p></li>
                             <li><p>Example: Let's prove that Concat works properly</p></li>
                         </ul>
@@ -304,10 +311,13 @@ else:
                     <section>
                         <h2>Z3py tips: prove example II</h2>
                         <ul>
-                            <li><p>More real example:</p></li>
-                            <li><p>Can we use ((a + b) < a) to know if there is an overflow when adding unsigned 32 bits integers a and b?</p></li>
-                            <li><p>Instead of storing the result in a 64 bits integer & checking that the result isn't greater or equal to 0x100000000?</p></li>
-
+                            <li>
+                                <p>More real example:</p>
+                                <ul>
+                                    <li><p>Can we use ((a + b) < a) to know if there is an overflow when adding unsigned 32 bits integers a and b?</p></li>
+                                    <li><p>Instead of storing the result in a 64 bits integer & checking that the result is not >= 0x100000000?</p></li>
+                                </ul>
+                            </li>
                             <li><p><a href='https://github.com/0vercl0k/z3-playground/blob/master/proof_unsigned_integer_overflow_chech.py'>proof_unsigned_integer_overflow_chech.py</a></p></li>
                         </ul>
                         <pre>
@@ -370,7 +380,7 @@ prove(
                                 <p>A lot of time you need to express the following: "I want all my symbolic variables to be different"</p>
                                 <ul>
                                     <li><p>You can do it manually via And(x1 != x2, x2 != x3, x1 != x3)</p></li>
-                                    <li><p>Or you can use Distinct(x1, x2, x3) which is way more cleaner</p></li>
+                                    <li><p>Or you can use Distinct(x1, x2, x3) which is way cleaner</p></li>
                                 </ul>
                             </li>
                         </ul>
@@ -410,7 +420,7 @@ else
                                 <p>You may need to inspect & visit the AST of a Z3 expression</p>
                                 <ul>
                                     <li><p>Useful for transformation, conversion, etc.</p></li>
-                                    <li><p>The expression is basically a tree</p></li>
+                                    <li><p>The expression is a tree</p></li>
                                 </ul>
                                 <li><p>e.arg(x) gets you the x th argument in the expression</p></li>
                                 <li><p>e.num_args() gives you the number of argument</p></li>
@@ -460,7 +470,13 @@ else
                     <section>
                         <h2>References</h2>
                         <ul>
-                            <li><p>Shameless plug: <a href='https://github.com/0vercl0k/z3-playground'>z3-playground</a>: Trying to compile a list of puzzle/"real" problems solve with Z3 ; if you have cool ideas/codes, feel free to reach out to me or send pull requests</p></li>
+                            <li>
+                                <p>Shameless plug: <a href='https://github.com/0vercl0k/z3-playground'>z3-playground</a>: Trying to compile a list of puzzle/"real" problems solved with Z3</p>
+                                <ul>
+                                    <li><p>Every examples are available in <a href='https://github.com/0vercl0k/z3-playground/tree/master/essentials'>z3-playground/essentials</a> ; feel free to contribute!</p></li>
+                                    <li><p>If you have cool ideas / codes, feel free to reach out to me or send pull requests</p></li>
+                                </ul>
+                            </li>
                             <li><p>"<a href='http://channel9.msdn.com/blogs/peli/the-z3-constraint-solver'>The Z3 Constraint Solver</a>" by Leonardo De Moura & Nikolaj Bjorner</p></li>
                             <li><p><a href='https://stackoverflow.com/questions/tagged/z3'>Z3 Q&As on stackoverflow</a></p></li>
                             <li><p><a href='http://research.microsoft.com/en-us/um/people/leonardo/blog.html'>Leornardo De Moura's blog</a></p></li>
@@ -471,13 +487,12 @@ else
                         <h2>Conclusion</h2>
                         <ul>
                             <li><p>Z3 is really powerful, use it!</p></li>
-                            <li><p>There are a lot of advanced feature that I don't use / I don't know how to use:</p></li>
+                            <li><p>There are loads of advanced features that I don't use / I don't know how to use:</p></li>
                             <ul>
                                 <li><p>Tactics / Strategies / Subgoals?</p></li>
                                 <li><p>Functions?</p></li>
                                 <li><p>Patterns?</p></li>
                                 <li><p>Data-types?</p></li>
-                                <li><p>Feel free to send pull request if you have cool examples!</p></li>
                             </ul>
                             <li>
                                 <p>If you don't like Z3's API and / or its features try out another one:</p>
@@ -529,15 +544,15 @@ else
                         <h2>Symbolic execution: definition with words II</h2>
                         <ul>
                             <p>
-                                <li>So does that mean I have to recode a virtual Intel CPU with the semantic of every instructions?</li>
+                                <li>So does that mean I have to recode a virtual CPU with the semantic of every instructions?</li>
                             </p>
                             <p>
                                 <li>Nope ; see it as a recipe. Take shortcuts to make your life easier:
                                     <ul>
                                         <li>I don't need to handle branches</li>
                                         <li>I only need to handle 4 different instructions</li>
-                                        <li>You are also free to scope the symbolic execution to the granularity you want: a basic block, a function, a library, an entire program</li>
-                                        <li>You could also symbolically execute intermediate representation code instead of assembly</li>
+                                        <li>Think about the granularity you want: a basic block, a function, a library, an entire program</li>
+                                        <li>Why not symbolically execute intermediate representation code instead of assembly?</li>
                                     </ul>
                                 </li>
                             </p>
@@ -585,6 +600,7 @@ else
                     <section>
                         <h2>References</h2>
                         <ul>
+                            <li>Check Jonathan Salwan's talk</li>
                             <li>"<a href='http://research.microsoft.com/en-us/um/people/pg/public_psfiles/sage-in-one-slide.pdf'>SAGE in one page</a>"</li>
                             <li>"<a href='http://www.nosuchcon.org/talks/2014/D2_06_Richard_Johnson_Sagely_Advice.pdf'>SAGEly advice</a>" from Richard '<a href='https://twitter.com/richinseattle'>@richinseattle</a>' Johnson</li>
                             <li>"<a href='http://www.nosuchcon.org/talks/2014/D1_01_Rolf_Rolles_Program_Synthesis_in_reverse_Engineering.pdf'>Program Synthesis in Reverse Engineering"</a> by Rolf '<a href='https://twitter.com/RolfRolles'>@RolfRolles</a>' Rolles</li>
@@ -628,10 +644,9 @@ else
                         <ul>
                             <li>Modeling C concrete strings</li>
                             <ul>
-                                <li>Sequence of BitVecVal8!</li>
+                                <li>Sequence of BitVecVal8</li>
                                 <pre>
                                     <code data-trim>def str_to_BitVecVals8(s):
-    '''Generates a list of BitVecVal8 from a python string'''
     return map(
         lambda x: BitVecVal(ord(x), 8),
         list(s)
@@ -701,7 +716,7 @@ def main(argc, argv):
                         <ul>
                             <li>Job done!</li>
                             <img style='border: 0' src="./pics/z3-hash-collision.png">
-                            <li>No brute-force, elegant solution: didn't even think at how "reverse" H, Z3 did it for us</li>
+                            <li>No brute-force, elegant solution: didn't even think at how we could have "reverse" H, Z3 did it for us</li>
                             <li>Full code is here: <a href='https://github.com/0vercl0k/z3-playground/blob/master/hash_collisions_z3.py'>hash_collisions_z3.py</a></li>
                         </ul>
                     </section>
@@ -724,9 +739,7 @@ def main(argc, argv):
                     <section>
                         <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
                         <pre>
-                            <code data-trim>#include <stdio.h>
-#include <stdlib.h>
-
+                            <code data-trim>
 unsigned int add(unsigned int a, unsigned int b)
 {
     return a + b;
@@ -772,7 +785,7 @@ Length Name
                             <li><p>The context</p></li>
                             <ul>
                                 <li><p>We want to attack a single basic block</p></li>
-                                <li><p>If you look closer at the previous slides, only a few subset of x86's instructions are used</p></li>
+                                <li><p>If you look closer at the previous slide, only a subset of x86's instructions are used</p></li>
                                 <ul>
                                     <li><p>Their semantics are easy to implement</p></li>
                                 </ul>
@@ -785,8 +798,8 @@ Length Name
                             <li><p>The plan</p></li>
                             <ul>
                                 <li><p>Symbolically execute the basic block</p></li>
-                                <li><p>To do so you need a virtual environment: both CPU, memory</p></li>
-                                <li><p>For us, virtual CPU = bunch of registers that can hold symbolic variables or concrete values</p></li>
+                                <li><p>To do so you need a virtual environment: both CPU & memory</p></li>
+                                <li><p>For us, virtual CPU = bunch of registers that can either hold symbolic variables or concrete values</p></li>
                             </ul>
                         </ul>
                     </section>
@@ -803,7 +816,7 @@ Length Name
                                 <li><p>A virtual CPU: the core of the program</p></li>
                                 <ul>
                                     <li><p>Use the disassembler component & implement the instruction semantics</p></li>
-                                    <li><p>Also simulate memory</p></li>
+                                    <li><p>Also simulates memory</p></li>
                                     <li><p>Keep track of the (simplified) equations</p></li>
                                 </ul>
                             </ul>
@@ -853,7 +866,7 @@ Concat(~(Concat(1073741823, Extract(1, 1, arg1)) |
                         <ul>
                             <li><p>Not quite what I expected but as I mentioned before, simplification strategies are not magic ; complicated problem</p></li>
                             <ul>
-                                <li><p>Read Rolf's <a href='https://www.reddit.com/r/ReverseEngineering/comments/1mphd1/breaking_kryptonites_obfuscation_a_static/cck4ptf'>answer</a> about that</p></li>
+                                <li><p>Read Rolf's <a href='https://www.reddit.com/r/ReverseEngineering/comments/1mphd1/breaking_kryptonites_obfuscation_a_static/cck4ptf'>answer</a> if you want to know why</p></li>
                             </ul>
                         </ul>
                     </section>
@@ -909,11 +922,11 @@ EAX=arg0 + arg1
                                             </li>
                                         </ul>
                                     </li>
-                                    <li><p>The gadgets are small & they usually only use a small subset of x86 instructions: we don't really care about: SSE/MMX & branches</p></li>
+                                    <li><p>The gadgets are small & they usually only use a small subset of x86 instructions: we don't really care about: SSE/MMX or crazy instructions</p></li>
                                 </ul>
                                 <p>The problem</p>
                                 <ul>
-                                    <li><p>To be able to compare gadgets, we need instruction semantics ; where do we get that?</p></li>
+                                    <li><p>To be able to compare gadgets, we need instruction semantics ; where do we get that for free?</p></li>
                                 </ul>
                             </li>
                         </ul>
@@ -929,7 +942,7 @@ EAX=arg0 + arg1
                                     <li>
                                         <p>Symbolic execution engine for x86, x64, ARM & instruction semantics</p>
                                         <ul>
-                                            <li><p>Use its own expression mechanism so far</p></li>
+                                            <li><p>Uses its own expression mechanism so far</p></li>
                                             <li><p>Most of important (for us) x86 instructions are implemented</p></li>
                                         </ul>
                                     </li>
@@ -952,7 +965,7 @@ EAX=arg0 + arg1
                                             <li>
                                                 <p><a href='https://github.com/bdcht'>@bdcht</a> plans to integrate Z3 in his framework at some point</p>
                                                 <ul>
-                                                    <li><p>No more magic ugly tricks to go from one another</p></li>
+                                                    <li><p>No more magic ugly tricks to go from one to another</p></li>
                                                 </ul>
                                             </li>
                                         </ul>
@@ -1061,7 +1074,7 @@ pushad ; mov eax, 0xffffffff ; pop ebx ; pop esi ; pop edi ; ret
                                         <p>ELF MIPS binary protected by nanomites</a></p>
                                         <ul>
                                             <li><p>Father debugs the son ; Father's code is called each time the son executes 'break' (equivalent of int3)</p></li>
-                                            <li><p>Father modify the son's CPU context to obfuscate the execution flow: the son won't be executed as it appears in IDA</p></li>
+                                            <li><p>Father modifies the son's CPU context to obfuscate the execution flow: the son won't be executed as it appears in IDA</p></li>
                                         </ul>
                                     </li>
                                     <li>
@@ -1082,7 +1095,7 @@ pushad ; mov eax, 0xffffffff ; pop ebx ; pop esi ; pop edi ; ret
                             <li><p>Long story short:</p></li>
                             <ul>
                                 <li>
-                                    <p>The father uses an algorithm to know where it has to redirect its son</p>
+                                    <p>The father uses an algorithm to know where it has to redirect his son</p>
                                     <ul>
                                         <li><p>Once we have it, we know in which order the son is going to execute its code</p></li>
                                     </ul>
@@ -1111,8 +1124,8 @@ pushad ; mov eax, 0xffffffff ; pop ebx ; pop esi ; pop edi ; ret
                             <ul>
                                 <li><p>Symbolicly execute the three or four big basic blocks we need</p></li>
                                 <li><p>Then ask Z3 to find the input required to have F(serial) = '[ Synacktiv + NSC = <3 ]'</p></li>
-                                <li><p>We don't need branches & only need < 20 instructions</p></li>
-                                <li><p>Most instructions are about basic mathematical computation: easy to implement with Z3</p></li>
+                                <li><p>We don't need branches & only need to implement < 20 instruction in our virtual CPU</p></li>
+                                <li><p>Most instructions are about basic mathematical computations: easy to implement with Z3</p></li>
                                 <li><p>Memory simulation with a simple array</p></li>
                                 <li><p>We can use our code both as a simplistic MIPS emulator (with concrete values)..</p></li>
                                 <li><p>..or as a symbolic execution engine (with symbolic variables)</p></li>
@@ -1234,7 +1247,7 @@ Next level is there: http://nsc2014.synacktiv.com:65480/oob4giekee4zaeW9/
                                             <li><p>Don't miss Emilien's talk on how to break the last level of the NoSuchCon challenges</p></li>
                                         </ul>
                                     </li>
-                                    <li><p>All the codes I mentioned are in <a href='https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2014'>NoSuchCon2014</a></p></li>
+                                    <li><p>All the codes I mentioned are available in <a href='https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2014'>NoSuchCon2014</a></p></li>
                                 </ul>
                             </li>
                         </ul>
@@ -1258,7 +1271,7 @@ Next level is there: http://nsc2014.synacktiv.com:65480/oob4giekee4zaeW9/
                     <ul>
                         <li><p>Symbolic execution & theorem provers are really two useful / powerful tools for security / reverse-engineering tasks</p></li>
                         <li><p>The deck of slides will be available online</p></li>
-                        <li><p>Feel free to reach out to me via email / twitter for any questions</p></li>
+                        <li><p>Feel free to reach out to me via email / twitter for any questions and / or feedbacks</p></li>
                         <li><p>Big thanks to SecurityDay for having me :-)</p></li>
                         <li>
                             <p>"My proof readers are awesome" (c) Rolf, 2014</p>
