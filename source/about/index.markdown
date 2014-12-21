@@ -8,7 +8,7 @@ footer: true
 # How to contribute
 If you like code obfuscation, breaking protection schemes, weird machines, anti-debugging tricks, packers, bug-exploitation or anything about binaries, get in touch with us if you are willing to get involved somehow! As a writer, a correcter, ideas-giver, ..anything!
 
-See that blog as a micro-blogging platform where you can speak about binaries-related subjects. We don't want to use it to write long papers, because a lot of us have already their personnal blogs ; use it for stuff you don't publish on your blogs.
+See that blog as a micro-blogging platform where you can speak about binaries-related subjects. We don't want to use it to write long papers, because a lot of us have already their personal blogs ; use it for stuff you don't publish on your blogs.
 
 You can also contact the owners:
 
