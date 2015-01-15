@@ -22,7 +22,8 @@
 
         <!-- If the query includes 'print-pdf', include the PDF print sheet -->
         <script>
-            if( window.location.search.match( /print-pdf/gi ) ) {
+            if(window.location.search.match( /print-pdf/gi ))
+            {
                 var link = document.createElement( 'link' );
                 link.rel = 'stylesheet';
                 link.type = 'text/css';
@@ -52,11 +53,25 @@
                         <small>Axel '<a href='https://twitter.com/0vercl0k'>@0vercl0k</a>' Souchet</small>
                     </p>
                     <a href="https://twitter.com/0vercl0k" target="_blank"><img style='float:center ; border:0' height='20%' width='20%' src="./pics/avatar.png"></a>
+                    
+                    <aside class="notes">
+                        45 minutes, prevoir 5 min~ pour les questions etc
+                    </aside>
+
                 </section>
 
                 <section>
                     <h2>Table of Contents</h2>
                     <nav id="presentable-toc" class="revealjs"></nav>
+
+                    <aside class="notes">
+                        Premiere partie d'introduction sur les theorem provers: qu'est ce que c'est? Pourquoi on en a besoin?
+                        Seconde partie de decouverte de Z3 qui est un theorem prover, overview des features, exemples, etc
+                        Troisieme partie sur le concept d'execution symbolique: on restera tres simple
+                        Derniere partie: mise en pratique & demonstration de comment on peut combiner l'execution symbolique & un theorem prover 
+                        Objectif du talk: introduire Z3 & le necessaire pour etre capable de faire ses propres experimentations. 
+                    </aside>
+
                 </section>
 
                 <section>
@@ -76,8 +91,8 @@
                             <li><p>Where I post codes: <a href='https://github.com/0vercl0k'>github.com/0vercl0k</a></p></li>
                             <a href="https://twitter.com/0vercl0k" target="_blank"><img style='float:right' height='52px' width='52px' src="./pics/avatar.png"></a>
                             <li><p>Where I tweet: <a href='https://twitter.com/0vercl0k'>twitter.com/0vercl0k</a></p></li>
-
                         </ul>
+
                     </section>
 
                     <section>
@@ -89,6 +104,11 @@
                             <li><p>Assemblies: <a href="https://en.wikipedia.org/wiki/X86">Intel x86</a> & <a href="https://en.wikipedia.org/wiki/MIPS_instruction_set">MIPS</a></p></li>
                             <li><p>Long story short: how Z3 & symbolic execution can help you tackle reverse-engineering / security problems in an elegant way</p></li>
                         </ul>
+
+                        <aside class="notes">
+                            On va focus les binding Python de Z3 sous Windows ; j'espere que vous etes aussi famillier avec l'assembleur intel x86 & plus globalement les couches logicielles basses
+                        </aside>
+
                     </section>
 
                     <section>
@@ -97,6 +117,11 @@
                             <li><p>Won't bother you with theoretical stuff ;-)</p></li>
                             <li><p>Won't talk about how theorem provers do their magic</p></li>
                         </ul>
+
+                        <aside class="notes">
+                            Vraiment essaye d'avoir une vision pratique des choses ; il y aura pas mal d'exemple ; on ne parlera des entrailles des theorems provers & de comment ils font leurs magies
+                        </aside>
+
                     </section>
                 </section>
 
@@ -110,9 +135,19 @@
                         <ul>
                             <li><p><q cite="http://research.microsoft.com/en-us/um/people/leonardo/nancy1.pdf">&ldquo;A collection of little engines of proof&rdquo;</q> Leonardo De Moura, 2009</p></li>
                             <li><p>I like to see it as a "software black-box oracle"</p></li>
-                            <li><p>You give it an equation, it gives you back an answer if solvable</p></li>
+                            <li>
+                                <p>You give it an equation, it gives you back an answer</p>
+                                <ul>
+                                    <li><p>If satisfiable: you get a model</p></li>
+                                </ul>
+                            </li>
                             <li><p>Easy right?</p></li>
                         </ul>
+
+                        <aside class="notes">
+                            Des composants logicielles qui sont capable de resoudre des equations <br /> on va vraiment le voir comme une boite noire et/ou un oracle: je lui donne une question, il me retourne une reponse
+                        </aside>
+
                     </section>
                     <section>
 
@@ -147,6 +182,15 @@
                                 </ul>
                             </li>
                         </ul>
+
+                        <aside class="notes">
+                            En effet, ça sonne tres theorique & voici des exemples: preuve formel d'algorithme, de programe (est ce qu'il respecte la specification?) ; ou encore existe il un chemin entre cette fonction si je suis capable de controler cette variable?
+                            Un autre exemple tres concret est le cassage de petite fonction de hachage custom (pas cryptographiquement verifie): un super article de pierre bourdon & un autre exemple que l'on detaillera dans la derniere partie
+                            Il y a aussi evidemment la generation de test-case: fuzzing d'un cote, ou tenter d'avoir le plus de coverage possible a des fin de tests
+                            SAGE: arme de guerre ; approche blackbox
+                            PEX: generation de test unitaire ; approche whitebox avec source
+                        </aside>
+
                     </section>
                 </section>
 
@@ -169,7 +213,7 @@
                         <h2>Installation on Windows for Python</h2>
                         <ul>
                             <li><p>Nice and neat Windows installers are <a href='https://z3.codeplex.com/downloads/get/929556'>here</a></p></li>
-                            <li><p>Try to run the following code in a Python shell to make sure the installation went fine </p></li>
+                            <li><p>Run that in a Python shell to make sure the installation went fine </p></li>
                             <pre>
                                 <code data-trim>
 import z3</code>
@@ -189,15 +233,19 @@ if s.check() == sat:
 else:
     print 'Unsat'</code>
                         </pre>
-                        <img class="fragment" style='border: 0' src="./pics/z3-hello.png">
+                        <img style='border: 0' src="./pics/z3-hello.png">
+                        <aside class="notes">
+                            Z3 introduit des types differente que les types natifs de python ; BitVec en est un exemple
+                            Un solver comme son nom l'indique est la classe qui est capable de stocker nos equations/contraintes & d'obtenir la reponse a la question "est ce que c'est resolvable?"
+                        </aside>
                     </section>
 
                     <section>
                         <h2>Z3py Hello-World: Explanations I</h2>
                         <ul>
-                            <li><p>BitVecs are basically arrays of 0 & 1's</p></li>
+                            <li><p><font color="#fa0">BitVecs</font> are basically arrays of 0 & 1's</p></li>
                             <li><p>It is the type the closest from what your CPU handles</p></li>
-                            <li><p>A <code>BitVec8</code> is basically the equivalent of an <code>unsigned char</code> variable in C</p></li>
+                            <li><p>A <font color="#fa0">BitVec8</font> is basically the equivalent of an <font color="#fa0">unsigned char</font> variable in C</p></li>
                             <li><p>A solver instance holds a set of constraints you want to apply</p></li>
                             <li><p>Obviously, you can apply constraints only on Z3 variables: not on normal Python variables</p></li>
                         </ul>
@@ -207,20 +255,20 @@ else:
                         <h2>Z3py Hello-World: Explanations II</h2>
                         <ul>
                             <li>
-                                <p>BitVecs are not the only type available, you can also use: Ints, Bools, Arrays, etc.</p>
+                                <p><font color="#fa0">BitVecs</font> are not the only type available, you can also use: <font color="#fa0">Ints</font>, <font color="#fa0">Bools</font>, <font color="#fa0">Arrays</font>, etc.</p>
                                 <ul>
-                                    <li><p>Note that Z3 integers are integers like in math: they are infinite ; as opposed to BitVecs</p></li>
+                                    <li><p>Note that Z3 integers are integers like in math: they are infinite ; as opposed to <font color="#fa0">BitVecs</font></p></li>
                                 </ul>
                             </li>
-                        <img style='border: 0' class="fragment" src="./pics/z3-bitvec-wrap.png">
+                        <img style='border: 0' src="./pics/z3-bitvec-wrap.png">
                             <li>
-                                <p class="fragment">Why :-)?</p>
+                                <p>Why :-)?</p>
                                 <ul>
-                                    <li><p class="fragment">BitVecs do wrap, like CPU registers or C integers</p></li>
+                                    <li><p><font color="#fa0">BitVecs</font> do wrap, like CPU registers or C integers</p></li>
                                 </ul>
                             </li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-bitvec-wrap-py.png">
+                        <img style='border: 0' src="./pics/z3-bitvec-wrap-py.png">
                     </section>
 
                     <section>
@@ -234,46 +282,46 @@ else:
                                 <li><p>Unsigned operators: ULT, ULE, UGT, UGE, UDiv, URemand, LShR</p></li>
                             </ul>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-operator-signess.png">
+                        <img style='border: 0' src="./pics/z3-operator-signess.png">
                     </section>
 
                     <section>
                         <h2>Z3py tips: solve & Solver</h2>
                         <ul>
                             <li><p>Maybe the most important function: this is the function that will answer your questions</p></li>
-                            <li><p>If solvable, it gives you a model (even if several exist) which is basically concrete values for your symbolic variables</p></li>
+                            <li><p>If solvable, it gives you a <font color="#fa0">model</font> (even if several exist) which is basically concrete values for your symbolic variables</p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-solve-solver.png">
+                        <img style='border: 0' src="./pics/z3-solve-solver.png">
                     </section>
 
                     <section>
                         <h2>Z3py tips: Solver & backtracking points</h2>
                         <ul>
-                            <li><p>You can create backtracking points by using push and pop</p></li>
+                            <li><p>You can create backtracking points by using <font color="#fa0">push</font> and <font color="#fa0">pop</font></p></li>
                             <li><p>It basically saves the constraints you have set in the solver: it's a checkpoint</p></li>
                             <li><p>As the name suggests, it's particularly useful when using backtracking algorithms</p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-solver-backtracking.png">
+                        <img style='border: 0' src="./pics/z3-solver-backtracking.png">
                     </section>
 
                     <section>
                         <h2>Z3py tips: simplify</h2>
                         <ul>
-                            <li><p>This function is something really important: as the name suggests it can simplify Z3 expressions</p></li>
+                            <li><p>This function is something really important: as the name suggests it can <font color="#fa0">simplify</font> Z3 expressions</p></li>
                             <li><p>Keep in mind it's not magic though: the returned expression does not have to be the most simplified expression (cf <a href='https://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/'>Breaking Kryptonite's Obfuscation</a>)</p></li>
-                            <li><p>A lot of options can be enabled / disabled to help simplify to do a better job at simplifying ; call help_simplify()</p></li>
+                            <li><p>A lot of options can be enabled / disabled to help <font color="#fa0">simplify</font> to do a better job at simplifying ; call <font color="#fa0">help_simplify()</font></p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-simplify.png">
+                        <img style='border: 0' src="./pics/z3-simplify.png">
                     </section>
 
                     <section>
                         <h2>Z3py tips: ZeroExt, SignExt</h2>
                         <ul>
-                            <li><p>Two useful functions when you deal with BitVecs</p></li>
-                            <li><p>As their names suggest, they basically zero or sign extend a BitVec</p></li>
-                            <li><p>Use case: zero extend a 32 bits BitVec into a 64 bits BitVec</p></li>
+                            <li><p>Two useful functions when you deal with <font color="#fa0">BitVecs</font></p></li>
+                            <li><p>As their names suggest, they basically zero or sign extend a <font color="#fa0">BitVec</font></p></li>
+                            <li><p>Use case: zero extend a 32 bits <font color="#fa0">BitVec</font> into a 64 bits <font color="#fa0">BitVec</font></p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-zeroext-signext.png">
+                        <img style='border: 0' src="./pics/z3-zeroext-signext.png">
                     </section>
 
                     <section>
@@ -281,12 +329,12 @@ else:
                         <ul>
                             <li><p>Another couple of useful functions:</p></li>
                             <ul>
-                                <li><p>Extract: Extract some bits from a BitVec</p></li>
-                                <li><p>Concat: Concatenate BitVecs</p></li>
+                                <li><p><font color="#fa0">Extract</font>: Extract some bits from a <font color="#fa0">BitVec</font></p></li>
+                                <li><p><font color="#fa0">Concat</font>: Concatenate <font color="#fa0">BitVecs</font></p></li>
                             </ul>
-                            <li><p>Z3 operators need operands of the same size ; Extract/Concat/ZeroSignExt can help you to meet this requirement</p></li>
+                            <li><p>Z3 operators need operands of the same size ; <font color="#fa0">Extract</font>/<font color="#fa0">Concat</font>/<font color="#fa0">ZeroSignExt</font> can help you to meet this requirement</p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-extract-concat.png">
+                        <img style='border: 0' src="./pics/z3-extract-concat.png">
                     </section>
 
                     <section>
@@ -294,18 +342,18 @@ else:
                         <ul>
                             <li><p>Equivalent of x86's ROL/ROR instructions</p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-rotaterightleft.png">
+                        <img style='border: 0' src="./pics/z3-rotaterightleft.png">
                     </section>
 
                     <section>
                         <h2>Z3py tips: prove</h2>
                         <ul>
-                            <li><p>Another quite cool & important function is <a href=''>prove</a></p></li>
+                            <li><p>Another quite cool & important function is <font color="#fa0">prove</font></p></li>
                             <li><p>The function basically checks the given equation is <b>always</b> true</p></li>
                             <li><p>If not proven, Z3 will give you a counterexample</p></li>
-                            <li><p>Example: Let's prove that Concat works properly</p></li>
+                            <li><p>Example: Let's prove that <font color="#fa0">Concat</font> works properly</p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-proof-concat.png">
+                        <img style='border: 0' src="./pics/z3-proof-concat.png">
                     </section>
 
                     <section>
@@ -348,27 +396,27 @@ prove(
 
                     <section>
                         <h2>Z3py tips: prove example II</h2>
-                        <img style='border: 0' class="fragment" src="./pics/z3-proof-u32-overflow.png">
+                        <img style='border: 0' src="./pics/z3-proof-u32-overflow.png">
                     </section>
 
                     <section>
                         <h2>Z3py tips: Arrays</h2>
                         <ul>
                             <li><p>Quite handy to simulate the memory in a symbolic way</p></li>
-                            <li><p><q cite="https://stackoverflow.com/questions/14317376/in-z3-whats-the-most-efficient-way-to-describe-this-in-array-theory">Z3 will use a brute-force approach, it will essentially try all possible combinations. It will not manage to find the "smart" proof that we (as humans) immediately see.</q></p></li>
-                            <li><p>You can access the array content with [] or Select, and write to it via Store</p></li>
+                            <li><p><q cite="https://stackoverflow.com/questions/14317376/in-z3-whats-the-most-efficient-way-to-describe-this-in-array-theory">Z3 will use a <font color="#fa0">brute-force</font> approach, it will essentially try all possible combinations. It will not manage to find the "smart" proof that we (as humans) immediately see.</q></p></li>
+                            <li><p>You can access the array content with [] or <font color="#fa0">Select</font>, and write to it via <font color="#fa0">Store</font></p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-array.png">
+                        <img style='border: 0' src="./pics/z3-array.png">
                     </section>
 
                     <section>
                         <h2>Z3py tips: substitute</h2>
                         <ul>
-                            <li><p>This function allows you to substitute variables by whatever you want in an expression</p></li>
+                            <li><p>This function allows you to <font color="#fa0">substitute</font> variables by whatever you want in an expression</p></li>
                             <li><p>You can replace a symbolic variable by a concrete value</p></li>
                             <li><p>Or the way around</p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-substitute.png">
+                        <img style='border: 0' src="./pics/z3-substitute.png">
                     </section>
 
                     <section>
@@ -379,12 +427,12 @@ prove(
                             <li>
                                 <p>A lot of time you need to express the following: "I want all my symbolic variables to be different"</p>
                                 <ul>
-                                    <li><p>You can do it manually via And(x1 != x2, x2 != x3, x1 != x3)</p></li>
-                                    <li><p>Or you can use Distinct(x1, x2, x3) which is way cleaner</p></li>
+                                    <li><p>You can do it manually via <font color="#fa0">And</font>(x1 != x2, x2 != x3, x1 != x3)</p></li>
+                                    <li><p>Or you can use <font color="#fa0">Distinct</font>(x1, x2, x3) which is way cleaner</p></li>
                                 </ul>
                             </li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-andor-distinct.png">
+                        <img style='border: 0' src="./pics/z3-andor-distinct.png">
                     </section>
 
                     <section>
@@ -410,7 +458,7 @@ else
 </code>
                             </li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-ifthenelse.png">
+                        <img style='border: 0' src="./pics/z3-ifthenelse.png">
                     </section>
 
                     <section>
@@ -422,12 +470,12 @@ else
                                     <li><p>Useful for transformation, conversion, etc.</p></li>
                                     <li><p>The expression is a tree</p></li>
                                 </ul>
-                                <li><p>e.arg(x) gets you the x th argument in the expression</p></li>
-                                <li><p>e.num_args() gives you the number of argument</p></li>
+                                <li><p><font color="#fa0">e.arg(x)</font> gets you the x th argument in the expression</p></li>
+                                <li><p><font color="#fa0">e.num_args()</font> gives you the number of argument</p></li>
                                 <li><p>Check <a href='https://github.com/0vercl0k/z3-playground/blob/master/z3topy.py'>z3topy.py</a></p></li>
                             </li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-walkast.png">
+                        <img style='border: 0' src="./pics/z3-walkast.png">
                     </section>
 
                     <section>
@@ -435,7 +483,7 @@ else
                         <ul>
                             <li><p><a href='https://en.wikipedia.org/wiki/Graph_coloring'>Graph coloring</a> problem ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/graph_coloring_z3.py'>graph_coloring_z3.py</a></p></li>
                         </ul>
-                        <img style='border: 0' height='50%' width='50%' class="fragment" src="./pics/z3-graph-color.png">
+                        <img style='border: 0' height='50%' width='50%' src="./pics/z3-graph-color.png">
                     </section>
 
                     <section>
@@ -443,7 +491,7 @@ else
                         <ul>
                             <li><p><a href='https://en.wikipedia.org/wiki/Eight_queens_puzzle'>n-queens</a> problem ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/nqueens_z3.py'>nqueens_z3.py</a></p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-nqeens.png">
+                        <img style='border: 0' src="./pics/z3-nqeens.png">
                     </section>
 
                     <section>
@@ -451,7 +499,7 @@ else
                         <ul>
                             <li><p><a href='http://www.mojette.net/tutoriel.php?lang=ANGLAIS'>Mojette</a> game ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/mojette_z3.py'>mojette_z3.py</a></p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-mojette.png">
+                        <img style='border: 0' src="./pics/z3-mojette.png">
                     </section>
 
                     <section>
@@ -459,14 +507,14 @@ else
                         <ul>
                             <li><p><a href='https://en.wikipedia.org/wiki/Magic_square'>Magic square</a> game ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/magic_square_z3.py'>magic_square_z3.py</a></p></li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/z3-magic-square.png">
+                        <img style='border: 0' src="./pics/z3-magic-square.png">
                     </section>
 
-                    <section>
+<!--                     <section>
                         <h2>Z3Py tips: todo</h2>
                         <p>ForAll, Implies ; Function + model evaluation;</p>
                     </section>
-
+ -->
                     <section>
                         <h2>References</h2>
                         <ul>
@@ -493,12 +541,14 @@ else
                                 <li><p>Functions?</p></li>
                                 <li><p>Patterns?</p></li>
                                 <li><p>Data-types?</p></li>
+                                <li><p>Quantifiers?</p></li>
                             </ul>
                             <li>
                                 <p>If you don't like Z3's API and / or its features try out another one:</p>
                                 <ul>
                                     <li><p><a href='https://code.google.com/p/or-tools/'>or-tools</a> from Google seems awesome</p></li>
-                                    <li><p>etc.</p></li>
+                                    <li><p><a href='https://sites.google.com/site/stpfastprover/'>STP</a></p></li>
+                                    <li><p><a href='http://yices.csl.sri.com/'>Yices</a></p></li>
                                 </ul>
                             </li>
                         </ul>
@@ -521,13 +571,13 @@ else
                             </p>
                             <p>
                                 <li>
-                                    Here is an analogy I like to give between concrete / symbolic execution and mathematical functions:
+                                    An analogy I like to give between concrete / symbolic execution and mathematical functions:
                                     <ul>
                                         <li>
                                             Concrete execution would be to know that f(3) = 19
                                         </li>
                                         <li>
-                                            Symbolic execution would be to know that f(x) = x**2 + 10
+                                            Symbolic execution would be to know that f(<font color="#fa0">x</font>) = <font color="#fa0">x</font>**2 + 10
                                         </li>
                                     </ul>
                                 </li>
@@ -590,17 +640,18 @@ else
                             <li>Symbolic:</li>
                             <br />
                             <li>c is an input sym var</li>
-                            <li>a_0 = ZeroExt(24, c)</li>
+                            <li>a_0 = <font color="#fa0">ZeroExt</font>(24, c)</li>
                             <li>a = a_0*2 + 0xdeadbeef</li>
                             <br />
-                            <li>win = If(And(UGE(a, 0), ULT(a, 0xbaad)), 1, 0)</li>
+                            <li>win = <font color="#fa0">If</font>(<font color="#fa0">And</font>(<font color="#fa0">UGE</font>(a, 0), <font color="#fa0">ULT</font>(a, 0xbaad)), 1, 0)</li>
                         </ul>
                     </section>
-
+                    
                     <section>
                         <h2>References</h2>
                         <ul>
                             <li>Check Jonathan Salwan's talk</li>
+                            <li>"<a href='http://www.seas.harvard.edu/courses/cs252/2011sp/slides/Lec13-SymExec.pdf'>Symbolic Execution</a>" by Stephen Chong, Harvard University</li>
                             <li>"<a href='http://research.microsoft.com/en-us/um/people/pg/public_psfiles/sage-in-one-slide.pdf'>SAGE in one page</a>"</li>
                             <li>"<a href='http://www.nosuchcon.org/talks/2014/D2_06_Richard_Johnson_Sagely_Advice.pdf'>SAGEly advice</a>" from Richard '<a href='https://twitter.com/richinseattle'>@richinseattle</a>' Johnson</li>
                             <li>"<a href='http://www.nosuchcon.org/talks/2014/D1_01_Rolf_Rolles_Program_Synthesis_in_reverse_Engineering.pdf'>Program Synthesis in Reverse Engineering"</a> by Rolf '<a href='https://twitter.com/RolfRolles'>@RolfRolles</a>' Rolles</li>
@@ -644,7 +695,7 @@ else
                         <ul>
                             <li>Modeling C concrete strings</li>
                             <ul>
-                                <li>Sequence of BitVecVal8</li>
+                                <li>Sequence of <font color="#fa0">BitVecVal8</font></li>
                                 <pre>
                                     <code data-trim>def str_to_BitVecVals8(s):
     return map(
@@ -656,7 +707,7 @@ else
                             </ul>
                             <li>Modeling ASCII-printable C symbolic strings</li>
                             <ul>
-                                <li>Sequence of BitVec8 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</li>
+                                <li>Sequence of <font color="#fa0">BitVec8</font> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</li>
                                 <pre>
                                     <code data-trim width='100px'>def ascii_printable(x):
     return And(0x20 <= x, x <= 0x7f)
@@ -716,7 +767,7 @@ def main(argc, argv):
                         <ul>
                             <li>Job done!</li>
                             <img style='border: 0' src="./pics/z3-hash-collision.png">
-                            <li>No brute-force, elegant solution: didn't even think at how we could have "reverse" H, Z3 did it for us</li>
+                            <li>No brute-force, elegant solution: didn't even thought at how we could have "reversed" H, Z3 did it for us</li>
                             <li>Full code is here: <a href='https://github.com/0vercl0k/z3-playground/blob/master/hash_collisions_z3.py'>hash_collisions_z3.py</a></li>
                         </ul>
                     </section>
@@ -776,7 +827,7 @@ Length Name
 689112 kryptonite-add
 </code>
                         </pre>
-                        <img style='border: 0' class="fragment" height='50%' width='50%' src="./pics/kryptonite-adder.png">
+                        <img style='border: 0' height='50%' width='50%' src="./pics/kryptonite-adder.png">
                     </section>
 
                     <section>
@@ -874,7 +925,7 @@ Concat(~(Concat(1073741823, Extract(1, 1, arg1)) |
                     <section>
                         <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
                         <ul>
-                            <li><p>But we can eventually prove it is equivalent to arg0 + arg1 & then replace the expression with the simplified version right?</p></li>
+                            <li><p>But we can eventually prove it is equivalent to <font color="#fa0">arg0</font> + <font color="#fa0">arg1</font> & then replace the expression with the simplified version right?</p></li>
                         </ul>
                         <pre>
                             <code data-trim>
@@ -913,7 +964,7 @@ EAX=arg0 + arg1
                                         <p>Is "xor eax, eax ; ret" equals to "mov eax, 0xffffffff ; inc eax ; ret"?</p>
                                         <ul>
                                             <li><p>They are not stricly equal, nope</p></li>
-                                            <li><p>Why? EFLAGS.AF for example</p></li>
+                                            <li><p>Why? <font color="#fa0">EFLAGS.AF</font> for example</p></li>
                                             <li>
                                                 <p>What if we care only about the state of EAX after the gadget execution?</p>
                                                 <ul>
@@ -949,7 +1000,7 @@ EAX=arg0 + arg1
                                 </ul>
                             </li>
                         </ul>
-                        <img style='border: 0' class="fragment" src="./pics/xor_inc_amoco_semantics.png">
+                        <img style='border: 0' src="./pics/xor_inc_amoco_semantics.png">
                     </section>
 
                     <section>
@@ -1073,7 +1124,7 @@ pushad ; mov eax, 0xffffffff ; pop ebx ; pop esi ; pop edi ; ret
                                     <li>
                                         <p>ELF MIPS binary protected by nanomites</a></p>
                                         <ul>
-                                            <li><p>Father debugs the son ; Father's code is called each time the son executes 'break' (equivalent of int3)</p></li>
+                                            <li><p>Father debugs the son ; Father's code is called each time the son executes <font color="#fa0">break</font> (equivalent of <font color="#fa0">int3</font>)</p></li>
                                             <li><p>Father modifies the son's CPU context to obfuscate the execution flow: the son won't be executed as it appears in IDA</p></li>
                                         </ul>
                                     </li>
@@ -1123,7 +1174,7 @@ pushad ; mov eax, 0xffffffff ; pop ebx ; pop esi ; pop edi ; ret
                             <li><p>The plan:</p></li>
                             <ul>
                                 <li><p>Symbolicly execute the three or four big basic blocks we need</p></li>
-                                <li><p>Then ask Z3 to find the input required to have F(serial) = '[ Synacktiv + NSC = <3 ]'</p></li>
+                                <li><p>Then ask Z3 to find the input required to have <font color="#fa0">F</font>(serial) = '[ Synacktiv + NSC = <3 ]'</p></li>
                                 <li><p>We don't need branches & only need to implement < 20 instruction in our virtual CPU</p></li>
                                 <li><p>Most instructions are about basic mathematical computations: easy to implement with Z3</p></li>
                                 <li><p>Memory simulation with a simple array</p></li>
@@ -1276,8 +1327,11 @@ Next level is there: http://nsc2014.synacktiv.com:65480/oob4giekee4zaeW9/
                         <li>
                             <p>"My proof readers are awesome" (c) Rolf, 2014</p>
                             <ul>
-                                <li><p>bla</p></li>
-                                <li><p>blo</p></li>
+                                <li><p><a href='https://twitter.com/kutioo'>@kutioo</a></p></li>
+                                <li><p><a href='https://twitter.com/__x86'>@__x86</a></p></li>
+                                <li><p><a href='https://twitter.com/jonathansalwan'>@jonathansalwan</a></p></li>
+                                <li><p><a href='https://twitter.com/elvanderb'>@elvanderb</a></p></li>
+                                <li><p><a href='https://twitter.com/HumanActuator'>@HumanActuator</a></p></li>
                             </ul>
                         </li>
                     </ul>
@@ -1314,12 +1368,12 @@ Next level is there: http://nsc2014.synacktiv.com:65480/oob4giekee4zaeW9/
                 // Optional libraries used to extend on reveal.js
                 dependencies: [
                     { src: '../reveal.js-2.6.2/lib/js/classList.js', condition: function() { return !document.body.classList; } },
-                    // { src: '../reveal.js-2.6.2/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
-                    // { src: '../reveal.js-2.6.2/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
                     { src: '../reveal.js-2.6.2/plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
                     { src: '../reveal.js-2.6.2/plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
-                    { src: '../reveal.js-2.6.2/plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } },
                     { src: '../reveal.js-2.6.2/plugin/presentable/presentable.min.js', async: true, callback: function() { presentable.toc({framework: "revealjs"}); } },
+                    { src: '../reveal.js-2.6.2/plugin/notes/notes.js', async: true },
+                    { src: '../reveal.js-2.6.2/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+                    { src: '../reveal.js-2.6.2/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
                 ]
             });
         </script>
