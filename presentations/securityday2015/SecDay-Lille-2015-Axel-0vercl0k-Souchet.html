@@ -1,0 +1,1381 @@
+<!doctype html>
+<html lang="en">
+
+    <head>
+        <meta charset="utf-8">
+
+        <title>Security Day 2015 - Lille 1</title>
+
+        <meta name="author" content="Axel '@0vercl0k' Souchet">
+
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+        <link rel="stylesheet" href="../reveal.js-2.6.2/plugin/presentable/presentable.min.css">
+        <link rel="stylesheet" href="../reveal.js-2.6.2/css/reveal.min.css">
+        <link rel="stylesheet" href="../reveal.js-2.6.2/css/theme/night.css" id="theme">
+
+        <!-- For syntax highlighting -->
+        <link rel="stylesheet" href="../reveal.js-2.6.2/lib/css/zenburn.css">
+
+        <!-- If the query includes 'print-pdf', include the PDF print sheet -->
+        <script>
+            if(window.location.search.match( /print-pdf/gi ))
+            {
+                var link = document.createElement( 'link' );
+                link.rel = 'stylesheet';
+                link.type = 'text/css';
+                link.href = '../reveal.js-2.6.2/css/print/pdf.css';
+                document.getElementsByTagName( 'head' )[0].appendChild( link );
+            }
+        </script>
+
+        <script src="../reveal.js-2.6.2/lib/js/head.min.js"></script>
+        <script src="../reveal.js-2.6.2/js/reveal.min.js"></script>
+
+        <!--[if lt IE 9]>
+        <script src="../reveal.js-2.6.2/lib/js/html5shiv.js"></script>
+        <![endif]-->
+    </head>
+
+    <body>
+
+        <div class="reveal">
+
+            <div class="slides">
+                <section>
+                    <h2>Theorem prover, symbolic execution and practical reverse-engineering</h2>
+                    <h4>Security Day 2015 - Lille 1 University - France</h4>
+                    <h5>16th of January 2015</h5>
+                    <p>
+                        <small>Axel '<a href='https://twitter.com/0vercl0k'>@0vercl0k</a>' Souchet</small>
+                    </p>
+                    <a href="https://twitter.com/0vercl0k" target="_blank"><img style='float:center ; border:0' height='20%' width='20%' src="./pics/avatar.png"></a>
+                    
+                    <aside class="notes">
+                        45 minutes, prevoir 5 min~ pour les questions etc
+                    </aside>
+
+                </section>
+
+                <section>
+                    <h2>Table of Contents</h2>
+                    <nav id="presentable-toc" class="revealjs"></nav>
+
+                    <aside class="notes">
+                        Premiere partie d'introduction sur les theorem provers: qu'est ce que c'est? Pourquoi on en a besoin?
+                        Seconde partie de decouverte de Z3 qui est un theorem prover, overview des features, exemples, etc
+                        Troisieme partie sur le concept d'execution symbolique: on restera tres simple
+                        Derniere partie: mise en pratique & demonstration de comment on peut combiner l'execution symbolique & un theorem prover 
+                        Objectif du talk: introduire Z3 & le necessaire pour etre capable de faire ses propres experimentations. 
+                    </aside>
+
+                </section>
+
+                <section>
+                    <section>
+                        <h1>Introduction</h1>
+                    </section>
+
+                    <section>
+                        <h2>Who is this guy?</h2>
+                        <ul>
+                            <a href='https://blogs.technet.com/b/srd/' target="_blank"><img style='float:right' height='52px' width='52px' src="./pics/msrc.jpeg"></a>
+                            <li><p>Young security researcher @ <a href="http://blogs.technet.com/b/srd/">MSRC</a> by day</p></li>
+                            <li><p>CS graduate since June 2013, security enthusiast since forever</p></li>
+                            <li><p>Love all kind of security and low level subjects: code obfuscation, system programming, software vulnerability exploitation, reverse-engineering, etc.</p></li>
+                            <a href="https://twitter.com/doar_e" target="_blank"><img style='float:right' height='52px' width='52px' src="./pics/avatar_doare.jpeg"></a>
+                            <li><p>Where I like to blog: <a href='https://doar-e.github.io/'>doar-e.github.io/</a></p></li>
+                            <li><p>Where I post codes: <a href='https://github.com/0vercl0k'>github.com/0vercl0k</a></p></li>
+                            <a href="https://twitter.com/0vercl0k" target="_blank"><img style='float:right' height='52px' width='52px' src="./pics/avatar.png"></a>
+                            <li><p>Where I tweet: <a href='https://twitter.com/0vercl0k'>twitter.com/0vercl0k</a></p></li>
+                        </ul>
+
+                    </section>
+
+                    <section>
+                        <h2>What are we going to talk about?</h2>
+                        <ul>
+                            <li><p>Microsoft's <a href="https://z3.codeplex.com/">Z3</a> theorem prover..</p></li>
+                            <li><p>..and its Python bindings</p></li>
+                            <li><p>Symbolic execution</p></li>
+                            <li><p>Assemblies: <a href="https://en.wikipedia.org/wiki/X86">Intel x86</a> & <a href="https://en.wikipedia.org/wiki/MIPS_instruction_set">MIPS</a></p></li>
+                            <li><p>Long story short: how Z3 & symbolic execution can help you tackle reverse-engineering / security problems in an elegant way</p></li>
+                        </ul>
+
+                        <aside class="notes">
+                            On va focus les binding Python de Z3 sous Windows ; j'espere que vous etes aussi famillier avec l'assembleur intel x86 & plus globalement les couches logicielles basses
+                        </aside>
+
+                    </section>
+
+                    <section>
+                        <h2>What we won't talk about?</h2>
+                        <ul>
+                            <li><p>Won't bother you with theoretical stuff ;-)</p></li>
+                            <li><p>Won't talk about how theorem provers do their magic</p></li>
+                        </ul>
+
+                        <aside class="notes">
+                            Vraiment essaye d'avoir une vision pratique des choses ; il y aura pas mal d'exemple ; on ne parlera des entrailles des theorems provers & de comment ils font leurs magies
+                        </aside>
+
+                    </section>
+                </section>
+
+                <section>
+                    <section>
+                        <h1>Theorem provers</h1>
+                    </section>
+
+                    <section>
+                        <h2>What it is in a few words</h2>
+                        <ul>
+                            <li><p><q cite="http://research.microsoft.com/en-us/um/people/leonardo/nancy1.pdf">&ldquo;A collection of little engines of proof&rdquo;</q> Leonardo De Moura, 2009</p></li>
+                            <li><p>I like to see it as a "software black-box oracle"</p></li>
+                            <li>
+                                <p>You give it an equation, it gives you back an answer</p>
+                                <ul>
+                                    <li><p>If satisfiable: you get a model</p></li>
+                                </ul>
+                            </li>
+                            <li><p>Easy right?</p></li>
+                        </ul>
+
+                        <aside class="notes">
+                            Des composants logicielles qui sont capable de resoudre des equations <br /> on va vraiment le voir comme une boite noire et/ou un oracle: je lui donne une question, il me retourne une reponse
+                        </aside>
+
+                    </section>
+                    <section>
+
+                        <h2>Why on earth do you need that?</h2>
+                        <ul>
+                            <li>
+                                Verify specific properties of a program, a function, a basic-block
+                                <ul>
+                                    <li>Does that piece of code respect the spec?</li>
+                                </ul>
+                            </li>
+                            <li>
+                                Reachability problem
+                                <ul>
+                                    <li>Can we reach this basic block assuming I can control this variable?</li>
+                                    <li>Achieve maximum code coverage</li>
+                                </ul>
+                            </li>
+                            <li>
+                                Breaking really weak "hash"-like functions
+                                <ul>
+                                    <li><a href="https://github.com/0vercl0k/z3-playground/blob/master/hash_collisions_z3.py">hash_collisions_z3.py</a></li>
+                                    <li><a href="http://blog.lse.epita.fr/articles/24-using-sat-and-smt-to-defeat-simple-hashing-algorit.html">Using SAT and SMT to defeat simple hashing algorithms</a> by <a href="https://twitter.com/delroth_">@delroth_</a></li>
+                                </ul>
+                            </li>
+                            <li>Type checking</li>
+                            <li>
+                                Test case generation
+                                <ul>
+                                    <li>Fuzzing: <a href="http://research.microsoft.com/en-us/um/people/pg/public_psfiles/sage-in-one-slide.pdf">SAGE</a> for example</li>
+                                    <li><a href="http://research.microsoft.com/en-us/projects/pex/">Pex</a> for .NET</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                        <aside class="notes">
+                            En effet, ça sonne tres theorique & voici des exemples: preuve formel d'algorithme, de programe (est ce qu'il respecte la specification?) ; ou encore existe il un chemin entre cette fonction si je suis capable de controler cette variable?
+                            Un autre exemple tres concret est le cassage de petite fonction de hachage custom (pas cryptographiquement verifie): un super article de pierre bourdon & un autre exemple que l'on detaillera dans la derniere partie
+                            Il y a aussi evidemment la generation de test-case: fuzzing d'un cote, ou tenter d'avoir le plus de coverage possible a des fin de tests
+                            SAGE: arme de guerre ; approche blackbox
+                            PEX: generation de test unitaire ; approche whitebox avec source
+                        </aside>
+
+                    </section>
+                </section>
+
+                <section>
+                    <section>
+                        <h1>Z3 101</h1>
+                    </section>
+                    <section>
+                        <h2>Presentation</h2>
+                        <ul>
+                            <li><p>Open-source theorem prover created and developed by <a href="https://leodemoura.github.io/">Leonardo de Moura</a> and <a href="http://research.microsoft.com/en-us/people/nbjorner/">Nikolaj Bjørner</a>, researchers @ <a href="http://research.microsoft.com/en-us/">Microsoft Research</a> in Redmond</p></li>
+                            <li><p>Used in different program analysis, verification, test-case generation projects @ MS (cf <a href="http://research.microsoft.com/projects/z3/Z3_System.pdf">Z3 an efficient SAT solver</a>)</p></li>
+                            <li><p>Coded in C++, available for <span class="fragment highlight-blue">Windows</span>, Linux, OSX and FreeBSD</p></li>
+                            <li><p>Bindings available for: Java, C#, <span class="fragment highlight-blue">Python</span>, etc.</p></li>
+                            <li><p>The sources live here: <a href="https://z3.codeplex.com/sourcecontrol/latest#READMEs">z3.codeplex.com/sourcecontrol/latest</a>, read them!</p></li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Installation on Windows for Python</h2>
+                        <ul>
+                            <li><p>Nice and neat Windows installers are <a href='https://z3.codeplex.com/downloads/get/929556'>here</a></p></li>
+                            <li><p>Run that in a Python shell to make sure the installation went fine </p></li>
+                            <pre>
+                                <code data-trim>
+import z3</code>
+                            </pre>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Z3py Hello-World</h2>
+                        <pre>
+                            <code data-trim>from z3 import *
+a, b = BitVecs('a b', 32)
+s = Solver()
+s.add((a + b) == 1337)
+if s.check() == sat:
+    print s.model()
+else:
+    print 'Unsat'</code>
+                        </pre>
+                        <img style='border: 0' src="./pics/z3-hello.png">
+                        <aside class="notes">
+                            Z3 introduit des types differente que les types natifs de python ; BitVec en est un exemple
+                            Un solver comme son nom l'indique est la classe qui est capable de stocker nos equations/contraintes & d'obtenir la reponse a la question "est ce que c'est resolvable?"
+                        </aside>
+                    </section>
+
+                    <section>
+                        <h2>Z3py Hello-World: Explanations I</h2>
+                        <ul>
+                            <li><p><font color="#fa0">BitVecs</font> are basically arrays of 0 & 1's</p></li>
+                            <li><p>It is the type the closest from what your CPU handles</p></li>
+                            <li><p>A <font color="#fa0">BitVec8</font> is basically the equivalent of an <font color="#fa0">unsigned char</font> variable in C</p></li>
+                            <li><p>A solver instance holds a set of constraints you want to apply</p></li>
+                            <li><p>Obviously, you can apply constraints only on Z3 variables: not on normal Python variables</p></li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Z3py Hello-World: Explanations II</h2>
+                        <ul>
+                            <li>
+                                <p><font color="#fa0">BitVecs</font> are not the only type available, you can also use: <font color="#fa0">Ints</font>, <font color="#fa0">Bools</font>, <font color="#fa0">Arrays</font>, etc.</p>
+                                <ul>
+                                    <li><p>Note that Z3 integers are integers like in math: they are infinite ; as opposed to <font color="#fa0">BitVecs</font></p></li>
+                                </ul>
+                            </li>
+                        <img style='border: 0' src="./pics/z3-bitvec-wrap.png">
+                            <li>
+                                <p>Why :-)?</p>
+                                <ul>
+                                    <li><p><font color="#fa0">BitVecs</font> do wrap, like CPU registers or C integers</p></li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-bitvec-wrap-py.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py Hello-World: Explanations III</h2>
+                        <ul>
+                            <li><p>Important detail: Z3 data-types don't hold any signess information</p></li>
+                            <li><p>Operators do</p></li>
+                            <li><p>You have operators for signed & unsigned operations:</p></li>
+                            <ul>
+                                <li><p>Signed operators: <, <=, >, >=, /, %and, >></p></li>
+                                <li><p>Unsigned operators: ULT, ULE, UGT, UGE, UDiv, URemand, LShR</p></li>
+                            </ul>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-operator-signess.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: solve & Solver</h2>
+                        <ul>
+                            <li><p>Maybe the most important function: this is the function that will answer your questions</p></li>
+                            <li><p>If solvable, it gives you a <font color="#fa0">model</font> (even if several exist) which is basically concrete values for your symbolic variables</p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-solve-solver.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: Solver & backtracking points</h2>
+                        <ul>
+                            <li><p>You can create backtracking points by using <font color="#fa0">push</font> and <font color="#fa0">pop</font></p></li>
+                            <li><p>It basically saves the constraints you have set in the solver: it's a checkpoint</p></li>
+                            <li><p>As the name suggests, it's particularly useful when using backtracking algorithms</p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-solver-backtracking.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: simplify</h2>
+                        <ul>
+                            <li><p>This function is something really important: as the name suggests it can <font color="#fa0">simplify</font> Z3 expressions</p></li>
+                            <li><p>Keep in mind it's not magic though: the returned expression does not have to be the most simplified expression (cf <a href='https://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/'>Breaking Kryptonite's Obfuscation</a>)</p></li>
+                            <li><p>A lot of options can be enabled / disabled to help <font color="#fa0">simplify</font> to do a better job at simplifying ; call <font color="#fa0">help_simplify()</font></p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-simplify.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: ZeroExt, SignExt</h2>
+                        <ul>
+                            <li><p>Two useful functions when you deal with <font color="#fa0">BitVecs</font></p></li>
+                            <li><p>As their names suggest, they basically zero or sign extend a <font color="#fa0">BitVec</font></p></li>
+                            <li><p>Use case: zero extend a 32 bits <font color="#fa0">BitVec</font> into a 64 bits <font color="#fa0">BitVec</font></p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-zeroext-signext.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: Extract, Concat</h2>
+                        <ul>
+                            <li><p>Another couple of useful functions:</p></li>
+                            <ul>
+                                <li><p><font color="#fa0">Extract</font>: Extract some bits from a <font color="#fa0">BitVec</font></p></li>
+                                <li><p><font color="#fa0">Concat</font>: Concatenate <font color="#fa0">BitVecs</font></p></li>
+                            </ul>
+                            <li><p>Z3 operators need operands of the same size ; <font color="#fa0">Extract</font>/<font color="#fa0">Concat</font>/<font color="#fa0">ZeroSignExt</font> can help you to meet this requirement</p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-extract-concat.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: RotateRight/Left</h2>
+                        <ul>
+                            <li><p>Equivalent of x86's ROL/ROR instructions</p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-rotaterightleft.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: prove</h2>
+                        <ul>
+                            <li><p>Another quite cool & important function is <font color="#fa0">prove</font></p></li>
+                            <li><p>The function basically checks the given equation is <b>always</b> true</p></li>
+                            <li><p>If not proven, Z3 will give you a counterexample</p></li>
+                            <li><p>Example: Let's prove that <font color="#fa0">Concat</font> works properly</p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-proof-concat.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: prove example II</h2>
+                        <ul>
+                            <li>
+                                <p>More real example:</p>
+                                <ul>
+                                    <li><p>Can we use ((a + b) < a) to know if there is an overflow when adding unsigned 32 bits integers a and b?</p></li>
+                                    <li><p>Instead of storing the result in a 64 bits integer & checking that the result is not >= 0x100000000?</p></li>
+                                </ul>
+                            </li>
+                            <li><p><a href='https://github.com/0vercl0k/z3-playground/blob/master/proof_unsigned_integer_overflow_chech.py'>proof_unsigned_integer_overflow_chech.py</a></p></li>
+                        </ul>
+                        <pre>
+                            <code data-trim>def does_overflow_custom_check(a, b):
+    return If(
+        ULT((a + b), a), # ULT = < unsigned
+        True,
+        False
+    )
+
+def does_overflow_check(a, b):
+    a_64 = ZeroExt(32, a)
+    b_64 = ZeroExt(32, b)
+    return If(
+        UGE((a_64 + b_64), BitVecVal(0x100000000, 64)), # UGE = >= unsigned
+        True,
+        False
+    )
+x, y = BitVecs('a b', 32)
+
+prove(
+    does_overflow_check(x, y) ==
+    does_overflow_custom_check(x, y)
+)
+</code>
+                        </pre>
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: prove example II</h2>
+                        <img style='border: 0' src="./pics/z3-proof-u32-overflow.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: Arrays</h2>
+                        <ul>
+                            <li><p>Quite handy to simulate the memory in a symbolic way</p></li>
+                            <li><p><q cite="https://stackoverflow.com/questions/14317376/in-z3-whats-the-most-efficient-way-to-describe-this-in-array-theory">Z3 will use a <font color="#fa0">brute-force</font> approach, it will essentially try all possible combinations. It will not manage to find the "smart" proof that we (as humans) immediately see.</q></p></li>
+                            <li><p>You can access the array content with [] or <font color="#fa0">Select</font>, and write to it via <font color="#fa0">Store</font></p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-array.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3py tips: substitute</h2>
+                        <ul>
+                            <li><p>This function allows you to <font color="#fa0">substitute</font> variables by whatever you want in an expression</p></li>
+                            <li><p>You can replace a symbolic variable by a concrete value</p></li>
+                            <li><p>Or the way around</p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-substitute.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3Py tips: And/Or/Distinct</h2>
+                        <ul>
+                            <li><p>Equivalent to Python's and & or</p></li>
+                            <li><p>They are really nice to use: you can give them an array of expressions, or inlined expressions</p></li>
+                            <li>
+                                <p>A lot of time you need to express the following: "I want all my symbolic variables to be different"</p>
+                                <ul>
+                                    <li><p>You can do it manually via <font color="#fa0">And</font>(x1 != x2, x2 != x3, x1 != x3)</p></li>
+                                    <li><p>Or you can use <font color="#fa0">Distinct</font>(x1, x2, x3) which is way cleaner</p></li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-andor-distinct.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3Py tips: If</h2>
+                        <ul>
+                            <li><p>It is sometimes useful, but it's not like Python's if & else</p></li>
+                            <li><p>Different how? Not really easy to explain</p></li>
+                            <li>
+                                <p>Here is a C code / Z3 example:
+                                <pre>
+                                    <code data-trim>
+unsigned int a, b;
+if((a + b) < 100)
+{
+    a += 100;
+    b -= 10;
+}
+else
+{
+    a = 1337;
+    b += 1000;
+}
+</code>
+                            </li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-ifthenelse.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3Py tips: Visiting Z3 expressions</h2>
+                        <ul>
+                            <li>
+                                <p>You may need to inspect & visit the AST of a Z3 expression</p>
+                                <ul>
+                                    <li><p>Useful for transformation, conversion, etc.</p></li>
+                                    <li><p>The expression is a tree</p></li>
+                                </ul>
+                                <li><p><font color="#fa0">e.arg(x)</font> gets you the x th argument in the expression</p></li>
+                                <li><p><font color="#fa0">e.num_args()</font> gives you the number of argument</p></li>
+                                <li><p>Check <a href='https://github.com/0vercl0k/z3-playground/blob/master/z3topy.py'>z3topy.py</a></p></li>
+                            </li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-walkast.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3Py toys: graph coloring</h2>
+                        <ul>
+                            <li><p><a href='https://en.wikipedia.org/wiki/Graph_coloring'>Graph coloring</a> problem ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/graph_coloring_z3.py'>graph_coloring_z3.py</a></p></li>
+                        </ul>
+                        <img style='border: 0' height='50%' width='50%' src="./pics/z3-graph-color.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3Py toys: NQueens</h2>
+                        <ul>
+                            <li><p><a href='https://en.wikipedia.org/wiki/Eight_queens_puzzle'>n-queens</a> problem ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/nqueens_z3.py'>nqueens_z3.py</a></p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-nqeens.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3Py toys: Mojette</h2>
+                        <ul>
+                            <li><p><a href='http://www.mojette.net/tutoriel.php?lang=ANGLAIS'>Mojette</a> game ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/mojette_z3.py'>mojette_z3.py</a></p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-mojette.png">
+                    </section>
+
+                    <section>
+                        <h2>Z3Py toys: Magic square</h2>
+                        <ul>
+                            <li><p><a href='https://en.wikipedia.org/wiki/Magic_square'>Magic square</a> game ; <a href='https://github.com/0vercl0k/z3-playground/blob/master/magic_square_z3.py'>magic_square_z3.py</a></p></li>
+                        </ul>
+                        <img style='border: 0' src="./pics/z3-magic-square.png">
+                    </section>
+
+<!--                     <section>
+                        <h2>Z3Py tips: todo</h2>
+                        <p>ForAll, Implies ; Function + model evaluation;</p>
+                    </section>
+ -->
+                    <section>
+                        <h2>References</h2>
+                        <ul>
+                            <li>
+                                <p>Shameless plug: <a href='https://github.com/0vercl0k/z3-playground'>z3-playground</a>: Trying to compile a list of puzzle/"real" problems solved with Z3</p>
+                                <ul>
+                                    <li><p>Every examples are available in <a href='https://github.com/0vercl0k/z3-playground/tree/master/essentials'>z3-playground/essentials</a> ; feel free to contribute!</p></li>
+                                    <li><p>If you have cool ideas / codes, feel free to reach out to me or send pull requests</p></li>
+                                </ul>
+                            </li>
+                            <li><p>"<a href='http://channel9.msdn.com/blogs/peli/the-z3-constraint-solver'>The Z3 Constraint Solver</a>" by Leonardo De Moura & Nikolaj Bjorner</p></li>
+                            <li><p><a href='https://stackoverflow.com/questions/tagged/z3'>Z3 Q&As on stackoverflow</a></p></li>
+                            <li><p><a href='http://research.microsoft.com/en-us/um/people/leonardo/blog.html'>Leornardo De Moura's blog</a></p></li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Conclusion</h2>
+                        <ul>
+                            <li><p>Z3 is really powerful, use it!</p></li>
+                            <li><p>There are loads of advanced features that I don't use / I don't know how to use:</p></li>
+                            <ul>
+                                <li><p>Tactics / Strategies / Subgoals?</p></li>
+                                <li><p>Functions?</p></li>
+                                <li><p>Patterns?</p></li>
+                                <li><p>Data-types?</p></li>
+                                <li><p>Quantifiers?</p></li>
+                            </ul>
+                            <li>
+                                <p>If you don't like Z3's API and / or its features try out another one:</p>
+                                <ul>
+                                    <li><p><a href='https://code.google.com/p/or-tools/'>or-tools</a> from Google seems awesome</p></li>
+                                    <li><p><a href='https://sites.google.com/site/stpfastprover/'>STP</a></p></li>
+                                    <li><p><a href='http://yices.csl.sri.com/'>Yices</a></p></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </section>
+
+                </section>
+
+                <section>
+                    <section>
+                        <h1>Symbolic execution 101</h1>
+                    </section>
+
+                    <section>
+                        <h2>Symbolic execution: definition with words</h2>
+                        <ul>
+                            <p>
+                                <li>
+                                    <q cite="http://www.nosuchcon.org/talks/2014/D2_06_Richard_Johnson_Sagely_Advice.pdf">Symbolic execution involves computation of a mathematical expression that represents the logic within a program. It can be thought of as an algebra designed to express computation. <br />Richard @richinseattle Johnson, NSC 2014</q>
+                                </li>
+                            </p>
+                            <p>
+                                <li>
+                                    An analogy I like to give between concrete / symbolic execution and mathematical functions:
+                                    <ul>
+                                        <li>
+                                            Concrete execution would be to know that f(3) = 19
+                                        </li>
+                                        <li>
+                                            Symbolic execution would be to know that f(<font color="#fa0">x</font>) = <font color="#fa0">x</font>**2 + 10
+                                        </li>
+                                    </ul>
+                                </li>
+                            </p>
+                            <p>
+                                <li>
+                                    Symbolic execution expresses every concrete executions possible
+                                </li>
+                            </p>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Symbolic execution: definition with words II</h2>
+                        <ul>
+                            <p>
+                                <li>So does that mean I have to recode a virtual CPU with the semantic of every instructions?</li>
+                            </p>
+                            <p>
+                                <li>Nope ; see it as a recipe. Take shortcuts to make your life easier:
+                                    <ul>
+                                        <li>I don't need to handle branches</li>
+                                        <li>I only need to handle 4 different instructions</li>
+                                        <li>Think about the granularity you want: a basic block, a function, a library, an entire program</li>
+                                        <li>Why not symbolically execute intermediate representation code instead of assembly?</li>
+                                    </ul>
+                                </li>
+                            </p>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Symbolic execution: definition with code</h2>
+                        <ul style='float:left;'>
+                            <li>Let's imagine this code</p>
+                            <pre>
+                                <code data-trim>void hello(unsigned char c)
+{
+    unsigned char win;
+    unsigned int a = c;
+    a = a*2 + 0xdeadbeef;
+    if(a >= 0 && a < 0xbaad)
+        win = 1;
+    else
+        win = 0;
+}
+</code>
+                            </pre>
+                        </ul>
+                        <ul style='float:middle; font-size:16pt'>
+                            <li>Concrete:</li>
+                            <br />
+                            <li>c = 0xf0</li>
+                            <li>a = 0x000000f0</li>
+                            <li>a = 0xdeadc0cf</li>
+                            <br />
+                            <li>win = 0</li>
+                        </ul>
+                        <ul style='float:right; font-size:16pt'>
+                            <li>Symbolic:</li>
+                            <br />
+                            <li>c is an input sym var</li>
+                            <li>a_0 = <font color="#fa0">ZeroExt</font>(24, c)</li>
+                            <li>a = a_0*2 + 0xdeadbeef</li>
+                            <br />
+                            <li>win = <font color="#fa0">If</font>(<font color="#fa0">And</font>(<font color="#fa0">UGE</font>(a, 0), <font color="#fa0">ULT</font>(a, 0xbaad)), 1, 0)</li>
+                        </ul>
+                    </section>
+                    
+                    <section>
+                        <h2>References</h2>
+                        <ul>
+                            <li>Check Jonathan Salwan's talk</li>
+                            <li>"<a href='http://www.seas.harvard.edu/courses/cs252/2011sp/slides/Lec13-SymExec.pdf'>Symbolic Execution</a>" by Stephen Chong, Harvard University</li>
+                            <li>"<a href='http://research.microsoft.com/en-us/um/people/pg/public_psfiles/sage-in-one-slide.pdf'>SAGE in one page</a>"</li>
+                            <li>"<a href='http://www.nosuchcon.org/talks/2014/D2_06_Richard_Johnson_Sagely_Advice.pdf'>SAGEly advice</a>" from Richard '<a href='https://twitter.com/richinseattle'>@richinseattle</a>' Johnson</li>
+                            <li>"<a href='http://www.nosuchcon.org/talks/2014/D1_01_Rolf_Rolles_Program_Synthesis_in_reverse_Engineering.pdf'>Program Synthesis in Reverse Engineering"</a> by Rolf '<a href='https://twitter.com/RolfRolles'>@RolfRolles</a>' Rolles</li>
+                            <li>"<a href='https://klee.github.io/'>KLEE LLVM Execution Engine</a>"</li>
+                            <li>"<a href='https://sites.google.com/site/dslabepfl/proj/s2e'>S2E: Selective Symbolic Execution</a>"</li>
+                            <li>"<a href='http://bitblaze.cs.berkeley.edu/rudder.html'>Rudder: The BitBlaze Mixed Execution Component</a>"</li>
+                            <li>"<a href='https://www.sstic.org/media/SSTIC2013/SSTIC-actes/execution_symbolique_et_CFG_flattening/SSTIC2013-Article-execution_symbolique_et_CFG_flattening-vanderbeken.pdf'>Mise à plat de graphes de flot de contrôle et exécution symbolique</a>" by Eloi '<a href='https://twitter.com/elvanderb'>@elvanderb</a>' Vanderbeken</li>
+                        </ul>
+                    </section>
+                </section>
+
+                <section>
+                    <section>
+                        <h1>Practical reverse-engineering</h1>
+                    </section>
+
+                    <section>
+                        <h2>Breaking weak hash function: hash collisions</h2>
+                        <ul>
+                            <li><p>Original blog-post by James '<a href='https://twitter.com/tiraniddo'>@tiraniddo</a>' Forshaw: <a href='http://tyranidslair.blogspot.co.uk/2014/09/generating-hash-collisions.html'>Generating hash collisions</a></p></li>
+                            <li>The problem in details ; bear with me:</li>
+                            <ul>
+                                <li>Goals</li>
+                                <ul>
+                                    <li>s = "abc\0" + SUFFIX</li>
+                                    <li>H(s) == H("xyz")</li>
+                                    <li>strcmp(s, "abc") == 0</li>
+                                </ul>
+                                <li>Definitions</li>
+                                <ul>
+                                    <li>SUFFIX is a string fully controlled: even non-ASCII characters are allowed</li>
+                                    <li>H is a hashing function</li>
+                                </ul>
+                                <li><p>Let's even find an ASCII printable SUFFIX!</p></li>
+                            </ul>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Breaking weak hash function: hash collisions</h2>
+                        <ul>
+                            <li>Modeling C concrete strings</li>
+                            <ul>
+                                <li>Sequence of <font color="#fa0">BitVecVal8</font></li>
+                                <pre>
+                                    <code data-trim>def str_to_BitVecVals8(s):
+    return map(
+        lambda x: BitVecVal(ord(x), 8),
+        list(s)
+    )
+</code>
+                                </pre>
+                            </ul>
+                            <li>Modeling ASCII-printable C symbolic strings</li>
+                            <ul>
+                                <li>Sequence of <font color="#fa0">BitVec8</font> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</li>
+                                <pre>
+                                    <code data-trim width='100px'>def ascii_printable(x):
+    return And(0x20 <= x, x <= 0x7f)
+
+def generate_ascii_printable_string(base_name, size, solver):
+    bytes = [BitVec('%s%d' % (base_name, i), 8) for i in range(size)]
+    solver.add(And(map(ascii_printable, bytes)))
+    return bytes
+</code>
+                                </pre>
+                            </ul>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Breaking weak hash function: hash collisions</h2>
+                        <ul>
+                            <li>Modeling H &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</li>
+                            <pre>
+                                <code data-trim>def H(input_bytes):
+    h = 0
+    for byte in input_bytes:
+        h = h * 31 + ZeroExt(24, byte)
+    return h
+</code>
+                            </pre>
+                    </section>
+
+                    <section>
+                        <h2>Breaking weak hash function: hash collisions</h2>
+                        <ul>
+                            <li>Putting it all together: </li>
+                            <pre>
+                                <code data-trim>def collide(target_str, base_str):
+    size_suffix = 7
+    s = Solver()
+    res = str_to_BitVecVals8(base_str) + [BitVecVal(0, 8)] + generate_ascii_printable_string('res', size_suffix, s)
+    s.add(H(res) == H(str_to_BitVecVals8(target_str)))
+    if s.check() == sat:
+        x = s.model()
+        return base_str + '\x00' + ''.join(chr(x[i].as_long()) for i in res[-size_suffix:])
+    raise Exception('Unsat!')
+
+def main(argc, argv):
+    a = 'xyz'
+    b = 'abc'
+    c = collide(a, b)
+    print 'c = %r' % c
+    print 'H(%r) == H(%r)' % (a, c)
+    print 'strcmp(%r, %r) = 0' % (c, b)
+</code>
+                            </pre>
+                    </section>
+
+                    <section>
+                        <h2>Breaking weak hash function: hash collisions</h2>
+                        <ul>
+                            <li>Job done!</li>
+                            <img style='border: 0' src="./pics/z3-hash-collision.png">
+                            <li>No brute-force, elegant solution: didn't even thought at how we could have "reversed" H, Z3 did it for us</li>
+                            <li>Full code is here: <a href='https://github.com/0vercl0k/z3-playground/blob/master/hash_collisions_z3.py'>hash_collisions_z3.py</a></li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
+                        <ul>
+                            <li><p>Kryptonite is an LLVM optimization pass that adds semantic-preserving obfuscation for arithmetic operations</p></li>
+                            <ul>
+                                <li><p>PoC I've written up in "<a href='http://0vercl0k.tuxfamily.org/bl0g/?p=260'>Obfuscation of steel: meet my Kryptonite</a>" back in 2013</p></li>
+                                <li><p>Doing the transformation at the LLVM IR level allows you to support every LLVM back-end architecture: ARM, x86, x64 & a lot of others</p></li>
+                                <li><p>It also means you can write your code in every languages supported by LLVM</p></li>
+                                <li><p>And obviously, you can output binaries in whatever executable formats LLVM supports: Elf, Mach-o, PE</p></li>
+                                <li><p>Check out <a href='https://github.com/obfuscator-llvm/obfuscator/wiki'>O-LLVM</a> if you are interested in this field</p></li>
+                            </ul>
+                            <li><p>The semantic of the program is preserved: the assembly is just a bit disturbing</p></li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
+                        <pre>
+                            <code data-trim>
+unsigned int add(unsigned int a, unsigned int b)
+{
+    return a + b;
+}
+
+int main(int argc, char* argv[])
+{
+    if(argc != 3)
+        return 0;
+
+    printf("Result: %u\n", add(atoll(argv[1]), atoll(argv[2])));
+    return 1;
+}</code>
+                        </pre>
+                        <pre>
+                            <code data-trim>$ wget https://raw.github.com/0vercl0k/stuffz/master/llvm-funz/kryptonite/llvm-functionpass-kryptonite-obfuscater.cpp
+$ clang++ llvm-functionpass-kryptonite-obfuscater.cpp `llvm-config --cxxflags --ldflags --libs core` -shared -o llvm-functionpass-kryptonite-obfuscater.so
+$ clang -S -emit-llvm add.c -o add.ll
+$ opt -S -load ~/dev/llvm-functionpass-kryptonite-obfuscater.so -kryptonite -heavy-add-obfu add.ll -o add.opti.ll && mv add.opti.ll add.ll
+$ opt -S -load ~/dev/llvm-functionpass-kryptonite-obfuscater.so -kryptonite -heavy-add-obfu add.ll -o add.opti.ll && mv add.opti.ll add.ll
+$ llc -O0 -filetype=obj -march=x86 add.ll -o add.o
+$ clang -static add.o -o kryptonite-add
+$ strip --strip-all ./kryptonite-add
+</code>
+                        </pre>
+                    </section>
+
+                    <section>
+                        <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
+                        <pre>
+                            <code data-trim>PS C:\Users\0vercl0k> dir D:\Codes\llvm-funz\kryptonite-add
+Length Name
+------ ----
+689112 kryptonite-add
+</code>
+                        </pre>
+                        <img style='border: 0' height='50%' width='50%' src="./pics/kryptonite-adder.png">
+                    </section>
+
+                    <section>
+                        <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
+                        <ul>
+                            <li><p>The context</p></li>
+                            <ul>
+                                <li><p>We want to attack a single basic block</p></li>
+                                <li><p>If you look closer at the previous slide, only a subset of x86's instructions are used</p></li>
+                                <ul>
+                                    <li><p>Their semantics are easy to implement</p></li>
+                                </ul>
+                                <li><p>We don't need to handle branches, nor EFLAGS</p></li>
+                                <li><p>We don't know the number of input symbolic variables</p></li>
+                                <ul>
+                                    <li><p>Heuristic: Every time we read from an uninitialized location, we treat it as an input variable</p></li>
+                                </ul>
+                            </ul>
+                            <li><p>The plan</p></li>
+                            <ul>
+                                <li><p>Symbolically execute the basic block</p></li>
+                                <li><p>To do so you need a virtual environment: both CPU & memory</p></li>
+                                <li><p>For us, virtual CPU = bunch of registers that can either hold symbolic variables or concrete values</p></li>
+                            </ul>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
+                        <ul>
+                            <li><p><a href='https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/tiny_symbolic_execution_engine_z3.py'>tiny_symbolic_execution_engine_z3.py</a>:</p></li>
+                            <ul>
+                                <li><p>A disassembler class</p></li>
+                                <ul>
+                                    <li><p>We need to parse the code to execute: IDAPython, string manipulation</p></li>
+                                </ul>
+                                <li><p>A virtual CPU: the core of the program</p></li>
+                                <ul>
+                                    <li><p>Use the disassembler component & implement the instruction semantics</p></li>
+                                    <li><p>Also simulates memory</p></li>
+                                    <li><p>Keep track of the (simplified) equations</p></li>
+                                </ul>
+                            </ul>
+                        </ul>
+                        <pre>
+                            <code data-trim>Launching the engine..
+Trying to read a non-initialized area, we got a new symbolic variable: arg0
+Trying to read a non-initialized area, we got a new symbolic variable: arg1
+Done, retrieving the equation in EAX, and simplifying..
+</code>
+                        </pre>
+                    </section>
+
+                    <section>
+                        <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
+                        <pre>
+                            <code data-trim>EAX=(~(Concat(2147483647, Extract(0, 0, arg1)) |
+   Concat(2147483647, ~Extract(0, 0, arg0)) |
+   4294967294) |
+ ~(Concat(2147483647, ~Extract(0, 0, arg1)) |
+   Concat(2147483647, Extract(0, 0, arg0)) |
+   4294967294)) +
+Concat(~(Concat(1073741823, Extract(1, 1, arg1)) |
+         Concat(1073741823, ~Extract(1, 1, arg0)) |
+         Concat(1073741823,
+                ~(~Extract(0, 0, arg1) |
+                  ~Extract(0, 0, arg0)))) |
+       ~(Concat(1073741823, ~Extract(1, 1, arg1)) |
+         Concat(1073741823, Extract(1, 1, arg0)) |
+         Concat(1073741823,
+                ~(~Extract(0, 0, arg1) |
+                  ~Extract(0, 0, arg0)))) |
+       ~(Concat(1073741823, Extract(1, 1, arg1)) |
+         Concat(1073741823, Extract(1, 1, arg0)) |
+         Concat(1073741823, ~Extract(0, 0, arg1)) |
+         Concat(1073741823, ~Extract(0, 0, arg0)) |
+         2147483646) |
+       ~(Concat(1073741823, ~Extract(1, 1, arg1)) |
+         Concat(1073741823, ~Extract(1, 1, arg0)) |
+         Concat(1073741823, ~Extract(0, 0, arg1)) |
+         Concat(1073741823, ~Extract(0, 0, arg0)) |
+         2147483646),
+       0) +
+...
+</code>
+                        </pre>
+                        <ul>
+                            <li><p>Not quite what I expected but as I mentioned before, simplification strategies are not magic ; complicated problem</p></li>
+                            <ul>
+                                <li><p>Read Rolf's <a href='https://www.reddit.com/r/ReverseEngineering/comments/1mphd1/breaking_kryptonites_obfuscation_a_static/cck4ptf'>answer</a> if you want to know why</p></li>
+                            </ul>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Breaking conservative semantic obfuscation: Kryptonite</h2>
+                        <ul>
+                            <li><p>But we can eventually prove it is equivalent to <font color="#fa0">arg0</font> + <font color="#fa0">arg1</font> & then replace the expression with the simplified version right?</p></li>
+                        </ul>
+                        <pre>
+                            <code data-trim>
+def _simplify_additions(self, eq):
+    # The two expressions are equivalent ; we got a simplification!
+    if prove(Sum(self.sym_variables) == eq):
+        return Sum(self.sym_variables)
+
+    return eq
+
+def get_reg_equation_simplified(self, reg):
+    eq = self.get_reg_equation(reg)
+    eq = simplify(self._simplify_additions(eq))
+    return eq
+#[..]
+    print sym.get_reg_equation_simplified('eax')
+</code>
+                            <code data-trim>Launching the engine..
+Trying to read a non-initialized area, we got a new symbolic variable: arg0
+Trying to read a non-initialized area, we got a new symbolic variable: arg1
+Done, retrieving the equation in EAX, and simplifying..
+EAX=arg0 + arg1
+</code>
+                        </pre>
+                        Job done, more details <a href='https://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/'>here</a> if you want
+                    </section>
+
+                    <section>
+                        <h2>Finding ROP gadgets with constraints</h2>
+                        <ul>
+                            <li>
+                                <p>The context</p>
+                                <ul>
+                                    <li><p>ROP gadget = relatively small sequence of instructions that ends with a branching instruction</p></li>
+                                    <li>
+                                        <p>Is "xor eax, eax ; ret" equals to "mov eax, 0xffffffff ; inc eax ; ret"?</p>
+                                        <ul>
+                                            <li><p>They are not stricly equal, nope</p></li>
+                                            <li><p>Why? <font color="#fa0">EFLAGS.AF</font> for example</p></li>
+                                            <li>
+                                                <p>What if we care only about the state of EAX after the gadget execution?</p>
+                                                <ul>
+                                                    <li><p>In that case they are equivalent!</p></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li><p>The gadgets are small & they usually only use a small subset of x86 instructions: we don't really care about: SSE/MMX or crazy instructions</p></li>
+                                </ul>
+                                <p>The problem</p>
+                                <ul>
+                                    <li><p>To be able to compare gadgets, we need instruction semantics ; where do we get that for free?</p></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Finding ROP gadgets with constraints</h2>
+                        <ul>
+                            <li>
+                                <p>The solution</p>
+                                <ul>
+                                    <li><p>Introducing <a href='https://github.com/bdcht/amoco'>amoco</a> a Python framework for static program analysis developed by Axel '<a href='https://github.com/bdcht'>@bdcht</a>' Tillequin</p></li>
+                                    <li>
+                                        <p>Symbolic execution engine for x86, x64, ARM & instruction semantics</p>
+                                        <ul>
+                                            <li><p>Uses its own expression mechanism so far</p></li>
+                                            <li><p>Most of important (for us) x86 instructions are implemented</p></li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <img style='border: 0' src="./pics/xor_inc_amoco_semantics.png">
+                    </section>
+
+                    <section>
+                        <h2>Finding ROP gadgets with constraints</h2>
+                        <ul>
+                            <li>
+                                <p>The plan</p>
+                                <ul>
+                                    <li><p>Symbolically execute gadgets with <a href='https://github.com/bdcht/amoco'>amoco</a></p></li>
+                                    <li>
+                                        <p>Because it uses its own "expression" classes, we need to sort of convert that in Z3</p>
+                                        <ul>
+                                            <li>
+                                                <p><a href='https://github.com/bdcht'>@bdcht</a> plans to integrate Z3 in his framework at some point</p>
+                                                <ul>
+                                                    <li><p>No more magic ugly tricks to go from one to another</p></li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                    <li><p>Then we are free to compare the state of the two virtual CPUs</p></li>
+                                    <li><p>You can actually even set / add your own constraints</p></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Finding ROP gadgets with constraints</h2>
+                        <ul>
+                            <li>
+                                <p><a href='https://github.com/0vercl0k/stuffz/blob/master/look_for_gadgets_with_equations.py'>look_for_gadgets_with_equations.py</a>:</p>
+                                <ul>
+                                    <li>
+                                        <p>What it looks like in the code:</p>
+                                        <ul>
+                                            <li>
+                                                <p>"I want EAX = EBX = 0 at the end of the gadget execution"</p>
+                                                <pre>
+                                                    <code data-trim>
+cpu_state_end_target.wants_register_equal('eax', 0)
+cpu_state_end_target.wants_register_equal('ebx', 0)
+</code>
+                                                </pre>
+                                            </li>
+                                            <li>
+                                                <p>"I want ((ESP >= ESP + 1000) && (ESP < ESP + 2000)) && (EAX == 0)"</p>
+                                                <pre>
+                                                    <code data-trim>
+cpu_state_end_target.wants_register_greater_or_equal('esp', cpu.esp + 1000)
+cpu_state_end_target.wants_register_lesser('esp', cpu.esp + 2000)
+cpu_state_end_target.wants_register_equal('eax', 0)
+</code>
+                                                </pre>
+                                            </li>
+                                            <li>
+                                                <p>"I want EIP = ESP at the end of the gadget execution"</p>
+                                                <pre>
+                                                    <code data-trim>
+cpu_state_end_target.wants_register_equal('eip', 'esp')
+</code>
+                                                </pre>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Finding ROP gadgets with constraints</h2>
+                        <ul>
+                            <li>
+                                <p><a href='https://github.com/0vercl0k/stuffz/blob/master/look_for_gadgets_with_equations.py'>look_for_gadgets_with_equations.py</a>:</p>
+                                <ul>
+                                    <li>
+                                        <p>Example of cool results:</p>
+                                        <ul>
+                                            <li>
+                                                <p>"I want EAX = EBX = 0 at the end of the gadget execution"</p>
+                                                <pre>
+                                                    <code data-trim>
+xor eax, eax ; push eax ; mov ebx, eax ; ret
+xor eax, eax ; xor ebx, ebx ; ret
+</code>
+                                                </pre>
+                                            </li>
+                                            <li>
+                                                <p>"I want ((ESP >= ESP + 1000) && (ESP < ESP + 2000)) && (EAX == 0)"</p>
+                                                <pre>
+                                                    <code data-trim>
+xor eax, eax ; add esp, 0x45c ; pop ebx ; pop esi ; pop edi ; pop ebp ; ret
+</code>
+                                                </pre>
+                                            </li>
+                                            <li>
+                                                <p>"I want EIP = ESP at the end of the gadget execution"</p>
+                                                <pre>
+                                                    <code data-trim>
+add dword ptr [ebx], 2 ; push esp ; ret 
+jmp esp
+pushad ; mov eax, 0xffffffff ; pop ebx ; pop esi ; pop edi ; ret
+</code>
+                                                </pre>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <ul>
+                            <li>
+                                <p>The context</p>
+                                <ul>
+                                    <li><p>NoSuchCon 2014 crack-me (the first of the three challenges) coded by <a href='https://twitter.com/elvanderb'>@elvanderb</a></p></li>
+                                    <li>
+                                        <p>ELF MIPS binary protected by nanomites</a></p>
+                                        <ul>
+                                            <li><p>Father debugs the son ; Father's code is called each time the son executes <font color="#fa0">break</font> (equivalent of <font color="#fa0">int3</font>)</p></li>
+                                            <li><p>Father modifies the son's CPU context to obfuscate the execution flow: the son won't be executed as it appears in IDA</p></li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <p>The protection scheme:</p>
+                                        <ul>
+                                            <li><p>Serial of 24 bytes</p></li>
+                                            <li><p>win = memcmp(F(serial_entered), '[ Synacktiv + NSC = <3 ]') == 0</p></li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <ul>
+                            <li><p>Long story short:</p></li>
+                            <ul>
+                                <li>
+                                    <p>The father uses an algorithm to know where it has to redirect his son</p>
+                                    <ul>
+                                        <li><p>Once we have it, we know in which order the son is going to execute its code</p></li>
+                                    </ul>
+                                </li>
+                                <li>
+                                    <p>The son uses an algorithm to "decrypt" the serial (6 DWORDs)</p>
+                                    <ul>
+                                        <li><p>Each DWORD is modified in place ; each DWORD is modified in a different way thanks to the father</p></li>
+                                        <li><p>Once we figure out the way each DWORD is modified, we can reverse it & break the challenge</p></li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <img style='float:left ; border: 0' width='50%' height='50%' src="./pics/father_code.png">
+                        <img style='float:right ; border: 0' width='50%' height='50%' src="./pics/son_code.png">
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <ul>
+                            <li><p>The plan:</p></li>
+                            <ul>
+                                <li><p>Symbolicly execute the three or four big basic blocks we need</p></li>
+                                <li><p>Then ask Z3 to find the input required to have <font color="#fa0">F</font>(serial) = '[ Synacktiv + NSC = <3 ]'</p></li>
+                                <li><p>We don't need branches & only need to implement < 20 instruction in our virtual CPU</p></li>
+                                <li><p>Most instructions are about basic mathematical computations: easy to implement with Z3</p></li>
+                                <li><p>Memory simulation with a simple array</p></li>
+                                <li><p>We can use our code both as a simplistic MIPS emulator (with concrete values)..</p></li>
+                                <li><p>..or as a symbolic execution engine (with symbolic variables)</p></li>
+                                <li><p>All of that in less than 500 lines of Python</p></li>
+                            </ul>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <ul>
+                            <li><p>The plan:</p></li>
+                            <ul>
+                                <li>
+                                    <p>Once we have an engine working:</p>
+                                    <ul>
+                                        <li>
+                                            <p>We can use it to recover the father algorithm</p>
+                                            <ul>
+                                                <li><p>Execution flow deobfuscation: we have now the code of the son unscrambled / clean</p></li>
+                                            </ul>
+                                        </li>
+                                        <li>
+                                            <p>We can use it to recover the son algorithm</p>
+                                            <ul>
+                                                <li><p>Ask Z3 the correct input values & job done!</p></li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                </li>
+                                <li><p>All of that in less than 300 lines of Python</p></li>
+                            </ul>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <ul>
+                            <li><p>What the first DWORD looks after all the modification:</p></li>
+                        </ul>
+                        <pre>
+                            <code data-trim>
+; input_dword_0
+(declare-fun a () (_ BitVec 32))
+(let ((?x966 ((_ extract 31 30) (bvadd (_ bv1169698645 32) (bvnot a)))))
+(let ((?x991 ((_ extract 4 4) (bvadd (_ bv21 5) (concat (bvadd (_ bv5 3) (bvnot ((_ extract 2 0) a))) ?x966)))))
+(let ((?x999 (bvnot ?x991)))
+(let ((?x952 ((_ extract 15 5) (bvadd (_ bv35861 16) (concat (bvadd (_ bv12117 14) (bvnot ((_ extract 13 0) a))) ?x966)))))
+(let ((?x1002 (concat ((_ extract 29 27) (bvadd (_ bv1169698645 32) (bvnot a))) (bvadd (_ bv95956821 27) (bvnot ((_ extract 26 0) a))) ?x966)))
+(let ((?x980 (bvadd (_ bv3493170197 32) ?x1002)))
+(let ((?x1003 (concat (bvnot (bvadd (_ bv5 4) (concat (bvadd (_ bv1 2) (bvnot ((_ extract 1 0) a))) ?x966))) (bvnot ((_ extract 31 17) ?x980)) (bvnot ((_ extract 16 16) ?x980)) (bvnot ?x952) ?x999)))
+(let ((?x1008 (bvadd (_ bv422262738 32) ?x1003)))
+(let ((?x1017 (concat (bvnot ((_ extract 26 17) ?x980)) (bvnot ((_ extract 16 16) ?x980)) (bvnot ?x952) ?x999)))
+(let ((?x1018 (bvadd (_ bv2832338 23) ?x1017)))
+(let ((?x1085 (concat (bvnot ((_ extract 22 21) ?x1018)) ((_ extract 20 17) ?x1018) (bvnot ((_ extract 16 16) ?x1018)) ((_ extract 15 15) ?x1018) (bvnot ((_ extract 14 14) ?x1018)) ((_ extract 13 12) ?x1018) (bvnot ((_ extract 11 11) ?x1018)) ((_ extract 10 10) ?x1018) (bvnot ((_ extract 9 7) ?x1018)) ((_ extract 6 6) ?x1018) (bvnot ((_ extract 5 5) ?x1018)) ((_ extract 4 4) ?x1018) (bvnot ((_ extract 3 1) ?x1018)) ?x999 ((_ extract 31 31) ?x1008) (bvnot ((_ extract 30 30) ?x1008)) ((_ extract 29 29) ?x1008) (bvnot ((_ extract 28 28) ?x1008)) ((_ extract 27 25) ?x1008) (bvnot ((_ extract 24 23) ?x1008)))))
+(let ((?x1025 (concat (bvadd (_ bv12 4) (concat ((_ extract 26 25) ?x1008) (bvnot ((_ extract 24 23) ?x1008)))) ((_ extract 31 4) (bvadd (_ bv1338037900 32) ?x1085)))))
+(let ((?x984 (bvnot ((_ extract 17 17) (bvadd (_ bv2036738909 32) ?x1025)))))
+(let ((?x1001 (concat (bvnot (bvadd (_ bv11101 17) ((_ extract 20 4) (bvadd (_ bv1338037900 32) ?x1085)))) (bvnot ((_ extract 31 17) (bvadd (_ bv2036738909 32) ?x1025))))))
+(let ((?x1010 (bvadd (_ bv3562860298 32) ?x1001)))
+(let ((?x1004 (bvnot ((_ extract 1 1) ?x1010))))
+(let ((?x1201 ((_ extract 3 3) (bvadd (_ bv6 5) (concat (bvnot ((_ extract 4 4) ?x1010)) ((_ extract 3 2) ?x1010) ?x1004 ?x984)))))
+(let ((?x1196 ((_ extract 4 4) (bvadd (_ bv6 5) (concat (bvnot ((_ extract 4 4) ?x1010)) ((_ extract 3 2) ?x1010) ?x1004 ?x984)))))
+(let ((?x1020 (concat ((_ extract 31 31) ?x1010) (bvnot ((_ extract 30 30) ?x1010)) ((_ extract 29 29) ?x1010) (bvnot ((_ extract 28 28) ?x1010)) ((_ extract 27 27) ?x1010) (bvnot ((_ extract 26 25) ?x1010)) ((_ extract 24 23) ?x1010) (bvnot ((_ extract 22 22) ?x1010)) ((_ extract 21 17) ?x1010) (bvnot ((_ extract 16 13) ?x1010)) ((_ extract 12 12) ?x1010) (bvnot ((_ extract 11 11) ?x1010)) ((_ extract 10 9) ?x1010) (bvnot ((_ extract 8 4) ?x1010)) ((_ extract 3 2) ?x1010) ?x1004 ?x984)))
+(let ((?x1061 (bvadd (_ bv4035799430 32) ?x1020)))
+(let ((?x1206 (concat (bvnot ((_ extract 2 2) (bvadd (_ bv6 3) (concat ((_ extract 2 2) ?x1010) ?x1004 ?x984)))) ((_ extract 1 1) (bvadd (_ bv6 3) (concat ((_ extract 2 2) ?x1010) ?x1004 ?x984))) ((_ extract 17 17) (bvadd (_ bv2036738909 32) ?x1025)) ((_ extract 31 30) ?x1061) (bvnot ((_ extract 29 29) ?x1061)) ((_ extract 28 27) ?x1061) (bvnot ((_ extract 26 25) ?x1061)) ((_ extract 24 22) ?x1061) (bvnot ((_ extract 21 21) ?x1061)) ((_ extract 20 16) ?x1061) (bvnot ((_ extract 15 15) ?x1061)) ((_ extract 14 12) ?x1061) (bvnot ((_ extract 11 9) ?x1061)) (bvnot ((_ extract 8 8) ?x1061)) ((_ extract 7 7) ?x1061) (bvnot ((_ extract 6 6) ?x1061)) (bvnot ((_ extract 5 5) ?x1061)) ?x1196 (bvnot ?x1201))))
+(let ((?x1043 (bvadd (_ bv3499560052 32) ?x1206)))
+(let ((?x1230 ((_ extract 14 13) ?x1043)))
+(let ((?x1223 (concat (bvnot ((_ extract 12 12) ?x1043)) ((_ extract 11 11) ?x1043) (bvnot ((_ extract 10 10) ?x1043)) ((_ extract 9 9) ?x1043) (bvnot ((_ extract 8 7) ?x1043)) ((_ extract 6 6) ?x1043) (bvnot ((_ extract 5 5) ?x1043)) ((_ extract 4 3) ?x1043) (bvnot ((_ extract 2 2) ?x1043)) ((_ extract 1 1) ?x1043) (bvnot ?x1201) (bvnot ((_ extract 31 30) ?x1043)) ((_ extract 29 28) ?x1043) (bvnot ((_ extract 27 27) ?x1043)) ((_ extract 26 25) ?x1043) (bvnot ((_ extract 24 15) ?x1043)) ?x1230)))
+(let ((?x1005 (bvadd (_ bv2171031339 32) ?x1223)))
+(let ((?x1229 (concat (bvnot ((_ extract 14 13) ?x1005)) (bvnot ((_ extract 12 12) ?x1005)) (bvnot ((_ extract 11 11) (bvadd (_ bv3883 12) (concat (bvnot ((_ extract 24 15) ?x1043)) ?x1230)))) ((_ extract 10 8) (bvadd (_ bv3883 12) (concat (bvnot ((_ extract 24 15) ?x1043)) ?x1230))) (bvnot ((_ extract 7 5) (bvadd (_ bv3883 12) (concat (bvnot ((_ extract 24 15) ?x1043)) ?x1230)))) ((_ extract 4 3) (bvadd (_ bv3883 12) (concat (bvnot ((_ extract 24 15) ?x1043)) ?x1230))) (bvnot ((_ extract 2 1) (bvadd (_ bv3 3) (concat (bvnot ((_ extract 15 15) ?x1043)) ?x1230)))) (bvnot (bvadd (_ bv1 1) ((_ extract 13 13) ?x1043))) (bvnot ((_ extract 31 30) ?x1005)) ((_ extract 29 22) ?x1005) (bvnot ((_ extract 21 21) ?x1005)) ((_ extract 20 20) ?x1005) (bvnot ((_ extract 19 19) ?x1005)) ((_ extract 18 16) ?x1005) (bvnot ((_ extract 15 15) ?x1005)))))
+(let ((?x1132 (concat ((_ extract 23 22) ?x1005) (bvnot ((_ extract 21 21) ?x1005)) ((_ extract 20 20) ?x1005) (bvnot ((_ extract 19 19) ?x1005)) ((_ extract 18 16) ?x1005) (bvnot ((_ extract 15 15) ?x1005)))))
+(concat ((_ extract 28 9) (bvadd (_ bv2400525917 32) ?x1229)) (bvadd (_ bv93 9) ?x1132) ((_ extract 31 29) (bvadd (_ bv2400525917 32) ?x1229))))))))))))))))))))))))))))))
+</code>
+                        </pre>
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <ul>
+                            <li><p>Cranking up <a href='https://github.com/0vercl0k/stuffz/blob/master/NoSuchCon2014/solve_nsc2014_step1_z3.py'>solve_nsc2014_step1_z3.py</a>:</p></li>
+                        </ul>
+                        <pre>
+                            <code data-trim>
+PS D:\Codes\NoSuchCon2014> python .\solve_nsc2014_step1_z3.py
+==================================================
+> Instantiating the symbolic execution engine..
+> Generating dynamically the code of the son & reorganizing / cleaning it..
+> Configuring the virtual environment..
+> Running the code..
+> Instantiating & configuring the solver..
+> Solving..
+> Constraints solvable, here are the 6 DWORDs:
+ a = 0xFE446223
+ b = 0xBA770149
+ c = 0x75BA5111
+ d = 0x78EA3635
+ e = 0xA9D6E85F
+ f = 0xCC26C5EF
+> Serial: 322644EF941077AB1115AB575363AE87F58E6D9AFE5C62CC
+==================================================
+
+root@debian-mipsel:~# /home/user/crackmips 322644EF941077AB1115AB575363AE87F58E6D9AFE5C62CC
+good job!
+Next level is there: http://nsc2014.synacktiv.com:65480/oob4giekee4zaeW9/
+</code>
+                        </pre>
+                    </section>
+
+                    <section>
+                        <h2>Taming a wild MIPS binary</h2>
+                        <ul>
+                            <li>
+                                <p>If you want more details:</p>
+                                <ul>
+                                    <li><p>Check the solution of the winner <a href='https://twitter.com/0xf4b'>0xf4b</a> & the other guys that completed the three challenges: <a href='http://www.nosuchcon.org/#challenge'>NoSuchCon2014 Challenge</a></p></li>
+                                    <li>
+                                        <p>Check out Emilien & my solution <a href='https://doar-e.github.io/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/'>Taming a Wild Nanomite-protected MIPS Binary With Symbolic Execution: No Such Crackme</a></p>
+                                        <ul>
+                                            <li><p>Don't miss Emilien's talk on how to break the last level of the NoSuchCon challenges</p></li>
+                                        </ul>
+                                    </li>
+                                    <li><p>All the codes I mentioned are available in <a href='https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2014'>NoSuchCon2014</a></p></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2>References</h2>
+                        <ul>
+                            <li>"<a href='http://www.amazon.com/Practical-Reverse-Engineering-Reversing-Obfuscation/dp/1502489309'>Practical reverse-engineering</a>" book by Bruce '<a href='https://twitter.com/brucedang'>@brucedang</a>' Dang, Alexandre Gazet, Elias '<a href='https://twitter.com/0xeb'>@0xeb</a>' Bachaalany and Sébastien Josse</li>
+                            <li>"<a href='http://blog.quarkslab.com/deobfuscation-recovering-an-ollvm-protected-program.html'>Deobfuscation: recovering an OLLVM-protected program</a>" by gg</li>
+                            <li>"<a href='http://recon.cx/2014/slides/recon2014-21-mougey-camille-francis-gabriel-DRM-obfuscation-versus-auxiliary-attacks-slides.pdf'>DRM obfuscation vs auxiliary attacks</a>" by Camille '<a href='https://twitter.com/commial'>@commial</a>' Mougey & gg</p></li>
+                            <li><a href='https://github.com/bdcht/amoco'>amoco</a> by Axel '<a href='https://twitter.com/bdcht'>@bdcht</a>' Tillequin</li>
+                            <li><a href='https://github.com/cea-sec/miasm'>miasm2</a> by Fabrice Desclaux</li>
+                        </ul>
+                    </section>
+
+                </section>
+
+                <section>
+                    <h2>Conclusion</h2>
+                    <ul>
+                        <li><p>Symbolic execution & theorem provers are really two useful / powerful tools for security / reverse-engineering tasks</p></li>
+                        <li><p>The deck of slides will be available online</p></li>
+                        <li><p>Feel free to reach out to me via email / twitter for any questions and / or feedbacks</p></li>
+                        <li><p>Big thanks to SecurityDay for having me :-)</p></li>
+                        <li>
+                            <p>"My proof readers are awesome" (c) Rolf, 2014</p>
+                            <ul>
+                                <li><p><a href='https://twitter.com/kutioo'>@kutioo</a></p></li>
+                                <li><p><a href='https://twitter.com/__x86'>@__x86</a></p></li>
+                                <li><p><a href='https://twitter.com/jonathansalwan'>@jonathansalwan</a></p></li>
+                                <li><p><a href='https://twitter.com/elvanderb'>@elvanderb</a></p></li>
+                                <li><p><a href='https://twitter.com/HumanActuator'>@HumanActuator</a></p></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </section>
+
+                <section data-background='./pics/themes03_light.gif'>
+                    <h2 style='color:black'>Shameless plug: Diary of a reverse-engineer</h2>
+                    <p style='color:black'>We are always looking for cool posts / articles, feel free to reach out to us!</p>
+                    <p><a href='https://doar-e.github.io/'>Diary of a reverse-engineer</a>, <a href='https://twitter.com/doar_e'>@doar_e</a></p>
+                    <p><a href='https://twitter.com/jonathansalwan'>@jonathansalwan</a>, <a href='https://twitter.com/__x86'>@__x86</a>, <a href='https://twitter.com/0vercl0k'>@0vercl0k</a></p>
+                </section>
+
+                <section>
+                    <h2>Questions?</h2>
+                    <img src="./pics/questions.jpg">
+                </section>
+
+            </div>
+        </div>
+
+        <script>
+            // Full list of configuration options available here:
+            // https://github.com/hakimel/reveal.js#configuration
+            Reveal.initialize({
+                controls: true,
+                progress: true,
+                history: true,
+                center: true,
+                slideNumber: true,
+
+                theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+                transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+                // Optional libraries used to extend on reveal.js
+                dependencies: [
+                    { src: '../reveal.js-2.6.2/lib/js/classList.js', condition: function() { return !document.body.classList; } },
+                    { src: '../reveal.js-2.6.2/plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+                    { src: '../reveal.js-2.6.2/plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+                    { src: '../reveal.js-2.6.2/plugin/presentable/presentable.min.js', async: true, callback: function() { presentable.toc({framework: "revealjs"}); } },
+                    { src: '../reveal.js-2.6.2/plugin/notes/notes.js', async: true },
+                    { src: '../reveal.js-2.6.2/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+                    { src: '../reveal.js-2.6.2/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+                ]
+            });
+        </script>
+    </body>
+</html>

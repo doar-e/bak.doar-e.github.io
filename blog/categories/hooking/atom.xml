@@ -4,7 +4,7 @@
   <title><![CDATA[Category: hooking | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/hooking/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2014-12-14T12:34:36+00:00</updated>
+  <updated>2015-01-16T19:23:40+00:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -154,7 +154,7 @@ Base : 80B95000    Limit : 03FF</p>
 
 <p>Once the CPU is in <em>nt!KiTrap00</em>&rsquo;s code it basically does a lot of things, same thing for all the other <em>nt!KiTrap</em> routines, but somehow they (more or less) end up in the kernel mode exceptions dispatcher: <em>nt!KiDispatchException</em> (remember <a href="http://gynvael.coldwind.pl/">gynvael</a>&rsquo;s tool ? He was hooking that method!) once they created the <em>nt!_KTRAP_FRAME</em> structure associated with the fault.</p>
 
-<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/butterfly.png" title="nt!KiExceptionDispatch graph from ReactOS" ></p>
+<p>{% img center /images/ntdll.KiUserExceptionDispatcher/butterfly.png nt!KiExceptionDispatch graph from ReactOS %}</p>
 
 <p>Now, you may already have asked yourself how the kernel reaches back to the userland in order to process the exception via the SEH mechanism for example ?</p>
 
@@ -275,7 +275,7 @@ Exact matches:</p>
 
 <p>Detours is going to modify the first bytes of the API you want to hook in order to redirect its execution in your piece of code: it&rsquo;s called an <em>inline-hook</em>.</p>
 
-<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/detours.png"></p>
+<p>{% img center /images/ntdll.KiUserExceptionDispatcher/detours.png %}</p>
 
 <p>Detours can work in two modes:</p>
 
@@ -345,7 +345,7 @@ __asm
 
 <p>Here is what looks <em>ntdll!KiUserExceptionDispatcher</em> like in memory after the hook:</p>
 
-<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/hook.png"></p>
+<p>{% img center /images/ntdll.KiUserExceptionDispatcher/hook.png %}</p>
 
 <p>Disassembling some instructions pointed by the <em>CONTEXT.Eip</em> field is also really straightforward to do with <em>distorm_decode</em>:</p>
 
@@ -526,7 +526,7 @@ gs+0x2b39f:
 
 <p>This time the kernel has defined an ISR for the interruption 0x29: <em>nt!KiRaiseSecurityCheckFailure</em>. This function is going to call <em>nt!KiFastFailDispatch</em>, and this one is going to call <em>nt!KiDispatchException</em>:</p>
 
-<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/kifastfaildispatch.png"></p>
+<p>{% img center /images/ntdll.KiUserExceptionDispatcher/kifastfaildispatch.png %}</p>
 
 <p>BUT the exception is going to be processed as a <strong>second-chance</strong> exception because of the way <em>nt!KiFastFailDispatch</em> calls the kernel mode exception dispatcher. And if we look at the source of <em>nt!KiDispatchException</em> in ReactOS we can see that this exception won&rsquo;t have the chance to reach back the userland as in Win7 :)):</p>
 
@@ -598,7 +598,7 @@ else
 
 <p>To convince yourself you can even modify the <em>FirstChance</em> argument passed to <em>nt!KiDispatchException</em> from <em>nt!KiFastFailDispatch</em>. You will see the SEH handler is called like in Win7:</p>
 
-<p><img class="center" src="/images/ntdll.KiUserExceptionDispatcher/win8.png"></p>
+<p>{% img center /images/ntdll.KiUserExceptionDispatcher/win8.png %}</p>
 
 <p>Cool, we have now our answer to the weird behavior! I guess if you want to monitor <em>/GS</em> exception you are going to find another trick :)).</p>
 
