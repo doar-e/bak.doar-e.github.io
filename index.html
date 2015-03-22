@@ -128,12 +128,12 @@
 </ol>
 
 
-<p>The annoying thing is that you don&rsquo;t have a lot of understandable available C codes on the web that implement such things, nevertheless you do have quite some nice academic references ; they are a really good resource to build your own.</p>
+<p>The annoying thing is that you don&rsquo;t have a lot of understandable available C code on the web that implement such things, nevertheless you do have quite some nice academic references ; they are a really good resource to build your own.</p>
 
-<p>This post aims to present briefly, in a simple way what an AES white-box looks like ; and to show how its design is important if you want to not have your encryption key extracted :). The implementation I&rsquo;m going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really <a href="https://github.com/0vercl0k/stuffz/raw/master/wbaes_attack/docs/a_tutorial_on_whitebox_aes.pdf">nice paper</a> (even for non-mathematical / crypto guys like me!) written by James A. Muir.</p>
+<p>This post aims to present briefly, in a simple way what an AES white-box looks like, and to show how its design is important if you want to not have your encryption key extracted :). The implementation I&rsquo;m going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really <a href="https://github.com/0vercl0k/stuffz/raw/master/wbaes_attack/docs/a_tutorial_on_whitebox_aes.pdf">nice paper</a> (even for non-mathematical / crypto guys like me!) written by James A. Muir.</p>
 
 <p>The idea is simple: we will start from a clean AES128 encryption function in plain C, we will modify it &amp; transform it into a white-box implementation in several steps.
-As usual, all the codes are available on my github account; you are encourage to break &amp; hack them!</p>
+As usual, all the code are available on my github account; you are encourage to break &amp; hack them!</p>
 
 <p>Of course, we will use this post to briefly present what is the white-box cryptography, what are the goals &amp; why it&rsquo;s kind of cool.</p>
 
