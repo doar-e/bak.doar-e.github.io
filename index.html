@@ -9,7 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="As last year, the French conference No Such Con returns for its second edition in Paris from the 19th of November until the 21th of November. And &hellip;">
+  <meta name="description" content="Introduction I think it all began when I&rsquo;ve worked on the NSC2013 crackme made by @elvanderb, long story short you had an AES128 heavily &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -94,6 +94,73 @@
   <header>
   
     
+      <h1 class="entry-title"><a href="/blog/2015/02/08/spotlight-on-an-unprotected-aes128-whitebox-implementation/">Spotlight on an Unprotected AES128 White-box Implementation</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2015-02-08T22:59:00-08:00" pubdate data-updated="true">Feb 8<span>th</span>, 2015</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>I think it all began when I&rsquo;ve worked on the <a href="https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2013">NSC2013</a> crackme made by <a href="https://twitter.com/elvanderb">@elvanderb</a>, long story short you had an AES128 heavily obfuscated white-box implementation to break. The thing was you could actually solve the challenge in different ways:</p>
+
+<ol>
+<li>the first one was the easiest one: you didn&rsquo;t need to know anything about white-box, crypto or even AES ; you could just see the function as a black-box &amp; try to find &ldquo;design flaws&rdquo; in its inner-workings</li>
+<li>the elite way: this one involved to understand &amp; recover the entire design of the white-box, then to identify design weaknesses that allows the challenger to directly attack &amp; recover the encryption key. A really nice write-up has been recently written by <a href="https://twitter.com/doegox">@doegox</a>, check it out, really :): <a href="http://wiki.yobi.be/wiki/NSC_Writeups">Oppida/NoSuchCon challenge</a>.</li>
+</ol>
+
+
+<p>The annoying thing is that you don&rsquo;t have a lot of understandable available C codes on the web that implement such things, nevertheless you do have quite some nice academic references ; they are a really good resource to build your own.</p>
+
+<p>This post aims to present briefly, in a simple way what an AES white-box looks like ; and to show how its design is important if you want to not have your encryption key extracted :). The implementation I&rsquo;m going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really <a href="https://github.com/0vercl0k/stuffz/raw/master/wbaes_attack/docs/a_tutorial_on_whitebox_aes.pdf">nice paper</a> (even for non-mathematical / crypto guys like me!) written by James A. Muir.</p>
+
+<p>The idea is simple: we will start from a clean AES128 encryption function in plain C, we will modify it &amp; transform it into a white-box implementation in several steps.
+As usual, all the codes are available on my github account; you are encourage to break &amp; hack them!</p>
+
+<p>Of course, we will use this post to briefly present what is the white-box cryptography, what are the goals &amp; why it&rsquo;s kind of cool.</p>
+
+<p>Before diving deep, here is the table of contents:</p>
+
+<div class='entry-content-toc'></div>
+
+
+
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2015/02/08/spotlight-on-an-unprotected-aes128-whitebox-implementation/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
       <h1 class="entry-title"><a href="/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/">Taming a Wild Nanomite-protected MIPS Binary With Symbolic Execution: No Such Crackme</a></h1>
       
       
@@ -111,7 +178,7 @@
   
 
 
-<time datetime="2014-10-11T21:35:00+01:00" pubdate data-updated="true">Oct 11<span>th</span>, 2014</time>
+<time datetime="2014-10-11T21:35:00-07:00" pubdate data-updated="true">Oct 11<span>th</span>, 2014</time>
         
       </p>
     
@@ -166,7 +233,7 @@ Apparently, the three tasks have already been <a href="https://twitter.com/Synac
   
 
 
-<time datetime="2014-09-06T20:37:00+01:00" pubdate data-updated="true">Sep 6<span>th</span>, 2014</time>
+<time datetime="2014-09-06T20:37:00-07:00" pubdate data-updated="true">Sep 6<span>th</span>, 2014</time>
         
       </p>
     
@@ -236,7 +303,7 @@ Apparently, the three tasks have already been <a href="https://twitter.com/Synac
   
 
 
-<time datetime="2014-04-30T21:01:00+01:00" pubdate data-updated="true">Apr 30<span>th</span>, 2014</time>
+<time datetime="2014-04-30T21:01:00-07:00" pubdate data-updated="true">Apr 30<span>th</span>, 2014</time>
         
       </p>
     
@@ -290,7 +357,7 @@ Apparently, the three tasks have already been <a href="https://twitter.com/Synac
   
 
 
-<time datetime="2014-04-17T23:22:00+01:00" pubdate data-updated="true">Apr 17<span>th</span>, 2014</time>
+<time datetime="2014-04-17T23:22:00-07:00" pubdate data-updated="true">Apr 17<span>th</span>, 2014</time>
         
       </p>
     
@@ -351,7 +418,7 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
   
 
 
-<time datetime="2014-03-11T09:52:37+00:00" pubdate data-updated="true">Mar 11<span>th</span>, 2014</time>
+<time datetime="2014-03-11T02:52:37-07:00" pubdate data-updated="true">Mar 11<span>th</span>, 2014</time>
         
       </p>
     
@@ -411,7 +478,7 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
   
 
 
-<time datetime="2013-10-12T14:03:00+01:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
+<time datetime="2013-10-12T14:03:00-07:00" pubdate data-updated="true">Oct 12<span>th</span>, 2013</time>
         
       </p>
     
@@ -525,7 +592,7 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
   
 
 
-<time datetime="2013-09-16T11:47:00+01:00" pubdate data-updated="true">Sep 16<span>th</span>, 2013</time>
+<time datetime="2013-09-16T11:47:00-07:00" pubdate data-updated="true">Sep 16<span>th</span>, 2013</time>
         
       </p>
     
@@ -579,7 +646,7 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
   
 
 
-<time datetime="2013-09-09T09:53:00+01:00" pubdate data-updated="true">Sep 9<span>th</span>, 2013</time>
+<time datetime="2013-09-09T09:53:00-07:00" pubdate data-updated="true">Sep 9<span>th</span>, 2013</time>
         
       </p>
     
@@ -643,7 +710,7 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
   
 
 
-<time datetime="2013-08-31T18:57:00+01:00" pubdate data-updated="true">Aug 31<span>st</span>, 2013</time>
+<time datetime="2013-08-31T18:57:00-07:00" pubdate data-updated="true">Aug 31<span>st</span>, 2013</time>
         
       </p>
     
@@ -676,59 +743,9 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
 
     </article>
   
-  
-    <article>
-      
-  <header>
-  
-    
-      <h1 class="entry-title"><a href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Regular Expressions Obfuscation Under the Microscope</a></h1>
-      
-      
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2013-08-24T12:35:00+01:00" pubdate data-updated="true">Aug 24<span>th</span>, 2013</time>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><h1>Introduction</h1>
-
-<p>Some months ago I came across a strange couple of functions that was kind of playing with a <a href="http://en.wikipedia.org/wiki/Finite-state_machine">finite-state automaton</a> to validate an input. At first glance, I didn&rsquo;t really notice it was in fact a regex being processed, that&rsquo;s exactly why I spent quite some time to understand those routines. You are right to ask yourself: &ldquo;Hmm but the regex string representation should be in the binary shouldn&rsquo;t it?&rdquo;, the thing is it wasn&rsquo;t. The purpose of this post is to focus on those kind of &ldquo;compiled&rdquo; regex, like when the author transform somehow the regex in a FSM directly usable in its program (for the sake of efficiency I guess). And to extract that handy string representation, you have to study the automaton.</p>
-
-<p>In this short post, we are going to see how a regular expression looks like in assembly/C, and how you can hide/obfuscate it. I hope you will enjoy the read, and you will both be able to recognize a regular expression compiled in your future reverse-engineering tasks and to obfuscate heavily your regex!</p>
-
-<div class='entry-content-toc'></div>
-
-
-
-
-</div>
-  
-  
-    <footer>
-      <a rel="full-article" href="/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/">Read on &rarr;</a>
-    </footer>
-  
-
-
-    </article>
-  
   <div class="pagination">
+    
+      <a class="prev" href="/blog/page/2/">&larr; Older</a>
     
     <a href="/blog/archives">Blog Archives</a>
     
@@ -739,6 +756,10 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2015/02/08/spotlight-on-an-unprotected-aes128-whitebox-implementation/">Spotlight on an unprotected AES128 white-box implementation</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/">Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme</a>
@@ -754,10 +775,6 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     
       <li class="post">
         <a href="/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/">Deep dive into Python&#8217;s VM: Story of LOAD_CONST bug</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First dip into the kernel pool : MS10-058</a>
       </li>
     
   </ul>

@@ -4,7 +4,7 @@
   <title><![CDATA[Category: MIPS | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/mips/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2015-01-19T20:28:58+00:00</updated>
+  <updated>2015-03-21T19:08:08-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -16,7 +16,7 @@
   <entry>
     <title type="html"><![CDATA[Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme]]></title>
     <link href="http://doar-e.github.io/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/"/>
-    <updated>2014-10-11T21:35:00+01:00</updated>
+    <updated>2014-10-11T21:35:00-07:00</updated>
     <id>http://doar-e.github.io/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme</id>
     <content type="html"><![CDATA[<p>As last year, the French conference <a href="http://www.nosuchcon.org/#challenge">No Such Con</a> returns for its second edition in Paris from the 19th of November until the 21th of November. And again, the brilliant <a href="https://twitter.com/elvanderb">Eloi Vanderbeken</a> &amp; his mates at <a href="http://synacktiv.fr/en/index.html">Synacktiv</a> put together a series of three security challenges especially for this occasion.
 Apparently, the three tasks have already been <a href="https://twitter.com/Synacktiv/status/515174845844582401">solved</a> by awesome <a href="https://twitter.com/0xf4b">@0xfab</a> which won the competition, hats off :).</p>
@@ -68,7 +68,7 @@ qemu-system-mipsel -M malta -kernel vmlinux-3.2.0-4-4kc-malta -hda debian_wheezy
 overclok@wildout:~/chall/nsc2014$ ./start_vm.sh
 [    0.000000] Initializing cgroup subsys cpuset
 [    0.000000] Initializing cgroup subsys cpu
-[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#109;&#97;&#x69;&#108;&#116;&#111;&#58;&#x64;&#x65;&#98;&#105;&#x61;&#110;&#x2d;&#x6b;&#x65;&#x72;&#110;&#101;&#x6c;&#64;&#x6c;&#x69;&#x73;&#x74;&#115;&#46;&#100;&#x65;&#98;&#105;&#97;&#110;&#46;&#111;&#114;&#103;">&#x64;&#x65;&#98;&#x69;&#97;&#x6e;&#45;&#107;&#101;&#114;&#x6e;&#101;&#x6c;&#x40;&#108;&#x69;&#115;&#116;&#x73;&#46;&#100;&#101;&#98;&#x69;&#x61;&#110;&#46;&#x6f;&#114;&#x67;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
+[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#x6d;&#97;&#105;&#x6c;&#116;&#x6f;&#58;&#100;&#x65;&#98;&#x69;&#97;&#x6e;&#45;&#107;&#x65;&#x72;&#110;&#x65;&#108;&#x40;&#108;&#105;&#x73;&#116;&#x73;&#x2e;&#x64;&#101;&#98;&#105;&#x61;&#110;&#x2e;&#x6f;&#114;&#103;">&#100;&#101;&#98;&#x69;&#x61;&#110;&#x2d;&#x6b;&#x65;&#x72;&#x6e;&#101;&#108;&#64;&#x6c;&#x69;&#115;&#116;&#x73;&#46;&#100;&#x65;&#98;&#105;&#x61;&#110;&#46;&#x6f;&#114;&#x67;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
 [&hellip;]
 debian-mipsel login: root
 Password:
@@ -323,7 +323,7 @@ Let&rsquo;s not focus on what the block is actually doing though, we will develo
 
 <p>Anyway, after this long theoretical speech let&rsquo;s have a look at some code. The first important job of the engine is to be able to parse MIPS assembly: fortunately for us this is really easy. We are directly feeding plain-text MIPS disassembly directly copied from IDA to our engine:</p>
 
-<p>```python <a href="&#109;&#97;&#x69;&#x6c;&#116;&#111;&#58;&#109;&#x69;&#x6e;&#x69;&#95;&#x6d;&#x69;&#112;&#115;&#x5f;&#115;&#x79;&#109;&#x65;&#120;&#101;&#x63;&#x5f;&#101;&#110;&#103;&#x69;&#x6e;&#x65;&#x2e;&#112;&#121;&#x40;&#x4d;&#x69;&#x6e;&#105;&#x4d;&#x69;&#x70;&#x73;&#x53;&#121;&#x6d;&#69;&#x78;&#101;&#x63;&#69;&#110;&#x67;&#x69;&#110;&#x65;&#46;&#95;&#112;&#x61;&#x72;&#x73;&#101;&#x5f;&#108;&#105;&#110;&#x65;">&#x6d;&#105;&#x6e;&#105;&#95;&#x6d;&#x69;&#x70;&#x73;&#95;&#115;&#121;&#109;&#101;&#120;&#101;&#x63;&#x5f;&#x65;&#x6e;&#103;&#105;&#x6e;&#101;&#46;&#x70;&#x79;&#x40;&#x4d;&#105;&#x6e;&#x69;&#77;&#x69;&#112;&#x73;&#83;&#x79;&#x6d;&#69;&#x78;&#101;&#99;&#x45;&#x6e;&#x67;&#x69;&#x6e;&#x65;&#46;&#x5f;&#112;&#x61;&#114;&#115;&#101;&#95;&#x6c;&#x69;&#110;&#x65;</a>
+<p>```python <a href="&#x6d;&#x61;&#105;&#x6c;&#116;&#x6f;&#x3a;&#109;&#x69;&#x6e;&#105;&#x5f;&#x6d;&#105;&#112;&#x73;&#x5f;&#115;&#121;&#109;&#101;&#x78;&#101;&#x63;&#x5f;&#101;&#x6e;&#103;&#x69;&#110;&#x65;&#46;&#x70;&#121;&#x40;&#77;&#x69;&#x6e;&#105;&#x4d;&#x69;&#x70;&#x73;&#83;&#x79;&#x6d;&#69;&#x78;&#x65;&#99;&#x45;&#110;&#103;&#x69;&#110;&#101;&#x2e;&#95;&#112;&#x61;&#x72;&#x73;&#101;&#x5f;&#108;&#105;&#x6e;&#101;">&#109;&#x69;&#110;&#x69;&#95;&#x6d;&#x69;&#x70;&#115;&#x5f;&#115;&#x79;&#109;&#101;&#120;&#x65;&#99;&#95;&#x65;&#x6e;&#x67;&#105;&#110;&#x65;&#x2e;&#112;&#x79;&#64;&#x4d;&#x69;&#x6e;&#x69;&#x4d;&#105;&#x70;&#x73;&#83;&#x79;&#x6d;&#x45;&#x78;&#101;&#x63;&#x45;&#110;&#103;&#x69;&#x6e;&#x65;&#46;&#x5f;&#112;&#97;&#114;&#115;&#x65;&#x5f;&#108;&#105;&#110;&#x65;</a>
 def _parse_line(self, line):
   addr_seg, instr, rest = line.split(None, 2)
   args = rest.split(&lsquo;,&rsquo;)

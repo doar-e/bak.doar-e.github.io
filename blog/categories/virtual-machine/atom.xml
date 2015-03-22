@@ -4,7 +4,7 @@
   <title><![CDATA[Category: virtual machine | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/virtual-machine/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2015-01-19T20:28:58+00:00</updated>
+  <updated>2015-03-21T19:08:08-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -16,7 +16,7 @@
   <entry>
     <title type="html"><![CDATA[Dissection of Quarkslab's 2014 security challenge]]></title>
     <link href="http://doar-e.github.io/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/"/>
-    <updated>2014-09-06T20:37:00+01:00</updated>
+    <updated>2014-09-06T20:37:00-07:00</updated>
     <id>http://doar-e.github.io/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 
@@ -1173,7 +1173,7 @@ quarkslab
   <entry>
     <title type="html"><![CDATA[Deep dive into Python's VM: Story of LOAD_CONST bug]]></title>
     <link href="http://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/"/>
-    <updated>2014-04-17T23:22:00+01:00</updated>
+    <updated>2014-04-17T23:22:00-07:00</updated>
     <id>http://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 

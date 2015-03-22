@@ -4,78 +4,84 @@
         <loc>
             http://doar-e.github.io/blog/2013/08/24/regular-expressions-obfuscation-under-the-microscope/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2013/08/31/some-thoughts-about-code-coverage-measurement-with-pin/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2014/04/17/deep-dive-into-pythons-vm-story-of-load_const-bug/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/blog/2014/04/30/corrupting-arm-evt/</loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>
             http://doar-e.github.io/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/
         </loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
+    </url>
+    <url>
+        <loc>
+            http://doar-e.github.io/blog/2015/02/08/spotlight-on-an-unprotected-aes128-whitebox-implementation/
+        </loc>
+        <lastmod>2015-03-21T19:07:39-07:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/about/</loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/blog/archives/</loc>
-        <lastmod>2015-01-16T19:26:23+00:00</lastmod>
+        <lastmod>2015-03-21T19:07:39-07:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/</loc>
-        <lastmod>2015-01-16T19:26:24+00:00</lastmod>
+        <lastmod>2015-03-21T19:07:39-07:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/presentations/</loc>
-        <lastmod>2015-01-19T20:25:10+00:00</lastmod>
+        <lastmod>2015-01-19T12:25:10-08:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/robots.txt</loc>
-        <lastmod>2015-01-16T19:26:25+00:00</lastmod>
+        <lastmod>2015-01-16T11:26:25-08:00</lastmod>
     </url>
 </urlset>
