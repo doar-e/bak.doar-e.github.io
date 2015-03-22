@@ -19,7 +19,7 @@ The annoying thing is that you don't have a lot of understandable available C co
 This post aims to present briefly, in a simple way what an AES white-box looks like ; and to show how its design is really important to have something strong. The implementation I'm going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really nice paper (even for non-mathematical / crypto guys like me!) written by James A. Muir.
 
 The idea is simple: we will start from a clean AES128 encryption function in plain C, we will modify it & transform it into a white-box implementation in several steps.
-As usual, all the codes are available on my github account where you will be free to break, hack them (and encouraged to do so)!
+As usual, all the codes are available on my github account; you are encourage to break & hack them!
 
 Of course, we will use this post to briefly present what is the white-box cryptography, what are the goals & why it's kind of cool.
 
@@ -38,16 +38,16 @@ All right, here we are: this part is just a reminder of how AES (with a 128 bits
 void aes128_enc_base(unsigned char in[16], unsigned char out[16], unsigned char key[16])
 ```
 
-The encryption works in 11 rounds, the first one & the last one are slightly different than the nine others ; but they all rely on four different operations. Those operations are called: AddRoundKey, SubBytes, ShiftRows, MixColumns. Each rounds modify a 128 bits state with a 128 bits round-key. Those round-keys are generated from the encryption key via a key expansion (called key schedule) function. Note that the first round-key is actually the encryption key.
+The encryption works in eleven rounds, the first one & the last one are slightly different than the nine others ; but they all rely on four different operations. Those operations are called: AddRoundKey, SubBytes, ShiftRows, MixColumns. Each round modifies a 128 bits state with a 128 bits round-key. Those round-keys are generated from the encryption key after a key expansion (called key schedule) function. Note that the first round-key is actually the encryption key.
 
-The first part of an AES encryption is to execute that key schedule in order to get our round-keys ; once we have them all it's just a matter to execute the four different operations we saw to generate the encrypted plain-text.
+The first part of an AES encryption is to execute the key schedule in order to get our round-keys ; once we have them all it's just a matter of using the four different operations we saw to generate the encrypted plain-text.
 
-I know that I quite like to see how the crypto algorithms work in a visual way, if this is also your case check this SWF animation (no exploit in here, don't worry :)): [Rijndael_Animation_v4_eng.swf](http://www.formaestudio.com/rijndaelinspector/archivos/Rijndael_Animation_v4_eng.swf) ; else you can also read the [FIPS-197](http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf) document.
+I know that I quite like to see how crypto algorithms work in a visual way, if this is also your case check this SWF animation (no exploit in here, don't worry :)): [Rijndael_Animation_v4_eng.swf](http://www.formaestudio.com/rijndaelinspector/archivos/Rijndael_Animation_v4_eng.swf) ; else you can also read the [FIPS-197](http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf) document.
 
 ## Key schedule
-The key schedule is like the most important part of the algorithm. As I said a bit earlier, this function basically is a derivation one: it takes the encryption key in input and will generate the round-keys the encryption process will use.
+The key schedule is like the most important part of the algorithm. As I said a bit earlier, this function is a derivation one: it takes the encryption key in input and will generate the round-keys the encryption process will use in output.
 
-I don't really feel like explaining in detail how it works (as it is a bit tricky to explain that with words), I would rather advise you to read the FIPS document or to follow the flash animation. Just to say Here is what my key schedule looks like:
+I don't really feel like explaining in detail how it works (as it is a bit tricky to explain that with words), I would rather advise you to read the FIPS document or to follow the flash animation. Here is what my key schedule looks like:
 
 ```c aes key schedule
 const unsigned char S_box[] = { 0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76, 0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0, 0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15, 0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A, 0x07, 0x12, 0x80, 0xE2, 0xEB, 0x27, 0xB2, 0x75, 0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0, 0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 0x84, 0x53, 0xD1, 0x00, 0xED, 0x20, 0xFC, 0xB1, 0x5B, 0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 0xCF, 0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85, 0x45, 0xF9, 0x02, 0x7F, 0x50, 0x3C, 0x9F, 0xA8, 0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5, 0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 0xD2, 0xCD, 0x0C, 0x13, 0xEC, 0x5F, 0x97, 0x44, 0x17, 0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 0x73, 0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88, 0x46, 0xEE, 0xB8, 0x14, 0xDE, 0x5E, 0x0B, 0xDB, 0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C, 0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 0x79, 0xE7, 0xC8, 0x37, 0x6D, 0x8D, 0xD5, 0x4E, 0xA9, 0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 0x08, 0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6, 0xE8, 0xDD, 0x74, 0x1F, 0x4B, 0xBD, 0x8B, 0x8A, 0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E, 0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9E, 0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xDF, 0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16 };
@@ -91,7 +91,7 @@ const unsigned char S_box[] = { 0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 
 Sweet, feel free to dump the round keys and to compare them with an official test vector to convince you that this thing works. Once we have that function, we need to build the different primitives that the core encryption algorithm will use & reuse to generate the encrypted block. Some of them are like 1 line of C, really simple ; some others are a bit more twisted, but whatever.
 
 ## AddRoundKey
-This one is a really simple one: it takes a round key (according to which round you are currently in), the state & you xor each byte of the state with the round-key.
+This one is a really simple one: it takes a round key (according to which round you are currently in), the state & you xor every single bytes of the state with the round-key.
 
 ```c AddRoundKey
 void AddRoundKey(unsigned char roundkey[16], unsigned char out[16])
@@ -102,7 +102,7 @@ void AddRoundKey(unsigned char roundkey[16], unsigned char out[16])
 ```
 
 ## SubBytes
-Another simple one: it takes the state in input & will substitute every byte via the forward `S_box`.
+Another simple one: it takes the state in input & will substitute every byte using the forward substitution box `S_box`.
 
 ```c SubBytes
 void SubBytes(unsigned char out[16])
@@ -115,7 +115,7 @@ void SubBytes(unsigned char out[16])
 If you are interested in how the values of the `S_box` are computed, you should read the following blogpost [AES SBox and ParisGP](http://kutioo.blogspot.fr/2013/11/aes-sbox-and-parigp.html) written by my mate [@kutioo](https://twitter.com/kutioo).
 
 ## ShiftRows
-This operation is a bit less tricky, but still is fairly straightforward. Imagine that the state is a matrix of 4x4, you just have to right rotate the second line by 1 byte, the third one by 2 bytes & finally the last one by 3 bytes. This can be done in C like this:
+This operation is a bit less tricky, but still is fairly straightforward. Imagine that the state is a 4x4 matrix, you just have to left rotate the second line by 1 byte, the third one by 2 bytes & finally the last one by 3 bytes. This can be done in C like this:
 
 ```c ShiftRows
 __forceinline void ShiftRows(unsigned char out[16])
@@ -131,14 +131,12 @@ __forceinline void ShiftRows(unsigned char out[16])
     // +----+----+----+----+
     unsigned char tmp1, tmp2;
 
-    // 8-bits right rotation of the second line
     tmp1 = out[1];
     out[1] = out[5];
     out[5] = out[9];
     out[9] = out[13];
     out[13] = tmp1;
 
-    // 16-bits right rotation of the third line
     tmp1 = out[2];
     tmp2 = out[6];
     out[2] = out[10];
@@ -146,7 +144,6 @@ __forceinline void ShiftRows(unsigned char out[16])
     out[10] = tmp1;
     out[14] = tmp2;
 
-    // 24-bits right rotation of the last line
     tmp1 = out[3];
     out[3] = out[15];
     out[15] = out[11];
@@ -168,7 +165,7 @@ const unsigned char gmul[3][0x100] = {
     };
 ```
 
-Once you have this magic table, the multiplication gets really easy. Let's take an example with this multiplication:
+Once you have this magic table, the multiplication gets really easy. Let's take an example:
 
 {%img center /images/spotlight_on_an_unprotected_aes128_white-box_implementation/mixcolumn_example.png %}
 
@@ -178,7 +175,7 @@ As I said, the four bytes at the left are from your state & the 4x4 matrix is th
 reduce(operator.xor, [gmul[1][0xd4], gmul[2][0xbf], gmul[0][0x5d], gmul[0][0x30]])
 ```
 
-The first index in the table are the actual value taken from the 4x4 matrix minus one (because our array is going to be addressed from index 0). So then you can declare your own 4x4 matrix with proper indexes & do the multiplication four times:
+The first indexes in the table are the actual values taken from the 4x4 matrix minus one (because our array is going to be addressed from index 0). So then you can declare your own 4x4 matrix with proper indexes & do the multiplication four times:
 
 ```c MixColumns
 void MixColumns(unsigned char out[16])
@@ -221,8 +218,8 @@ void MixColumns(unsigned char out[16])
 Now we have everything we need, it is going to be easy peasy ; really:
 
  1. The initial state is populated with the encryption key
- 2. Generate the round-keys thanks to the key schedule ; remember 11 keys, the first one being 
- 3. The first, different, round is a simple *AddRoundKey* operation
+ 2. Generate the round-keys thanks to the key schedule ; remember 11 keys, the first one being the plain encryption key
+ 3. The first different round is a simple `AddRoundKey` operation
  4. Then we enter in the main loop which does 9 rounds:
     1. *SubBytes*
     2. *ShiftRows*
@@ -322,21 +319,21 @@ Brilliant.
 
 # White-boxing AES128 in ~7 steps
 ## Introduction
-I'm no crypto-expert whatsoever but I'll still try to explain what "white-boxing" AES means for us. Currently, we have a block encryption primitive with the following signature `void aes128_enc_base(unsigned char in[16], unsigned char out[16], unsigned char key[16])`. One of the purpose of the white-boxing process is going to "remove", or I should use "hide" instead, the key. Your primitive will work without any input key parameter, but the key won't be hard-coded either in the body of the function. You'll be able to encrypt things without any apparent key (and obviously without public key cryptography). Some people even say that you transforming a symmetric encryption algorithm in an asymmetric one.
+I'm no crypto-expert whatsoever but I'll still try to explain what "white-boxing" AES means for us. Currently, we have a block encryption primitive with the following signature `void aes128_enc_base(unsigned char in[16], unsigned char out[16], unsigned char key[16])`. One of the purpose of the white-boxing process is going to "remove", or I should use "hide" instead, the key. Your primitive will work without any input key parameter, but the key won't be hard-coded either in the body of the function. You'll be able to encrypt things without any apparent key (and obviously without public key cryptography). Some people even say that you are transforming a symmetric encryption algorithm in an asymmetric one.
 
 A perfectly secure but unpractical version of a white-box AES would be to have a big hash-table: the keys would be every single possible plain-texts and the values would be their encrypted version with the key you want. That should give you a really clear idea of what a white-box is. But obviously storing that kind of table in memory is another problem by itself :-).
 
-Instead of using that "naive" idea, researchers came up with way to pre-compute "things" that involve the round-keys in order to hide everything. The other goal of a real white-box is to be resistant to reverse-engineering & dynamic analysis. Even if you are able to read whatever memory you want, you still should not be able to extract the key. The [NoSuchCon2013](https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2013) crackme is again a really good example of that: we had to wait for 2 years before [@doegox](https://twitter.com/doegox) actually works his magic to extract the key.
+Instead of using that "naive" idea, researchers came up with way to pre-compute "things" that involve the round-keys in order to hide everything. The other goal of a real white-box is to be resistant to reverse-engineering & dynamic/static analysis. Even if you are able to read whatever memory you want, you still should not be able to extract the key. The [NoSuchCon2013](https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2013) crackme is again a really good example of that: we had to wait for 2 years before [@doegox](https://twitter.com/doegox) actually works his magic to extract the key.
 
 The design of the implementation is really really important in order to make that key extraction process the more difficult possible.
 
-In this part, we are using James A. Muir's paper to rewrite step by step our implementation in order to make it possible to combine several operations between them & make pre-computed table out of it. At the end of this part we should have a working AES128 encryption primitive that doesn't require a key. But we will also build in parallel a tool used to generate every different tables our implementation is going to need: the key schedule & the key will be needed to generate them as you may guess.
+In this part, we are using James A. Muir's paper to rewrite step by step our implementation in order to make it possible to combine several operations between them & make pre-computed table out of them. At the end of this part we should have a working AES128 encryption primitive that doesn't require a key. But we will also build in parallel a tool used to generate the different tables our implementation is going to need: obviously, this tool is going to need both the key schedule & the encryption key to be able to generate the look-up tables.
 Long story short: the first steps are basically going to reorder / rewrite the logic of the encryption, & the last ones will really transform the implementation in a white-box.
 
 Anyway, let's go folks!
 
 ## Step 1: bring the first *AddRoundKey* in the loop & kick out the last one out of it
-This one is really easy: basically we just have to change our loop to start at `i=0` until `i=8` (inclusive), move the first *AddRoundKey* in the loop, and move the last one outside of the loop.
+This one is really easy: basically we just have to change our loop to start at `i=0` until `i=8` (inclusive), move the first `AddRoundKey` in the loop, and move the last one outside of it.
 
 The encryption loop should look like this now:
 
@@ -363,8 +360,8 @@ void aes128_enc_reorg_step1(unsigned char in[16], unsigned char out[16], unsigne
 }
 ```
 
-## Step 2: *SubBytes* then *ShiftRows* equals *ShiftRows* then *SubBytes*
-Yet another easy one: because *SubBytes* is just replacing a byte by its substitution (stored in *S_box*), you can apply *ShiftRows* before *SubBytes* or *SubBytes* before *ShiftRows* ; you will get the same result. So let's exchange them:
+## Step 2: `SubBytes` then `ShiftRows` equals `ShiftRows` then `SubBytes`
+Yet another easy one: because `SubBytes` is just replacing a byte by its substitution (stored in `S_box`), you can apply `ShiftRows` before `SubBytes` or `SubBytes` before `ShiftRows` ; you will get the same result. So let's exchange them:
 
 ```c aes128_enc_reorg_step2
 void aes128_enc_reorg_step2(unsigned char in[16], unsigned char out[16], unsigned char key[16])
@@ -391,8 +388,8 @@ void aes128_enc_reorg_step2(unsigned char in[16], unsigned char out[16], unsigne
 }
 ```
 
-## Step 3: *ShiftRows* first, but needs to *ShiftRows* the round-key
-This one is a bit more tricky, but again it's more about reordering, rewriting the encryption loop than really replacing computation by look-up tables. Basically, the idea of this step is to start the encryption loop with a *ShiftRows* operation. Because of the way this operation is defined, if you put it first you also need to apply *ShiftRows* to the current round key in order to get the same result than *AddRoundKey*/*ShiftRows*.
+## Step 3: `ShiftRows` first, but needs to `ShiftRows` the round-key
+This one is a bit more tricky, but again it's more about reordering, rewriting the encryption loop than really replacing computation by look-up tables so far. Basically, the idea of this step is to start the encryption loop with a `ShiftRows` operation. Because of the way this operation is defined, if you put it first you also need to apply `ShiftRows` to the current round key in order to get the same result than `AddRoundKey`/`ShiftRows`.
 
 ```c aes128_enc_reorg_step3
 void aes128_enc_reorg_step3(unsigned char in[16], unsigned char out[16], unsigned char key[16])
@@ -420,21 +417,21 @@ void aes128_enc_reorg_step3(unsigned char in[16], unsigned char out[16], unsigne
 ```
 
 ## Step 4: White-boxing it like it's hot, White-boxing it like it's hot
-This step is a really important one for us, it's actually the first one where we are going to be able to both remove the key & to start the tables generator project. The tables generator project basically generates everything we need to have our AES encryption working.
+This step is a really important one for us, it's actually the first one where we are going to be able to both remove the key & to start the tables generator project. The tables generator project basically generates everything we need to have our white-box AES encryption working.
 
 Now we don't need the key schedule anymore in the AES encryption function (but obviously we will need it on the table generator side), and we can keep only the encryption loop.
 
-The transformation introduced in this step is to create a look-up table that will replace *ShiftRows(round_keys[i])*/*AddRoundKey*/*SubBytes*. We can clearly see now how our round keys are going to be "diffused" & combined with different operations to make them not trivially extractable. In order to have such a table, we need quite some space though: basically we need this table `Tboxes[10][16][0x100]`. We have 10 operations *ShiftRows(round_keys[i])*/*AddRoundKey*/*SubBytes*, 16 bytes of round keys in each one of them and the 0x100 for the bytes (`[0x00-0xFF]`) than can be encrypted.
+The transformation introduced in this step is to create a look-up table that will replace `ShiftRows(round_keys[i])`/`AddRoundKey`/`SubBytes`. We can clearly see now how our round keys are going to be "diffused" & combined with different operations to make them "not trivially" (in fact they are, but let's say they are not right now) extractable. In order to have such a table, we need quite some space though: basically we need this table `Tboxes[10][16][0x100]`. We have 10 operations `ShiftRows(round_keys[i])`/`AddRoundKey`/`SubBytes`, 16 bytes of round keys in each one of them and the 0x100 for the bytes (`[0x00-0xFF]`) than can be encrypted.
 
 The computation is not really hard:
 
- 1. We compute the key schedule for a specific key K
+ 1. We compute the key schedule for a specific encryption key
  2. We populate the table this way:
      1. For each round key:
        1. For every byte possible:
-         1. You compute S_box[byte ^ ShiftRows(roundkey)[i]]
+         1. You compute `S_box[byte ^ ShiftRows(roundkey)[i]]`
 
-The *S_box* part is for the *SubBytes* operation, the xor with one byte of the round key is for *AddRoundKey* & the rest is for *ShiftRows(round_keys[i])*. There is a special case for the 9th round key, where you have to include *AddRoundKey* of the latest round key. It's like we don't have 11 rounds anymore, but 10 now. As the 9th contains information about the round key 9th & 10th.
+The `S_box` part is for the `SubBytes` operation, the xor with one byte of the round key is for `AddRoundKey` & the rest is for `ShiftRows(round_keys[i])`. There is a special case for the 9th round key, where you have to include `AddRoundKey` of the latest round key. It's like we don't have 11 rounds anymore, but 10 now. As the 9th contains information about the round key 9th & 10th.
 
 If you are confused about that bit, don't be ; it's just I suck at explaining things, but just have a look at the following code (especially at lines 47, 48):
 
@@ -538,7 +535,7 @@ void aes128_enc_wb_step1(unsigned char in[16], unsigned char out[16])
 ```
 
 ## Step 5: Transforming *MixColumns* in a look-up table
-OK, so this is maybe the "most difficult" part of the game: we have to transform our ugly `MixColumn` function by four different look-up tables. Basically, we want to transform this:
+OK, so this is maybe the "most difficult" part of the game: we have to transform our ugly `MixColumn` function in four look-up tables. Basically, we want to transform this:
 
 ```c before
 out[i * 4 + 0] = gmul[matrix[0]][a] ^ gmul[matrix[1]][b] ^ gmul[matrix[2]][c] ^ gmul[matrix[3]][d];
@@ -553,11 +550,11 @@ by this (where `Ty[0-4]` are the look-up tables I mentioned just above):
 DW(&out[j * 4]) = Ty[0][a] ^ Ty[1][b] ^ Ty[2][c] ^ Ty[3][d];
 ```
 
-We know that `gmul[X]` gives you 1 byte, and we can see those four lines uses `gmul[X][a]` where `X` is constant. You can also see that basically those for lines take 4 bytes in input `a`, `b`, `c` & `d` and will generate 4 bytes in output.
+We know that `gmul[X]` gives you 1 byte, and we can see those four lines uses `gmul[X][a]` where `X` is constant. You can also see that basically those four lines take 4 bytes in input `a`, `b`, `c` & `d` and will generate 4 bytes in output.
 
-The idea is to combine `gmul[matrix[0]][a]`, `gmul[matrix[4]][a]`, `gmul[matrix[8]][a]` & `gmul[matrix[12]][a]` inside a single double-word. We do the same for `b`, `c` & `d` so that we can directly apply the `xor` operation between double-words now ; the result will also be a double-word so we have our 4 bytes in output. We basically re-factorized 4 individual computations (1 byte in input, 1 byte in output) into a single one (4 bytes in input, 4 bytes in output).
+The idea is to combine `gmul[matrix[0]][a]`, `gmul[matrix[4]][a]`, `gmul[matrix[8]][a]` & `gmul[matrix[12]][a]` inside a single double-word. We do the same for `b`, `c` & `d` so that we can directly apply the `xor` operation between double-words now ; the result will also be a double-word so we have our 4 output bytes. We just re-factorized 4 individual computations (1 byte in input, 1 byte in output) into a single one (4 bytes in input, 4 bytes in output).
 
-With that in mind, the tables generation writes nearly by itself:
+With that in mind, the tables generation function writes nearly by itself:
 
 ```c wbaes128_unprotected_tables_generator.c:Ty tables generation
 int main()
@@ -686,7 +683,7 @@ void aes128_enc_wb_step3(unsigned char in[16], unsigned char out[16])
 
 ## Step 6: Adding a little *xor* table
 
-This step is a really simple one ; we just want to transform the *xor* operation between 2 double-words by a look-up table that does that between 2 nibbles (4 bits). Basically, you combine 8 nibbles to get a full double-word with *or* operation & some binary shifts. Easy peasy:
+This step is a really simple one (& kind of useless) ; we just want to transform the *xor* operation between 2 double-words by a look-up table that does that between 2 nibbles (4 bits). Basically, you combine 8 nibbles to get a full double-word with *or* operations & some binary shifts. Easy peasy:
 
 ```c wbaes128_unprotected_tables_generator.c:Xor table generation
 int main()
@@ -769,9 +766,9 @@ void aes128_enc_wb_step4(unsigned char in[16], unsigned char out[16])
 ```
 
 ## Step 7: Combining TBoxes & Ty tables
-The last step is basically to combine the `Tboxes` with `Ty` tables and if you look at the code it doesn't seem really hard. We basically want the table to work this way: 1 byte in input (`a` for example in the previous code) & generate 4 bytes of outputs.
+The last step aims to combine the `Tboxes` with `Ty` tables and if you look at the code it doesn't seem really hard. We basically want the table to work this way: 1 byte in input (`a` for example in the previous code) & generate 4 bytes of outputs.
 
-To compute such a table, you basically need to compute the `Tboxes` (or not, you can compute everything without relying on the `Tboxes` ; it's actually what I'm doing), & you compute `Ty[Y][Tboxes[i][j][X]]` ; this is it, roughly. `X`, `i` and `j` are the unknown variables here, which means we will end-up with a table like that:
+To compute such a table, you need to compute the `Tboxes` (or not, you can compute everything without relying on the `Tboxes` ; it's actually what I'm doing), & then you compute `Ty[Y][Tboxes[i][j][X]]` ; this is it, roughly. `X`, `i` and `j` are the unknown variables here, which means we will end-up with a table like that:
 
 ```c Tyboxes
 const unsigned int Tyboxes[9][16][0x100];
@@ -854,7 +851,7 @@ We just have to take care of the last round which is a bit different as we saw e
 
 ## Final code
 
-Yeah, finally, here we are ; the final code of our (not protected) AES128 whitebox:
+Yeah, finally, here we are ; the final code of our (not protected) AES128 white-box:
 
 ```c aes128_enc_wb_final
 void aes128_enc_wb_final(unsigned char in[16], unsigned char out[16])
@@ -894,7 +891,7 @@ void aes128_enc_wb_final(unsigned char in[16], unsigned char out[16])
 It's cute isn't it?
 
 # Attacking the white-box: extract the key
-As the title says, this white-box implementation is really insecure: which means that if you have access to an executable with that kind of white-box you just have to extract Tyboxes[0] & do a little magic to extract the key.
+As the title says, this white-box implementation is really insecure: which means that if you have access to an executable with that kind of white-box you just have to extract `Tyboxes[0]` & do a little magic to extract the key.
 
 If it's not already obvious to you, you just have to remember how we actually compute the values inside that big tables ; look carefully at those two lines:
 
@@ -903,9 +900,9 @@ unsigned char c = S_box[x ^ round_keys[r][i]];
 Tyboxes[r][i][x] = Ty[i % 4][c];
 ```
 
-In our case, `r` is 0, `i` will be the byte index of the round key 0 (which is the AES key) & we can also set `x` to a constant value, let's say 0 or 1 for example. `S_box` is known, `Ty` too as this transformation is always the same (it doesn't depend on the key). Basically we just need to brute-force `round_keys[r][i]` with every values a byte can take. If the computed value is equal to the one in the dumped `Tyboxes`, then we have extracted one byte of the round key & we can go find the next one.
+In our case, `r` is 0, `i` will be the byte index of the round key 0 (which is the AES key) & we can also set `x` to a constant value: let's say 0 or 1 for instance. `S_box` is known, `Ty` too as this transformation is always the same (it doesn't depend on the key). Basically we just need to brute-force `round_keys[r][i]` with every values a byte can take. If the computed value is equal to the one in the dumped `Tyboxes`, then we have extracted one byte of the round key & we can go find the next one.
 
-Attentive readers noticed that we are not going to actually extract the key per-se, but `ShiftRows(key)` instead (remember that we needed to apply this transformation to build our white-box). But again, `ShiftRows` being not key-dependent we can invert this operation easily to have really the key this time.
+Attentive readers noticed that we are not going to actually extract the encryption key per-se, but `ShiftRows(key)` instead (remember that we needed to apply this transformation to build our white-box). But again, `ShiftRows` being not key-dependent we can invert this operation easily to really have  the plain encryption key this time.
 
 Here is the code that does what I just described:
 
@@ -956,10 +953,10 @@ Here is the code that does what I just described:
 
 ```
 
-# Obfuscating it like it's hot
-This is basically the part where you have no limit, where you exercise your creativity. I'll just talk about ideas & obvious things, a lot of them are directly taken from [@elvanderb](https://twitter.com/elvanderb)'s challenge so I guess I'll owe him yet another beer.
+# Obfuscating it?
+This is basically the part where you have no limit, where you can exercise your creativity & have to develop stuffs. I'll just talk about ideas & obvious things, a lot of them are directly taken from [@elvanderb](https://twitter.com/elvanderb)'s challenge so I guess I owe him yet another beer.
 
-The first things you can have for free are:
+The first things you can do for free are:
 
   * Unrolling the implementation to make room for craziness
   * Use public LLVM passes on the unrolled implementation to make it even more crazy
@@ -968,7 +965,7 @@ The first things you can have for free are:
     * [Ollvm](https://github.com/obfuscator-llvm/obfuscator)
     * Build yours!
 
-The other good idea is to try to make less obvious key elements in your implementation: basically the AES state & the tables & their structures. Those three things give away quite some important information about how your implementation works, so making a bit harder to figure those points out is good for us. Instead of storing the AES state inside a contiguous memory area of 16 bytes, why not use 16 non-contiguous variables of 1 byte? You can go even further by using different variables for every round to make it even more confusing. 
+The other good idea is to try to make less obvious key elements in your implementation: basically the AES state, the tables & their structures. Those three things give away quite some important information about how your implementation works, so making a bit harder to figure those points out is good for us. Instead of storing the AES state inside a contiguous memory area of 16 bytes, why not use 16 non-contiguous variables of 1 byte? You can go even further by using different variables for every round to make it even more confusing. 
 
 You can also apply that same idea to the different arrays our implementation uses: do not store them in a contiguous memory area, dispatch them all over the memory & transform them in one dimension arrays instead.
 
@@ -1028,11 +1025,11 @@ memcpy(out, in, 16);
     return shuffled_lines
 ```
 
-Anyway, I wish I had time to implement what we just talked about but I unfortunately don't; if I ever get motivated to do so, I'll push my code on my github account as usual :-).
+Anyway, I wish I had time to implement what we just talked about but I unfortunately don't; if you do feel free to shoot me an email & I'll update the post with links to your codes :-).
 
 # Last words
 
-I hope this little post gave you enough to understand how white-box cryptography kind of works, how important is the design of the implementation and what sort of problems you can. If you did enjoy this subject, here is a list of cool articles you may want to check out:
+I hope this little post gave you enough to understand how white-box cryptography kind of works, how important is the design of the implementation and what sort of problems you can encounter. If you did enjoy this subject, here is a list of cool articles you may want to check out:
 
  * [White-box cryptography: hiding keys in software](http://www.whiteboxcrypto.com/files/2012_misc.pdf)
  * [White-Box Cryptography - 30c3](https://www.youtube.com/watch?v=om5AVTqB5bA)
