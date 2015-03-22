@@ -16,7 +16,7 @@ I think it all began when I've worked on the [NSC2013](https://github.com/0vercl
 
 The annoying thing is that you don't have a lot of understandable available C codes on the web that implement such things, nevertheless you do have quite some nice academic references ; they are a really good resource to build your own.
 
-This post aims to present briefly, in a simple way what an AES white-box looks like ; and to show how its design is really important to have something strong. The implementation I'm going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really nice paper (even for non-mathematical / crypto guys like me!) written by James A. Muir.
+This post aims to present briefly, in a simple way what an AES white-box looks like ; and to show how its design is important if you want to not have your encryption key extracted :). The implementation I'm going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really [nice paper](https://github.com/0vercl0k/stuffz/raw/master/wbaes_attack/docs/a_tutorial_on_whitebox_aes.pdf) (even for non-mathematical / crypto guys like me!) written by James A. Muir.
 
 The idea is simple: we will start from a clean AES128 encryption function in plain C, we will modify it & transform it into a white-box implementation in several steps.
 As usual, all the codes are available on my github account; you are encourage to break & hack them!
@@ -45,7 +45,7 @@ The first part of an AES encryption is to execute the key schedule in order to g
 I know that I quite like to see how crypto algorithms work in a visual way, if this is also your case check this SWF animation (no exploit in here, don't worry :)): [Rijndael_Animation_v4_eng.swf](http://www.formaestudio.com/rijndaelinspector/archivos/Rijndael_Animation_v4_eng.swf) ; else you can also read the [FIPS-197](http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf) document.
 
 ## Key schedule
-The key schedule is like the most important part of the algorithm. As I said a bit earlier, this function is a derivation one: it takes the encryption key in input and will generate the round-keys the encryption process will use in output.
+The key schedule is like the most important part of the algorithm. As I said a bit earlier, this function is a derivation one: it takes the encryption key as input and will generate the round-keys the encryption process will use as output.
 
 I don't really feel like explaining in detail how it works (as it is a bit tricky to explain that with words), I would rather advise you to read the FIPS document or to follow the flash animation. Here is what my key schedule looks like:
 
@@ -90,8 +90,10 @@ const unsigned char S_box[] = { 0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 
 
 Sweet, feel free to dump the round keys and to compare them with an official test vector to convince you that this thing works. Once we have that function, we need to build the different primitives that the core encryption algorithm will use & reuse to generate the encrypted block. Some of them are like 1 line of C, really simple ; some others are a bit more twisted, but whatever.
 
-## AddRoundKey
-This one is a really simple one: it takes a round key (according to which round you are currently in), the state & you xor every single bytes of the state with the round-key.
+## Encryption process
+### Transformations
+#### AddRoundKey
+This one is a really simple one: it takes a round key (according to which round you are currently in), the state & you xor every single byte of the state with the round-key.
 
 ```c AddRoundKey
 void AddRoundKey(unsigned char roundkey[16], unsigned char out[16])
@@ -101,8 +103,8 @@ void AddRoundKey(unsigned char roundkey[16], unsigned char out[16])
 }
 ```
 
-## SubBytes
-Another simple one: it takes the state in input & will substitute every byte using the forward substitution box `S_box`.
+#### SubBytes
+Another simple one: it takes the state as input & will substitute every byte using the forward substitution box `S_box`.
 
 ```c SubBytes
 void SubBytes(unsigned char out[16])
@@ -114,7 +116,7 @@ void SubBytes(unsigned char out[16])
 
 If you are interested in how the values of the `S_box` are computed, you should read the following blogpost [AES SBox and ParisGP](http://kutioo.blogspot.fr/2013/11/aes-sbox-and-parigp.html) written by my mate [@kutioo](https://twitter.com/kutioo).
 
-## ShiftRows
+#### ShiftRows
 This operation is a bit less tricky, but still is fairly straightforward. Imagine that the state is a 4x4 matrix, you just have to left rotate the second line by 1 byte, the third one by 2 bytes & finally the last one by 3 bytes. This can be done in C like this:
 
 ```c ShiftRows
@@ -152,7 +154,7 @@ __forceinline void ShiftRows(unsigned char out[16])
 }
 ```
 
-## MixColumns
+#### MixColumns
 I guess this one is the less trivial one to implement & understand. But basically it is a "matrix multiplication" (in GF(2^8) though hence the double-quotes) between 4 bytes of the state (row matrix) against a fixed 4x4 matrix. That gives you 4 new state bytes, so you do that for every double-words of your state.
 
 Now, I kind of cheated for my implementation: instead of implementing the "weird" multiplication, I figured I could use a pre-computed table instead to avoid all the hassle. Because the fixed matrix has only 3 different values (1, 2 & 3) the final table has a really small memory footprint: 3*0x100 bytes basically (if I'm being honest I even stole this table from [@elvanderb](https://twitter.com/elvanderb)'s [crazy white-box generator](http://pastebin.com/MvXpGZts)).
@@ -213,22 +215,21 @@ void MixColumns(unsigned char out[16])
 }
 ```
 
-## Encryption process
-
+### Combine them together
 Now we have everything we need, it is going to be easy peasy ; really:
 
  1. The initial state is populated with the encryption key
  2. Generate the round-keys thanks to the key schedule ; remember 11 keys, the first one being the plain encryption key
  3. The first different round is a simple `AddRoundKey` operation
  4. Then we enter in the main loop which does 9 rounds:
-    1. *SubBytes*
-    2. *ShiftRows*
-    3. *MixColumns*
-    4. *AddRoundKey*
+    1. `SubBytes`
+    2. `ShiftRows`
+    3. `MixColumns`
+    4. `AddRoundKey`
  5. Last round which is also a bit different:
-    1. *SubBytes*
-    2. *ShiftRows*
-    3. *AddRoundKey*
+    1. `SubBytes`
+    2. `ShiftRows`
+    3. `AddRoundKey`
  6. The state is now your encrypted block, yay!
 
 Here we are, we finally have our AES128 encryption function that we will use as a reference:
@@ -319,20 +320,20 @@ Brilliant.
 
 # White-boxing AES128 in ~7 steps
 ## Introduction
-I'm no crypto-expert whatsoever but I'll still try to explain what "white-boxing" AES means for us. Currently, we have a block encryption primitive with the following signature `void aes128_enc_base(unsigned char in[16], unsigned char out[16], unsigned char key[16])`. One of the purpose of the white-boxing process is going to "remove", or I should use "hide" instead, the key. Your primitive will work without any input key parameter, but the key won't be hard-coded either in the body of the function. You'll be able to encrypt things without any apparent key (and obviously without public key cryptography). Some people even say that you are transforming a symmetric encryption algorithm in an asymmetric one.
+I'm no crypto-expert whatsoever but I'll still try to explain what "white-boxing" AES means for us. Currently, we have a block encryption primitive with the following signature `void aes128_enc_base(unsigned char in[16], unsigned char out[16], unsigned char key[16])`. One of the purpose of the white-boxing process is going to "remove", or I should say "hide" instead, the key. Your primitive will work without any input key parameter, but the key won't be hard-coded either in the body of the function. You'll be able to encrypt things without any apparent key.
 
 A perfectly secure but unpractical version of a white-box AES would be to have a big hash-table: the keys would be every single possible plain-texts and the values would be their encrypted version with the key you want. That should give you a really clear idea of what a white-box is. But obviously storing that kind of table in memory is another problem by itself :-).
 
 Instead of using that "naive" idea, researchers came up with way to pre-compute "things" that involve the round-keys in order to hide everything. The other goal of a real white-box is to be resistant to reverse-engineering & dynamic/static analysis. Even if you are able to read whatever memory you want, you still should not be able to extract the key. The [NoSuchCon2013](https://github.com/0vercl0k/stuffz/tree/master/NoSuchCon2013) crackme is again a really good example of that: we had to wait for 2 years before [@doegox](https://twitter.com/doegox) actually works his magic to extract the key.
 
-The design of the implementation is really really important in order to make that key extraction process the more difficult possible.
+The design of the implementation is really really important in order to make that key extraction process the most difficult.
 
-In this part, we are using James A. Muir's paper to rewrite step by step our implementation in order to make it possible to combine several operations between them & make pre-computed table out of them. At the end of this part we should have a working AES128 encryption primitive that doesn't require a key. But we will also build in parallel a tool used to generate the different tables our implementation is going to need: obviously, this tool is going to need both the key schedule & the encryption key to be able to generate the look-up tables.
+In this part, we are using James A. Muir's [paper](https://github.com/0vercl0k/stuffz/raw/master/wbaes_attack/docs/a_tutorial_on_whitebox_aes.pdf) to rewrite step by step our implementation in order to make it possible to combine several operations between them & make pre-computed table out of them. At the end of this part we should have a working AES128 encryption primitive that doesn't require an hard-coded key. But we will also build in parallel a tool used to generate the different tables our implementation is going to need: obviously, this tool is going to need both the key schedule & the encryption key to be able to generate the look-up tables.
 Long story short: the first steps are basically going to reorder / rewrite the logic of the encryption, & the last ones will really transform the implementation in a white-box.
 
 Anyway, let's go folks!
 
-## Step 1: bring the first *AddRoundKey* in the loop & kick out the last one out of it
+## Step 1: bring the first `AddRoundKey` in the loop & kick out the last one out of it
 This one is really easy: basically we just have to change our loop to start at `i=0` until `i=8` (inclusive), move the first `AddRoundKey` in the loop, and move the last one outside of it.
 
 The encryption loop should look like this now:
@@ -417,7 +418,7 @@ void aes128_enc_reorg_step3(unsigned char in[16], unsigned char out[16], unsigne
 ```
 
 ## Step 4: White-boxing it like it's hot, White-boxing it like it's hot
-This step is a really important one for us, it's actually the first one where we are going to be able to both remove the key & to start the tables generator project. The tables generator project basically generates everything we need to have our white-box AES encryption working.
+This step is a really important one for us, it's actually the first one where we are going to be able to both remove the key & start the tables generator project. The tables generator project basically generates everything we need to have our white-box AES encryption working.
 
 Now we don't need the key schedule anymore in the AES encryption function (but obviously we will need it on the table generator side), and we can keep only the encryption loop.
 
@@ -534,7 +535,7 @@ void aes128_enc_wb_step1(unsigned char in[16], unsigned char out[16])
 }
 ```
 
-## Step 5: Transforming *MixColumns* in a look-up table
+## Step 5: Transforming `MixColumns` in a look-up table
 OK, so this is maybe the "most difficult" part of the game: we have to transform our ugly `MixColumn` function in four look-up tables. Basically, we want to transform this:
 
 ```c before
@@ -550,9 +551,9 @@ by this (where `Ty[0-4]` are the look-up tables I mentioned just above):
 DW(&out[j * 4]) = Ty[0][a] ^ Ty[1][b] ^ Ty[2][c] ^ Ty[3][d];
 ```
 
-We know that `gmul[X]` gives you 1 byte, and we can see those four lines uses `gmul[X][a]` where `X` is constant. You can also see that basically those four lines take 4 bytes in input `a`, `b`, `c` & `d` and will generate 4 bytes in output.
+We know that `gmul[X]` gives you 1 byte, and we can see those four lines use `gmul[X][a]` where `X` is constant. You can also see that basically those four lines take 4 bytes as input `a`, `b`, `c` & `d` and will generate 4 bytes as output.
 
-The idea is to combine `gmul[matrix[0]][a]`, `gmul[matrix[4]][a]`, `gmul[matrix[8]][a]` & `gmul[matrix[12]][a]` inside a single double-word. We do the same for `b`, `c` & `d` so that we can directly apply the `xor` operation between double-words now ; the result will also be a double-word so we have our 4 output bytes. We just re-factorized 4 individual computations (1 byte in input, 1 byte in output) into a single one (4 bytes in input, 4 bytes in output).
+The idea is to combine `gmul[matrix[0]][a]`, `gmul[matrix[4]][a]`, `gmul[matrix[8]][a]` & `gmul[matrix[12]][a]` inside a single double-word. We do the same for `b`, `c` & `d` so that we can directly apply the `xor` operation between double-words now ; the result will also be a double-word so we have our 4 output bytes. We just re-factorized 4 individual computations (1 byte as input, 1 byte as output) into a single one (4 bytes as input, 4 bytes as output).
 
 With that in mind, the tables generation function writes nearly by itself:
 
@@ -766,7 +767,7 @@ void aes128_enc_wb_step4(unsigned char in[16], unsigned char out[16])
 ```
 
 ## Step 7: Combining TBoxes & Ty tables
-The last step aims to combine the `Tboxes` with `Ty` tables and if you look at the code it doesn't seem really hard. We basically want the table to work this way: 1 byte in input (`a` for example in the previous code) & generate 4 bytes of outputs.
+The last step aims to combine the `Tboxes` with `Ty` tables and if you look at the code it doesn't seem really hard. We basically want the table to work this way: 1 byte as input (`a` for example in the previous code) & generate 4 bytes of outputs.
 
 To compute such a table, you need to compute the `Tboxes` (or not, you can compute everything without relying on the `Tboxes` ; it's actually what I'm doing), & then you compute `Ty[Y][Tboxes[i][j][X]]` ; this is it, roughly. `X`, `i` and `j` are the unknown variables here, which means we will end-up with a table like that:
 
@@ -1034,5 +1035,8 @@ I hope this little post gave you enough to understand how white-box cryptography
  * [White-box cryptography: hiding keys in software](http://www.whiteboxcrypto.com/files/2012_misc.pdf)
  * [White-Box Cryptography - 30c3](https://www.youtube.com/watch?v=om5AVTqB5bA)
  * [Digital content protection: How to crack DRM and make them more resistant](http://esec-lab.sogeti.com/dotclear/public/publications/10-hitbkl-drm.pdf)
+ * [A white-box DES (Chow et al)](https://github.com/mimoo/whiteboxDES)
 
 Every sources produced for this post has been posted on my [github](https://github.com/0vercl0k) account right here: [wbaes128](https://github.com/0vercl0k/stuffz/blob/master/wbaes_attack/wbaes128).
+
+Special thanks to my mate [@__x86](https://twitter.com/__x86) for proof-reading!
