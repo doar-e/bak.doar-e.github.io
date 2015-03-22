@@ -14,12 +14,12 @@ I think it all began when I've worked on the [NSC2013](https://github.com/0vercl
  1. the first one was the easiest one: you didn't need to know anything about white-box, crypto or even AES ; you could just see the function as a black-box & try to find "design flaws" in its inner-workings
  2. the elite way: this one involved to understand & recover the entire design of the white-box, then to identify design weaknesses that allows the challenger to directly attack & recover the encryption key. A really nice write-up has been recently written by [@doegox](https://twitter.com/doegox), check it out, really :): [Oppida/NoSuchCon challenge](http://wiki.yobi.be/wiki/NSC_Writeups).
 
-The annoying thing is that you don't have a lot of understandable available C codes on the web that implement such things, nevertheless you do have quite some nice academic references ; they are a really good resource to build your own.
+The annoying thing is that you don't have a lot of understandable available C code on the web that implement such things, nevertheless you do have quite some nice academic references ; they are a really good resource to build your own.
 
-This post aims to present briefly, in a simple way what an AES white-box looks like ; and to show how its design is important if you want to not have your encryption key extracted :). The implementation I'm going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really [nice paper](https://github.com/0vercl0k/stuffz/raw/master/wbaes_attack/docs/a_tutorial_on_whitebox_aes.pdf) (even for non-mathematical / crypto guys like me!) written by James A. Muir.
+This post aims to present briefly, in a simple way what an AES white-box looks like, and to show how its design is important if you want to not have your encryption key extracted :). The implementation I'm going to talk about today is not my creation at all, I just followed the first part (might do another post talking about the second part? Who knows) of a really [nice paper](https://github.com/0vercl0k/stuffz/raw/master/wbaes_attack/docs/a_tutorial_on_whitebox_aes.pdf) (even for non-mathematical / crypto guys like me!) written by James A. Muir.
 
 The idea is simple: we will start from a clean AES128 encryption function in plain C, we will modify it & transform it into a white-box implementation in several steps.
-As usual, all the codes are available on my github account; you are encourage to break & hack them!
+As usual, all the code are available on my github account; you are encourage to break & hack them!
 
 Of course, we will use this post to briefly present what is the white-box cryptography, what are the goals & why it's kind of cool.
 
@@ -422,7 +422,7 @@ This step is a really important one for us, it's actually the first one where we
 
 Now we don't need the key schedule anymore in the AES encryption function (but obviously we will need it on the table generator side), and we can keep only the encryption loop.
 
-The transformation introduced in this step is to create a look-up table that will replace `ShiftRows(round_keys[i])`/`AddRoundKey`/`SubBytes`. We can clearly see now how our round keys are going to be "diffused" & combined with different operations to make them "not trivially" (in fact they are, but let's say they are not right now) extractable. In order to have such a table, we need quite some space though: basically we need this table `Tboxes[10][16][0x100]`. We have 10 operations `ShiftRows(round_keys[i])`/`AddRoundKey`/`SubBytes`, 16 bytes of round keys in each one of them and the 0x100 for the bytes (`[0x00-0xFF]`) than can be encrypted.
+The transformation introduced in this step is to create a look-up table that will replace `ShiftRows(round_keys[i])`/`AddRoundKey`/`SubBytes`. We can clearly see now how our round keys are going to be "diffused" & combined with different operations to make them "not trivially" extractable (in fact they are, but let's say they are not right now). In order to have such a table, we need quite some space though: basically we need this table `Tboxes[10][16][0x100]`. We have 10 operations `ShiftRows(round_keys[i])`/`AddRoundKey`/`SubBytes`, 16 bytes of round keys in each one of them and the 0x100 for the bytes (`[0x00-0xFF]`) than can be encrypted.
 
 The computation is not really hard:
 
@@ -955,7 +955,7 @@ Here is the code that does what I just described:
 ```
 
 # Obfuscating it?
-This is basically the part where you have no limit, where you can exercise your creativity & have to develop stuffs. I'll just talk about ideas & obvious things, a lot of them are directly taken from [@elvanderb](https://twitter.com/elvanderb)'s challenge so I guess I owe him yet another beer.
+This is basically the part where you have no limits, where you can exercise your creativity & develop stuff. I'll just talk about ideas & obvious things, a lot of them are directly taken from [@elvanderb](https://twitter.com/elvanderb)'s challenge so I guess I owe him yet another beer.
 
 The first things you can do for free are:
 
@@ -1026,17 +1026,17 @@ memcpy(out, in, 16);
     return shuffled_lines
 ```
 
-Anyway, I wish I had time to implement what we just talked about but I unfortunately don't; if you do feel free to shoot me an email & I'll update the post with links to your codes :-).
+Anyway, I wish I had time to implement what we just talked about but I unfortunately don't; if you do feel free to shoot me an email & I'll update the post with links to your code :-).
 
 # Last words
 
-I hope this little post gave you enough to understand how white-box cryptography kind of works, how important is the design of the implementation and what sort of problems you can encounter. If you did enjoy this subject, here is a list of cool articles you may want to check out:
+I hope this little post gave you enough to understand how white-box cryptography kind of works, how important is the design of the implementation and what sort of problems you can encounter. If you enjoyed this subject, here is a list of cool articles you may want to check out:
 
  * [White-box cryptography: hiding keys in software](http://www.whiteboxcrypto.com/files/2012_misc.pdf)
  * [White-Box Cryptography - 30c3](https://www.youtube.com/watch?v=om5AVTqB5bA)
  * [Digital content protection: How to crack DRM and make them more resistant](http://esec-lab.sogeti.com/dotclear/public/publications/10-hitbkl-drm.pdf)
  * [A white-box DES (Chow et al)](https://github.com/mimoo/whiteboxDES)
 
-Every sources produced for this post has been posted on my [github](https://github.com/0vercl0k) account right here: [wbaes128](https://github.com/0vercl0k/stuffz/blob/master/wbaes_attack/wbaes128).
+Every source file produced for this post has been posted on my [github](https://github.com/0vercl0k) account right here: [wbaes128](https://github.com/0vercl0k/stuffz/blob/master/wbaes_attack/wbaes128).
 
 Special thanks to my mate [@__x86](https://twitter.com/__x86) for proof-reading!
