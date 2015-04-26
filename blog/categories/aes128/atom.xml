@@ -4,7 +4,7 @@
   <title><![CDATA[Category: aes128 | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/aes128/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2015-03-21T19:56:13-07:00</updated>
+  <updated>2015-04-26T10:41:48-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -212,7 +212,7 @@ const unsigned char gmul[3][0x100] = {</p>
 
 <p>Once you have this magic table, the multiplication gets really easy. Let&rsquo;s take an example:</p>
 
-<p><img class="center" src="/images/spotlight_on_an_unprotected_aes128_white-box_implementation/mixcolumn_example.png"></p>
+<p>{%img center /images/spotlight_on_an_unprotected_aes128_white-box_implementation/mixcolumn_example.png %}</p>
 
 <p>As I said, the four bytes at the left are from your state &amp; the 4x4 matrix is the fixed one (filled only with 3 different values). To have the result of this multiplication you just have to execute this:</p>
 
@@ -1126,7 +1126,7 @@ for (size_t i = 0; i &lt; 16; ++i)
 
 <p>Do also try to shuffle everything that is &ldquo;shufflable&rdquo; ; here is simple graph that shows data-dependencies between the lines of our unrolled C implementation (an arrow from A to B means that A needs to be executed prior to B):</p>
 
-<p><img class="center" src="/images/spotlight_on_an_unprotected_aes128_white-box_implementation/aes.svg"></p>
+<p>{%img center /images/spotlight_on_an_unprotected_aes128_white-box_implementation/aes.svg %}</p>
 
 <p>From here, you have everything you need to move the lines around &amp; generate a &ldquo;less normal&rdquo; implementation (even that we can clearly see what I call synchronization points at the end of every round which is basically the calls to <code>ShiftRows(out)</code> ; but again we could get rid of those, and directly in-lining them etc):</p>
 
