@@ -12,3 +12,5 @@ footer: true
  * **Jonathan Salwan** for his "[Dynamic Binary Analysis and Instrumentation: Covering a function using a DSE approach](https://doar-e.github.io/presentations/securityday2015/SecurityDay2015_dynamic_symbolic_execution_Jonathan_Salwan.pdf)" talk given at [Security Day](https://securitydaylille1.github.io/) in Lille, 2015.
 <br />
  * **Axel Souchet** for his "[Theorem prover, symbolic execution and practical reverse-engineering](https://doar-e.github.io/presentations/securityday2015/SecDay-Lille-2015-Axel-0vercl0k-Souchet.html)" talk given at [Security Day](https://securitydaylille1.github.io/) in Lille, 2015.
+<br />
+ * **Jonathan Salwan** for his "[Dynamic Behavior Analysis Using Binary Instrumentation](https://doar-e.github.io/presentations/sthack2015/StHack2015_Dynamic_Behavior_Analysis_using_Binary_Instrumentation_Jonathan_Salwan.pdf)" talk given at [St'Hack](https://www.sthack.fr/en) in Bordeaux, 2015.
