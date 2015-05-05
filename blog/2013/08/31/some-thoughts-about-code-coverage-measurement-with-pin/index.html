@@ -389,7 +389,7 @@
 
 <h1>I want to see the results.</h1>
 
-<p>I agree that&rsquo;s neat to have a JSON report with the basic blocks executed by our program, but it&rsquo;s not really readable for a human. We can use an <a href="">IDAPython</a> script that will parse our report, and will color all the instructions executed. It should be considerably better to see the execution path used by your program.</p>
+<p>I agree that&rsquo;s neat to have a JSON report with the basic blocks executed by our program, but it&rsquo;s not really readable for a human. We can use an <a href="https://github.com/0vercl0k/stuffz/tree/master/pin-code-coverage-measure">IDAPython</a> script that will parse our report, and will color all the instructions executed. It should be considerably better to see the execution path used by your program.</p>
 
 <p>To color an instruction you have to use the functions: <em>idaapi.set_item_color</em> and <em>idaapi.del_item_color</em> (if you want to reset the color). You can also use <em>idc.GetItemSize</em> to know the size of an instruction, like that you can iterate for a specific number of instruction (remember, we stored that in our JSON report!).</p>
 
