@@ -170,7 +170,7 @@ modules_blacklisted.insert(
 The entire Pintool source code is here: [pin-code-coverage-measure.cpp](https://github.com/0vercl0k/stuffz/blob/master/pin-code-coverage-measure/pin-code-coverage-measure.cpp).
 
 # I want to see the results.
-I agree that's neat to have a JSON report with the basic blocks executed by our program, but it's not really readable for a human. We can use an [IDAPython]() script that will parse our report, and will color all the instructions executed. It should be considerably better to see the execution path used by your program.
+I agree that's neat to have a JSON report with the basic blocks executed by our program, but it's not really readable for a human. We can use an [IDAPython](https://github.com/0vercl0k/stuffz/tree/master/pin-code-coverage-measure) script that will parse our report, and will color all the instructions executed. It should be considerably better to see the execution path used by your program.
 
 To color an instruction you have to use the functions: *idaapi.set_item_color* and *idaapi.del_item_color* (if you want to reset the color). You can also use *idc.GetItemSize* to know the size of an instruction, like that you can iterate for a specific number of instruction (remember, we stored that in our JSON report!).
 
