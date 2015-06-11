@@ -4,7 +4,7 @@
   <title><![CDATA[Category: reverse-engineering | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/reverse-engineering/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2015-05-04T21:44:17-07:00</updated>
+  <updated>2015-06-10T20:38:12-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -68,7 +68,7 @@ qemu-system-mipsel -M malta -kernel vmlinux-3.2.0-4-4kc-malta -hda debian_wheezy
 overclok@wildout:~/chall/nsc2014$ ./start_vm.sh
 [    0.000000] Initializing cgroup subsys cpuset
 [    0.000000] Initializing cgroup subsys cpu
-[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#109;&#x61;&#105;&#x6c;&#116;&#111;&#58;&#x64;&#101;&#98;&#105;&#97;&#x6e;&#x2d;&#x6b;&#101;&#x72;&#110;&#101;&#108;&#64;&#108;&#x69;&#115;&#116;&#x73;&#46;&#x64;&#101;&#98;&#x69;&#x61;&#110;&#x2e;&#x6f;&#114;&#x67;">&#x64;&#x65;&#98;&#x69;&#97;&#x6e;&#45;&#x6b;&#x65;&#x72;&#110;&#x65;&#108;&#64;&#x6c;&#x69;&#x73;&#116;&#115;&#x2e;&#100;&#x65;&#98;&#x69;&#x61;&#110;&#46;&#x6f;&#114;&#103;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
+[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#109;&#x61;&#x69;&#x6c;&#x74;&#111;&#x3a;&#x64;&#101;&#x62;&#105;&#x61;&#110;&#x2d;&#107;&#x65;&#x72;&#110;&#x65;&#108;&#64;&#x6c;&#105;&#x73;&#116;&#115;&#x2e;&#100;&#101;&#98;&#105;&#97;&#x6e;&#x2e;&#111;&#x72;&#103;">&#100;&#101;&#x62;&#105;&#97;&#110;&#45;&#x6b;&#x65;&#x72;&#x6e;&#101;&#108;&#x40;&#x6c;&#105;&#115;&#x74;&#115;&#46;&#100;&#101;&#98;&#x69;&#97;&#x6e;&#46;&#x6f;&#x72;&#103;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
 [&hellip;]
 debian-mipsel login: root
 Password:
@@ -292,7 +292,7 @@ Let&rsquo;s not focus on what the block is actually doing though, we will develo
 </ul>
 
 
-<p><img class="center" src="/images/taming_a_wild_nanomite-protected_mips_binary_with_symbolic_execution_no_such_crackme/father_code.png"></p>
+<p>{%img center /images/taming_a_wild_nanomite-protected_mips_binary_with_symbolic_execution_no_such_crackme/father_code.png %}</p>
 
 <ul>
 <li>This <em>magic value</em> is then used to find a specific entry in an array of <em>QWORD</em>s (606 <em>QWORD</em>s which is 6 times the number of <em>break</em> instructions in the son &mdash; you will understand that a bit later don&rsquo;t worry). Basically, the code is going to loop over every single <em>QWORD</em> of this array until finding one that has the high <em>DWORD</em> equals to the <em>magic value</em>. From there you get another <em>magic value</em> which is the lowest <em>DWORD</em> of the matching <em>QWORD</em>.</li>
@@ -323,7 +323,7 @@ Let&rsquo;s not focus on what the block is actually doing though, we will develo
 
 <p>Anyway, after this long theoretical speech let&rsquo;s have a look at some code. The first important job of the engine is to be able to parse MIPS assembly: fortunately for us this is really easy. We are directly feeding plain-text MIPS disassembly directly copied from IDA to our engine:</p>
 
-<p>```python <a href="&#109;&#97;&#105;&#108;&#x74;&#x6f;&#58;&#109;&#x69;&#110;&#x69;&#x5f;&#x6d;&#x69;&#x70;&#115;&#x5f;&#x73;&#x79;&#109;&#x65;&#x78;&#101;&#99;&#x5f;&#101;&#110;&#103;&#x69;&#110;&#x65;&#x2e;&#x70;&#x79;&#64;&#x4d;&#x69;&#x6e;&#x69;&#77;&#x69;&#x70;&#x73;&#83;&#x79;&#x6d;&#x45;&#120;&#x65;&#x63;&#x45;&#x6e;&#103;&#105;&#110;&#101;&#x2e;&#95;&#112;&#97;&#x72;&#115;&#x65;&#95;&#108;&#105;&#110;&#101;">&#x6d;&#105;&#x6e;&#x69;&#95;&#x6d;&#105;&#112;&#x73;&#95;&#115;&#121;&#x6d;&#101;&#x78;&#x65;&#x63;&#x5f;&#x65;&#x6e;&#x67;&#105;&#110;&#101;&#46;&#112;&#121;&#x40;&#x4d;&#105;&#110;&#x69;&#77;&#x69;&#x70;&#x73;&#83;&#121;&#x6d;&#x45;&#x78;&#101;&#x63;&#69;&#x6e;&#x67;&#x69;&#110;&#101;&#46;&#x5f;&#x70;&#x61;&#x72;&#115;&#101;&#95;&#x6c;&#105;&#x6e;&#x65;</a>
+<p>```python <a href="&#109;&#97;&#105;&#108;&#116;&#x6f;&#x3a;&#109;&#105;&#110;&#x69;&#x5f;&#109;&#x69;&#112;&#115;&#95;&#x73;&#121;&#109;&#101;&#120;&#101;&#x63;&#x5f;&#101;&#x6e;&#103;&#x69;&#110;&#x65;&#46;&#112;&#121;&#x40;&#x4d;&#105;&#x6e;&#x69;&#77;&#x69;&#x70;&#x73;&#x53;&#x79;&#x6d;&#69;&#120;&#101;&#99;&#x45;&#x6e;&#x67;&#x69;&#110;&#101;&#x2e;&#x5f;&#112;&#97;&#x72;&#x73;&#x65;&#x5f;&#108;&#105;&#110;&#101;">&#x6d;&#x69;&#110;&#105;&#95;&#x6d;&#x69;&#x70;&#x73;&#x5f;&#x73;&#121;&#109;&#101;&#x78;&#x65;&#99;&#95;&#101;&#x6e;&#x67;&#x69;&#x6e;&#x65;&#46;&#x70;&#x79;&#x40;&#x4d;&#105;&#x6e;&#x69;&#77;&#105;&#x70;&#115;&#x53;&#x79;&#109;&#x45;&#x78;&#101;&#x63;&#69;&#x6e;&#x67;&#x69;&#x6e;&#x65;&#x2e;&#95;&#112;&#97;&#x72;&#x73;&#101;&#x5f;&#x6c;&#105;&#110;&#101;</a>
 def _parse_line(self, line):
   addr_seg, instr, rest = line.split(None, 2)
   args = rest.split(&lsquo;,&rsquo;)
@@ -1627,7 +1627,7 @@ I hope it gave you an understandable example of symbolic execution and what you 
 
 <p>The challenge has been written by <a href="http://blog.quarkslab.com/author/serge-guelton.html">Serge Guelton</a>, a R&amp;D engineer specialized in compilers/parallel computations. At the time of writing, already eight different people manage to solve the challenge, and one of the ticket seems to have been won by <code>hackedd</code>, so congrats to him!</p>
 
-<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/woot.png"></p>
+<p>{%img center /images/dissection_of_quarkslab_s_2014_security_challenge/woot.png %}</p>
 
 <p>According to the description of the challenge Python is heavily involved, which is a good thing for at least two reasons:</p>
 
@@ -2093,11 +2093,11 @@ done!
 
 <p>Once the tool has finished its analysis we just have to check the list of unmatched function names (around one hundred of them, so it&rsquo;s pretty quick), and eventually we see that:</p>
 
-<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/initdo_not_run_me.png"></p>
+<p>{%img center /images/dissection_of_quarkslab_s_2014_security_challenge/initdo_not_run_me.png %}</p>
 
 <p>That function directly caught my eyes (you can even check it doesn&rsquo;t exist in the <em>Python278</em> source tree obviously :&ndash;)), and it appears this function is just setting up a Python module called <em>do_not_run_me</em>.</p>
 
-<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/initdonotrunme_assembly.png"></p>
+<p>{%img center /images/dissection_of_quarkslab_s_2014_security_challenge/initdonotrunme_assembly.png %}</p>
 
 <p>Let&rsquo;s import it:</p>
 
@@ -2788,7 +2788,7 @@ quarkslab
 
 <p>An integer overflow in <em>tcpip!IppSortDestinationAddresses</em> allows to allocate a wrong-sized non-paged pool memory chunk. Below you can see the diff between the vulnerable version and the patched version.</p>
 
-<p><img class="center" src="/images/MS10-058/diff.png"></p>
+<p>{%img center /images/MS10-058/diff.png %}</p>
 
 <div class='entry-content-toc'></div>
 
@@ -3040,7 +3040,7 @@ for (i = 0x140; i &lt; 0x1140; i += 8) {</p>
 
 <p>This is illustrated in <em>payload()</em>.</p>
 
-<p><img class="center" src="/images/MS10-058/screenshot.png"></p>
+<p>{%img center /images/MS10-058/screenshot.png %}</p>
 
 <h1>Greetings</h1>
 
@@ -3075,7 +3075,7 @@ for (i = 0x140; i &lt; 0x1140; i += 8) {</p>
 
 <p><em>Kryptonite</em> was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic-preserving transformations in order to not break the original program. One of the main idea was for example to build a home-made 32 bits adder to replace the <em>add</em> LLVM instruction. Instead of having a single asm instruction generated at the end of the pipeline, you will end up with a ton of assembly codes doing only an addition. If you never read my article, and you are interested in it here it is: <a href="http://0vercl0k.tuxfamily.org/bl0g/?p=260">Obfuscation of steel: meet my Kryptonite</a>.</p>
 
-<p><img class="center" src="/images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png"></p>
+<p>{% img center /images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png %}</p>
 
 <p>In this post I wanted to show you how we can manage to break that obfuscation with symbolic execution. We are going to write a really tiny symbolic execution engine with IDAPy, and we will use Z3Py to simplify all our equations. Note that a friend of mine <a href="https://twitter.com/elvanderb">@elvanderb</a> used a similar approach (more generic though) to simplify some parts of the <a href="http://download.tuxfamily.org/overclokblog/Obfuscation%20of%20steel%3a%20meet%20my%20Kryptonite/binaries/">crackme</a> ; but he didn&rsquo;t wanted to publish it, so here is my blog post about it!</p>
 
@@ -3994,11 +3994,11 @@ ChildEBP RetAddr
 
 <p>To do so, this option changes a bit how the allocator works (it adds more meta-data for each heap chunk, etc.) ; if you want more information, try at home allocating stuff with/without page heap and compare the allocated memory. Here is how looks like a heap chunk when PageHeap full is enabled:</p>
 
-<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/heapchunk.gif"></p>
+<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/heapchunk.gif %}</p>
 
 <p>To enable it for <em>ollydbg.exe</em>, it&rsquo;s trivial. We just launch the <em>gflags.exe</em> binary (it&rsquo;s in Windbg&rsquo;s directory) and you tick the features you want to enable.</p>
 
-<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/gflags.png"></p>
+<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/gflags.png %}</p>
 
 <p>Now, you just have to relaunch your target in WinDbg, reproduce the bug and here is what I get now:</p>
 
@@ -4116,7 +4116,7 @@ u-&gt;mem1_ov[3 * nb_lines2] = nbchar;
 </ul>
 
 
-<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/source.png"></p>
+<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/source.png %}</p>
 
 <ul>
 <li>At line 10: &ldquo;u->Sourcefile&rdquo; is a string pointer on the path of your source code (found in the PDB database). The routine is just reading the whole file, giving you its size, and a pointer on the file content now stored memory.</li>
@@ -4180,13 +4180,13 @@ ollydbg!Findfreehardbreakslot+0x21d9:
 </ol>
 
 
-<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/woot.png"></p>
+<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/woot.png %}</p>
 
 <h1>Fun fact</h1>
 
 <p>You can even trigger the bug with only the binary and the PDB database. The trick is to tamper the PDB, and more precisely where it keeps the path to your source code. That way, when OllyDbg2 will load the PDB database, it will read that same database like it&rsquo;s the source code of the application. Awesome.</p>
 
-<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/fun.png"></p>
+<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/fun.png %}</p>
 
 <h1>Conclusion</h1>
 
