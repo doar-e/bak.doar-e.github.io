@@ -167,7 +167,7 @@ Weaknesses:
 * undefined behavior of CPU could lead to unexpected results;
 * ... and maybe there are a lot more remarks to add.
 
-## KLEE
+# KLEE
 KLEE is a great example of a symbolic execution engine. It operates on [LLVM](http://llvm.org/) byte code, and it is used for software verification purposes. KLEE is capable to automatically generate test cases achieving high code coverage. KLEE is also able to find memory errors such as out of bound array accesses and many other common errors. To do that, it needs an LLVM byte code version of the program, symbolic variables and (optionally) assertions. I have also prepared a [Docker image](https://registry.hub.docker.com/u/mbrt/klee/) with `clang` and `klee` already configured and ready to use. So, you have no excuses to not try it out! Take this example function:
 
 ```c
@@ -889,7 +889,7 @@ Note that not all the serial numbers are solvable, but we are OK with that. We n
 
 That's all folks.
 
-## Conclusion
+# Conclusion
 
 This was a brief journey into the magic world of reversing and symbolic execution. We started with the dream to make a key generator for a real world application, and we've got a list of serial numbers to put in some nice GUI (maybe with some MIDI soundtrack playing in the background to make users crazy). But this was not our purpose. The path we followed is far more interesting than ruining programmer's life. So, just to recap, here are the main steps we followed to generate our serial numbers:
 
