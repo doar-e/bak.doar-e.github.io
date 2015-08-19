@@ -36,3 +36,7 @@ We are also hanging out on IRC ([#doar-e@irc.w3challs.com](irc://#doar-e@irc.w3c
    * Personal blog: [segmentationfault.fr](http://www.segmentationfault.fr/)
    * Twitter account: [@emiliengirault](https://twitter.com/emiliengirault)
    * Github account: [egirault](https://github.com/egirault)
+<br />
+ * Symbolic-keygenner **Michele Bertasi** for his [Keygenning With KLEE](https://doar-e.github.io/blog/2015/08/18/keygenning-with-klee/):
+   * Twitter account: [@brt_device](https://twitter.com/brt_device)
+   * Github account: [mbrt](https://github.com/mbrt)
