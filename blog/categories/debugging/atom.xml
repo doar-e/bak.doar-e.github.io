@@ -4,7 +4,7 @@
   <title><![CDATA[Category: debugging | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/debugging/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2015-06-10T20:38:12-07:00</updated>
+  <updated>2015-08-19T19:03:45-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -100,11 +100,11 @@ ChildEBP RetAddr
 
 <p>To do so, this option changes a bit how the allocator works (it adds more meta-data for each heap chunk, etc.) ; if you want more information, try at home allocating stuff with/without page heap and compare the allocated memory. Here is how looks like a heap chunk when PageHeap full is enabled:</p>
 
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/heapchunk.gif %}</p>
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/heapchunk.gif"></p>
 
 <p>To enable it for <em>ollydbg.exe</em>, it&rsquo;s trivial. We just launch the <em>gflags.exe</em> binary (it&rsquo;s in Windbg&rsquo;s directory) and you tick the features you want to enable.</p>
 
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/gflags.png %}</p>
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/gflags.png"></p>
 
 <p>Now, you just have to relaunch your target in WinDbg, reproduce the bug and here is what I get now:</p>
 
@@ -222,7 +222,7 @@ u-&gt;mem1_ov[3 * nb_lines2] = nbchar;
 </ul>
 
 
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/source.png %}</p>
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/source.png"></p>
 
 <ul>
 <li>At line 10: &ldquo;u->Sourcefile&rdquo; is a string pointer on the path of your source code (found in the PDB database). The routine is just reading the whole file, giving you its size, and a pointer on the file content now stored memory.</li>
@@ -286,13 +286,13 @@ ollydbg!Findfreehardbreakslot+0x21d9:
 </ol>
 
 
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/woot.png %}</p>
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/woot.png"></p>
 
 <h1>Fun fact</h1>
 
 <p>You can even trigger the bug with only the binary and the PDB database. The trick is to tamper the PDB, and more precisely where it keeps the path to your source code. That way, when OllyDbg2 will load the PDB database, it will read that same database like it&rsquo;s the source code of the application. Awesome.</p>
 
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/fun.png %}</p>
+<p><img class="center" src="/images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/fun.png"></p>
 
 <h1>Conclusion</h1>
 

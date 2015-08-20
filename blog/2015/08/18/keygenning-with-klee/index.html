@@ -1,0 +1,1663 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Keygenning with KLEE - Diary of a reverse-engineer</title>
+  <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
+
+  
+  <meta name="description" content="Introduction In the past weeks I enjoyed working on reversing a software (don&rsquo;t ask me the name), to study how serial numbers are validated. &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://doar-e.github.io/blog/2015/08/18/keygenning-with-klee">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="Diary of a reverse-engineer" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="./javascripts/lib/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <script src="/javascripts/jquery.tableofcontents.min.js" type="text/javascript"></script>
+  <script src="/javascripts/generate-toc.js" type="text/javascript"></script>
+
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="https://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="https://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href='https://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+<link href='https://fonts.googleapis.com/css?family=Fjalla+One' rel='stylesheet' type='text/css'>
+  
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-43481215-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
+
+
+  <style>
+    p { text-align: justify; }
+  </style>
+
+</head>
+<body   class="collapse-sidebar sidebar-footer" >
+  <header role="banner"><img src="/images/sigle-blanc-250px.jpg"></img>
+
+	<div class="header-title"><a href="/">Diary of a reverse-engineer</a></div>
+
+
+	<br><div class="header-subtitle">Because we like to play with weird things.</div>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="https://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:doar-e.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+  <li><a href="/about">About</a></li>
+  <li><a href="/presentations">Presentations</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+  
+    
+      <h1 class="entry-title">Keygenning With KLEE</h1>
+    
+  
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2015-08-18T22:12:00-07:00" pubdate data-updated="true">Aug 18<span>th</span>, 2015</time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>Introduction</h1>
+
+<p>In the past weeks I enjoyed working on reversing a software (don&rsquo;t ask me the name), to study how serial numbers are validated. The story the user has to follow is pretty common: download the trial, pay, get the serial number, use it in the annoying nag screen to get the fully functional version of the software.</p>
+
+<p>Since my purpose is to not damage the company developing the software, I will not mention the name of the software, nor I will publish the final key generator in binary form, nor its source code. My goal is instead to study a real case of serial number validation, and to highlight its weaknesses.</p>
+
+<p>In this post we are going to take a look at the steps I followed to reverse the serial validation process and to make a key generator using <a href="http://klee.github.io/">KLEE</a> symbolic virtual machine. We are not going to follow all the details on the reversing part, since you cannot reproduce them on your own. We will concentrate our thoughts on the key-generator itself: that is the most interesting part.</p>
+
+<div class='entry-content-toc'></div>
+
+
+
+
+<!--more-->
+
+
+<h2>Getting acquainted</h2>
+
+<p>The software is an <code>x86</code> executable, with no anti-debugging, nor anti-reversing techniques. When started it presents a nag screen asking for a registration composed by: customer number, serial number and a mail address. This is a fairly common software.</p>
+
+<h2>Tools of the trade</h2>
+
+<p>First steps in the reversing are devoted to find all the interesting functions to analyze. To do this I used <a href="https://www.hex-rays.com/products/ida/">IDA Pro</a> with Hex-Rays decompiler, and the <a href="https://msdn.microsoft.com/en-us/library/windows/hardware/ff551063%28v=vs.85%29.aspx">WinDbg</a> debugger. For the last part I used <a href="http://klee.github.io/">KLEE</a> symbolic virtual machine under Linux, <a href="https://gcc.gnu.org/">gcc compiler</a> and some bash scripting. The actual key generator was a simple <a href="https://msdn.microsoft.com/en-us/library/ms754130%28v=vs.100%29.aspx">WPF</a> application.</p>
+
+<p>Let me skip the first part, since it is not very interesting. You can find many other articles on the web that can guide you trough basic reversing techniques with IDA Pro. I only kept in mind some simple rules, while going forward:</p>
+
+<ul>
+<li>always rename functions that uses interesting data, even if you don&rsquo;t know precisely what they do. A name like <code>license_validation_unknown_8</code> is always better than a default like <code>sub_46fa39</code>;</li>
+<li>similarly, rename data whenever you find it interesting;</li>
+<li>change data types when you are sure they are wrong: use structs and arrays in case of aggregates;</li>
+<li>follow cross references of data and functions to expand your collection;</li>
+<li>validate your beliefs with the debugger if possible. For example, if you think a variable contains the serial, break with the debugger and see if it is the case.</li>
+</ul>
+
+
+<h2>Big picture</h2>
+
+<p>When I collected the most interesting functions, I tried to understand the high level flow and the simpler functions. Here are the main variables and types used in the validation process. As a note for the reader: most of them have been purged from uninteresting details, for the sake of simplicity.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">enum</span> <span class="p">{</span>
+</span><span class='line'>    <span class="n">ERROR</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">STANDARD</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">PRO</span>
+</span><span class='line'><span class="p">}</span> <span class="n">license_type</span> <span class="o">=</span> <span class="n">ERROR</span><span class="p">;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Here we have a global variable providing the type of the license, used to enable and disable features of the application.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">enum</span> <span class="n">result_t</span> <span class="p">{</span>
+</span><span class='line'>    <span class="n">INVALID</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">VALID</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">VALID_IF_LAST_VERSION</span>
+</span><span class='line'><span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This is a convenient <code>enum</code> used as a result for the validation. <code>INVALID</code> and <code>VALID</code> values are pretty self-explanatory.  <code>VALID_IF_LAST_VERSION</code> tells that this registration is valid only if the current software version is the last available. The reasons for this strange possibility will be clear shortly.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#define HEADER_SIZE 8192</span>
+</span><span class='line'><span class="k">struct</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">header</span><span class="p">[</span><span class="n">HEADER_SIZE</span><span class="p">];</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">data</span><span class="p">[</span><span class="mi">1000000</span><span class="p">];</span>
+</span><span class='line'><span class="p">}</span> <span class="n">mail_digest_table</span><span class="p">;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This is a data structure, containing digests of mail addresses of known registered users. This is a pretty big file embedded in the executable itself. During startup, a resource is extracted in a temporary file and its content copied into this struct. Each element of the <code>header</code> vector is an offset pointing inside the <code>data</code> vector.</p>
+
+<p>Here we have a pseudo-C code for the registration check, that uses data types and variables explained above:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">enum</span> <span class="n">result_t</span> <span class="nf">check_registration</span><span class="p">(</span><span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="kt">int</span> <span class="n">customer_num</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">mail</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="c1">// validate serial number</span>
+</span><span class='line'>    <span class="n">license_type</span> <span class="o">=</span> <span class="n">get_license_type</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">license_type</span> <span class="o">==</span> <span class="n">ERROR</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">INVALID</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// validate customer number</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">expected_customer</span> <span class="o">=</span> <span class="n">compute_customer_number</span><span class="p">(</span><span class="n">serial</span><span class="p">,</span> <span class="n">mail</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">expected_customer</span> <span class="o">!=</span> <span class="n">customer_num</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">INVALID</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// validate w.r.t. known registrations</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">index</span> <span class="o">=</span> <span class="n">get_index_in_mail_table</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">index</span> <span class="o">&gt;</span> <span class="n">HEADER_SIZE</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">VALID_IF_LAST_VERSION</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">mail_digest</span> <span class="o">=</span> <span class="n">compute_mail_digest</span><span class="p">(</span><span class="n">mail</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">if</span> <span class="p">(</span><span class="n">mail_digest_table</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">mail_digest</span><span class="p">)</span>
+</span><span class='line'>            <span class="k">return</span> <span class="n">VALID</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">INVALID</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The validation is divided in three main parts:</p>
+
+<ul>
+<li>serial number must be valid by itself;</li>
+<li>serial number, combined with mail address has to correspond to the actual customer number;</li>
+<li>there has to be a correspondence between serial number and mail address, stored in a static table in the binary.</li>
+</ul>
+
+
+<p>The last point is a little bit unusual. Let me restate it in this way: whenever a customer buy the software, the customer table gets updated with its data and become available in the <em>next</em> version of the software (because it is embedded in the binary and not downloaded trough the internet). This explains the <code>VALID_IF_LAST_VERSION</code> check: if you buy the software today, the current version does not contain your data. You are still allowed to get a &ldquo;pro&rdquo; version until a new version is released. In that moment you are forced to update to that new version, so the software can verify your registration with the updated table. Here is a pseudo-code of that check:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="k">switch</span> <span class="p">(</span><span class="n">check_registration</span><span class="p">(</span><span class="n">serial</span><span class="p">,</span> <span class="n">customer</span><span class="p">,</span> <span class="n">mail</span><span class="p">))</span> <span class="p">{</span>
+</span><span class='line'><span class="k">case</span> <span class="n">VALID</span>:
+</span><span class='line'>    <span class="c1">// the registration is OK! activate functionalities</span>
+</span><span class='line'>    <span class="n">activate_pro_functionality</span><span class="p">();</span>
+</span><span class='line'>    <span class="k">break</span><span class="p">;</span>
+</span><span class='line'><span class="k">case</span> <span class="n">VALID_IF_LAST_VERSION</span>:
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="c1">// check if the current version is the last, by</span>
+</span><span class='line'>        <span class="c1">// using the internet.</span>
+</span><span class='line'>        <span class="kt">int</span> <span class="n">current_version</span> <span class="o">=</span> <span class="n">get_current_version</span><span class="p">();</span>
+</span><span class='line'>        <span class="kt">int</span> <span class="n">last_version</span> <span class="o">=</span> <span class="n">get_last_version</span><span class="p">();</span>
+</span><span class='line'>        <span class="k">if</span> <span class="p">(</span><span class="n">current_version</span> <span class="o">==</span> <span class="n">last_version</span><span class="p">)</span>
+</span><span class='line'>            <span class="c1">// OK for now: a new version is not available</span>
+</span><span class='line'>            <span class="n">activate_pro_functionality</span><span class="p">();</span>
+</span><span class='line'>        <span class="k">else</span>
+</span><span class='line'>            <span class="c1">// else, force the user to download the new version</span>
+</span><span class='line'>            <span class="c1">// before proceed</span>
+</span><span class='line'>            <span class="n">ask_download</span><span class="p">();</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="k">break</span><span class="p">;</span>
+</span><span class='line'><span class="k">case</span> <span class="n">INVALID</span>:
+</span><span class='line'>    <span class="c1">// registration is not valid</span>
+</span><span class='line'>    <span class="n">handle_invalid_registration</span><span class="p">();</span>
+</span><span class='line'>    <span class="k">break</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The version check is done by making an HTTP request to a specific page that returns a page having only the last version number of the software. Don&rsquo;t ask me why the protection is not completely server side but involves static tables, version checks and things like that. I don&rsquo;t know!</p>
+
+<p>Anyway, this is the big picture of the registration validation functions, and this is pretty boring. Let&rsquo;s move on to the interesting part. You may notice that I provided code for the main procedure, but not for the helper functions like <code>get_license_type</code>, <code>compute_customer_number</code>, and so on. This is because I did not have to reverse them. They contains a lot of arithmetical and logical operations on registration data, and they are very difficult to understand. The good news is that we do not have to understand them, we need only to reverse them!</p>
+
+<h2>Symbolic execution</h2>
+
+<p>Symbolic execution is a way to execute programs using symbolic variables instead of concrete values. A symbolic variable is used whenever a value can be controlled by user input (this can be done by hand or determined by using taint analysis), and could be a file, standard input, a network stream, etc. Symbolic execution translates the program&rsquo;s semantics into a logical formula. Each instruction cause that formula to be updated. By solving a formula for one path, we get concrete values for the variables. If those values are used in the program, the execution reaches that program point. Dynamic Symbolic Execution (DSE) builds the logical formula at runtime, step-by-step, following one path at a time. When a branch of the program is found during the execution, the engine transforms the condition into arithmetic operations. It then chooses the T (true) or F (false) branch and updates the formula with this new constraint (or its negation). At the end of a path, the engine can backtrack and select another path to execute. For example:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="n">v1</span> <span class="o">=</span> <span class="n">SymVar_1</span><span class="p">,</span> <span class="n">v2</span> <span class="o">=</span> <span class="n">SymVar_2</span><span class="p">;</span> <span class="c1">// symbolic variables</span>
+</span><span class='line'><span class="k">if</span> <span class="p">(</span><span class="n">v1</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+</span><span class='line'>    <span class="n">v2</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="k">if</span> <span class="p">(</span><span class="n">v2</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">v1</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span>
+</span><span class='line'>   <span class="n">error</span><span class="p">();</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We want to check if <code>error</code> is reachable, by using symbolic variables <code>SymVar_1</code> and <code>SymVar_2</code>, assigned to the program&rsquo;s variables <code>v1</code> and <code>v2</code>. In line 2 we have the condition <code>v1 &gt; 0</code> and so, the symbolic engine adds a constraint <code>SymVar_1 &gt; 0</code> for the <em>true branch</em> or conversely <code>SymVar_1 &lt;= 0</code> for the <em>false branch</em>. It then continues the execution trying with the first constraint. Whenever a new path condition is reached, new constraints are added to the symbolic state, until that condition is no more satisfiable. In that case, the engine backtracks and replaces some constraints with their negation, in order to reach other code paths. The execution engine tries to cover all code paths, by solving those constraints and their negations. For each portion of the code reached, the symbolic engine outputs a test case covering that part of the program, providing concrete values for the input variables. In the particular example given, the engine continues the execution, and finds the condition <code>v2 == 0 &amp;&amp; v1 &lt;= 0</code> at line 4. The path formula becomes so: <code>SymVar_1 &gt; 0 &amp;&amp; (SymVar_2 == 0 &amp;&amp; SymVar_1 &lt;= 0)</code>, that is not satisfiable. The symbolic engine provides then values for the variables that satisfies the previous formula (<code>SymVar_1 &gt; 0</code>). For example <code>SymVar_1 = 1</code> and some random value for <code>SymVar_2</code>. The engine then backtrack to the previous branch and uses the negation of the constraint, that is <code>SymVar_1 &lt;= 0</code>. It then adds the negation of the current constraint to cover the false branch, obtaining <code>SymVar_1 &lt;= 0 &amp;&amp; (SymVar_2 != 0 || SymVar_1 &gt; 0)</code>. This is satisfiable with <code>SymVar_1 = -1</code> and <code>SymVar_2 = 0</code>. This concludes the analysis of the program paths, and our symbolic execution engine can output the following test cases:</p>
+
+<ul>
+<li><code>v1 = 1</code>;</li>
+<li><code>v1 = -1</code>, <code>v2 = 0</code>.</li>
+</ul>
+
+
+<p>Those test cases are enough to cover all the paths of the program.</p>
+
+<p>This approach is useful for testing because it helps generating test cases. It is often effective, and it does not waste computational power of your brain. You know&hellip; tests are very difficult to do effectively, and brain power is such a scarce resource!</p>
+
+<p>I don&rsquo;t want to elaborate too much on this topic because it is way too big to fit in this post. Moreover, we are not going to use symbolic execution engines for testing purpose. This just because we don&rsquo;t like to use things in the way they are intended :)</p>
+
+<p>However, I will point you to some good references in the last section. Here I can list a series of common strengths and weaknesses of symbolic execution, just to give you a little bit of background:</p>
+
+<p>Strengths:</p>
+
+<ul>
+<li>when a test case fails, the program is proven to be incorrect;</li>
+<li>automatic test cases catch errors that often are overlooked in manual written test cases (this is from <a href="http://www.doc.ic.ac.uk/~cristic/papers/klee-osdi-08.pdf">KLEE paper</a>);</li>
+<li>when it works it&rsquo;s cool :) (and this is from <a href="https://twitter.com/__x86">Jérémy</a>);</li>
+</ul>
+
+
+<p>Weaknesses:</p>
+
+<ul>
+<li>when no tests fail we are not sure everything is correct, because no proof of correctness is given; static analysis can do that when it works (and often it does not!);</li>
+<li>covering all the paths is not enough, because a variable can hold different values in one path and only some of them cause a bug;</li>
+<li>complete coverage for non trivial programs is often impossible, due to path explosion or constraint solver timeout;</li>
+<li>scaling is difficult, and execution time of the engine can suffer;</li>
+<li>undefined behavior of CPU could lead to unexpected results;</li>
+<li>&hellip; and maybe there are a lot more remarks to add.</li>
+</ul>
+
+
+<h1>KLEE</h1>
+
+<p>KLEE is a great example of a symbolic execution engine. It operates on <a href="http://llvm.org/">LLVM</a> byte code, and it is used for software verification purposes. KLEE is capable to automatically generate test cases achieving high code coverage. KLEE is also able to find memory errors such as out of bound array accesses and many other common errors. To do that, it needs an LLVM byte code version of the program, symbolic variables and (optionally) assertions. I have also prepared a <a href="https://registry.hub.docker.com/u/mbrt/klee/">Docker image</a> with <code>clang</code> and <code>klee</code> already configured and ready to use. So, you have no excuses to not try it out! Take this example function:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#define FALSE 0</span>
+</span><span class='line'><span class="cp">#define TRUE 1</span>
+</span><span class='line'><span class="k">typedef</span> <span class="kt">int</span> <span class="n">BOOL</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">BOOL</span> <span class="nf">check_arg</span><span class="p">(</span><span class="kt">int</span> <span class="n">a</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">a</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">FALSE</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">a</span> <span class="o">&lt;=</span> <span class="mi">10</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">TRUE</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">FALSE</span><span class="p">;</span> <span class="c1">// not reachable</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This is actually a silly example, I know, but let&rsquo;s pretend to verify this function with this main:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;assert.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;klee/klee.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">input</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="o">&amp;</span><span class="n">input</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span> <span class="s">&quot;input&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">check_arg</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>In <code>main</code> we have a symbolic variable used as input for the function to be tested. We can also modify it to include an assertion:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="n">BOOL</span> <span class="nf">check_arg</span><span class="p">(</span><span class="kt">int</span> <span class="n">a</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">a</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">FALSE</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">a</span> <span class="o">&lt;=</span> <span class="mi">10</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">TRUE</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_assert</span><span class="p">(</span><span class="n">FALSE</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">FALSE</span><span class="p">;</span> <span class="c1">// not reachable</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We can now use <code>clang</code> to compile the program to the LLVM byte code and run the test generation with the <code>klee</code> command:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">test</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">test</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="n">klee</span> <span class="n">test</span><span class="p">.</span><span class="n">ll</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We get this output:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="nl">KLEE:</span> <span class="n">output</span> <span class="n">directory</span> <span class="n">is</span> <span class="s">&quot;/work/klee-out-0&quot;</span>
+</span><span class='line'>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">total</span> <span class="n">instructions</span> <span class="o">=</span> <span class="mi">26</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">completed</span> <span class="n">paths</span> <span class="o">=</span> <span class="mi">2</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">generated</span> <span class="n">tests</span> <span class="o">=</span> <span class="mi">2</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>KLEE will generate test cases for the <code>input</code> variable, trying to cover all the possible execution paths and to make the provided assertions to fail (if any given). In this case we have two execution paths and two generated test cases, covering them. Test cases are in the output directory (in this case <code>/work/klee-out-0</code>). The soft link <code>klee-last</code> is also provided for convenience, pointing to the last output directory. Inside that directory a bunch of files were created, including the two test cases named <code>test000001.ktest</code> and <code>test000002.ktest</code>. These are binary files, which can be examined with the <code>ktest-tool</code> utility. Let&rsquo;s try it:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">ints</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000001</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="n">ktest</span> <span class="n">file</span> <span class="o">:</span> <span class="err">&#39;</span><span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000001</span><span class="p">.</span><span class="n">ktest</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">args</span>       <span class="o">:</span> <span class="p">[</span><span class="err">&#39;</span><span class="n">test</span><span class="p">.</span><span class="n">ll</span><span class="err">&#39;</span><span class="p">]</span>
+</span><span class='line'><span class="n">num</span> <span class="n">objects</span><span class="o">:</span> <span class="mi">1</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">name</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">input</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">size</span><span class="o">:</span> <span class="mi">4</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="mi">2147483647</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And the second one:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">ints</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000002</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="mi">0</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>In these test files, KLEE reports the command line arguments, the symbolic objects along with their size and the value provided for the test. To cover the whole program, we need <code>input</code> variable to get a value greater than 10 and one below or equal. You can see that this is the case: in the first test case the value 2147483647 is used, covering the first branch, while 0 is provided for the second, covering the other branch.</p>
+
+<p>So far, so good. But what if we change the function in this way?</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="n">BOOL</span> <span class="nf">check_arg</span><span class="p">(</span><span class="kt">int</span> <span class="n">a</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">a</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">FALSE</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">a</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">)</span>    <span class="c1">// instead of &lt;=</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">TRUE</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_assert</span><span class="p">(</span><span class="n">FALSE</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">FALSE</span><span class="p">;</span>       <span class="c1">// now reachable</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We get this output:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="n">test</span><span class="p">.</span><span class="n">ll</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">output</span> <span class="n">directory</span> <span class="n">is</span> <span class="s">&quot;/work/klee-out-2&quot;</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">ERROR</span><span class="o">:</span> <span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="n">test</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">9</span><span class="o">:</span> <span class="n">ASSERTION</span> <span class="n">FAIL</span><span class="o">:</span> <span class="mi">0</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">now</span> <span class="n">ignoring</span> <span class="n">this</span> <span class="n">error</span> <span class="n">at</span> <span class="n">this</span> <span class="n">location</span>
+</span><span class='line'>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">total</span> <span class="n">instructions</span> <span class="o">=</span> <span class="mi">27</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">completed</span> <span class="n">paths</span> <span class="o">=</span> <span class="mi">3</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">generated</span> <span class="n">tests</span> <span class="o">=</span> <span class="mi">3</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And this is the <code>klee-last</code> directory contents:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">ls</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span>
+</span><span class='line'><span class="n">assembly</span><span class="p">.</span><span class="n">ll</span>   <span class="n">run</span><span class="p">.</span><span class="n">istats</span>        <span class="n">test000002</span><span class="p">.</span><span class="n">assert</span><span class="p">.</span><span class="n">err</span>  <span class="n">test000003</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="n">info</span>          <span class="n">run</span><span class="p">.</span><span class="n">stats</span>         <span class="n">test000002</span><span class="p">.</span><span class="n">ktest</span>       <span class="n">warnings</span><span class="p">.</span><span class="n">txt</span>
+</span><span class='line'><span class="n">messages</span><span class="p">.</span><span class="n">txt</span>  <span class="n">test000001</span><span class="p">.</span><span class="n">ktest</span>  <span class="n">test000002</span><span class="p">.</span><span class="n">pc</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Note the <code>test000002.assert.err</code> file. If we examine its corresponding test file, we have:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">ints</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000002</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="n">ktest</span> <span class="n">file</span> <span class="o">:</span> <span class="err">&#39;</span><span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000002</span><span class="p">.</span><span class="n">ktest</span><span class="err">&#39;</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="mi">10</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>As we had expected, the assertion fails when <code>input</code> value is 10. So, as we now have three execution paths, we also have three test cases, and the whole program gets covered. KLEE provides also the possibility to replay the tests with the real program, but we are not interested in it now. You can see an usage example in this <a href="http://klee.github.io/tutorials/testing-function/#replaying-a-test-case">KLEE tutorial</a>.</p>
+
+<p>KLEE abilities to find execution paths of an application are very good. According to the <a href="http://llvm.org/pubs/2008-12-OSDI-KLEE.html">OSDI 2008 paper</a>, KLEE has been successfully used to test all 89 stand-alone programs in GNU COREUTILS and the equivalent busybox port, finding previously undiscovered bugs, errors and inconsistencies. The achieved code coverage were more than 90% per tool. Pretty awesome!</p>
+
+<p>But, you may ask: <a href="https://www.youtube.com/watch?v=j_T9YtA1mRQ">The question is, who cares?</a>. You will see it in a moment.</p>
+
+<h2>KLEE to reverse a function</h2>
+
+<p>As we have a powerful tool to find execution paths, we can use it to find the path we are interested in. As showed by the nice <a href="https://feliam.wordpress.com/2010/10/07/the-symbolic-maze/">symbolic maze</a> post of Feliam, we can use KLEE to solve a maze. The idea is simple but very powerful: flag the portion of code you interested in with a <code>klee_assert(0)</code> call, causing KLEE to highlight the test case able to reach that point. In the maze example, this is as simple as changing a <code>read</code> call with a <code>klee_make_symbolic</code> and the <code>prinft("You win!\n")</code> with the already mentioned <code>klee_assert(0)</code>. Test cases triggering this assertion are the one solving the maze!</p>
+
+<p>For a concrete example, let&rsquo;s suppose we have this function:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">magic_computation</span><span class="p">(</span><span class="kt">int</span> <span class="n">input</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">32</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+</span><span class='line'>        <span class="n">input</span> <span class="o">^=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">i</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">input</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And we want to know for what input we get the output 253. A main that tests this could be:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">input</span> <span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">output</span> <span class="o">=</span> <span class="n">magic_computation</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">output</span> <span class="o">==</span> <span class="mi">253</span><span class="p">)</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;You win!</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">else</span>
+</span><span class='line'>        <span class="n">printf</span><span class="p">(</span><span class="s">&quot;You lose</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>KLEE can resolve this problem for us, if we provide symbolic inputs and actually an assert to trigger:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">input</span><span class="p">,</span> <span class="n">result</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="o">&amp;</span><span class="n">input</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">),</span> <span class="s">&quot;input&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">result</span> <span class="o">=</span> <span class="n">magic_computation</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">result</span> <span class="o">==</span> <span class="mi">253</span><span class="p">)</span>
+</span><span class='line'>        <span class="n">klee_assert</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Run KLEE and print the result:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">magic</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">magic</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="n">magic</span><span class="p">.</span><span class="n">ll</span>
+</span><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">ints</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000001</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="n">ktest</span> <span class="n">file</span> <span class="o">:</span> <span class="err">&#39;</span><span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000001</span><span class="p">.</span><span class="n">ktest</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">args</span>       <span class="o">:</span> <span class="p">[</span><span class="err">&#39;</span><span class="n">magic</span><span class="p">.</span><span class="n">ll</span><span class="err">&#39;</span><span class="p">]</span>
+</span><span class='line'><span class="n">num</span> <span class="n">objects</span><span class="o">:</span> <span class="mi">1</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">name</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">input</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">size</span><span class="o">:</span> <span class="mi">4</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="o">-</span><span class="mi">254</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The answer is -254. Let&rsquo;s test it:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">gcc</span> <span class="n">magic</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="p">.</span><span class="o">/</span><span class="n">a</span><span class="p">.</span><span class="n">out</span> <span class="o">-</span><span class="mi">254</span>
+</span><span class='line'><span class="n">You</span> <span class="n">win</span><span class="o">!</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Yes!</p>
+
+<h2>KLEE, libc and command line arguments</h2>
+
+<p>Not all the functions are so simple. At least we could have calls to the C standard library such as <code>strlen</code>, <code>atoi</code>, and such. We cannot link our test code with the system available C library, as it is not inspectable by KLEE. For example:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">input</span> <span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">input</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>If we run it with KLEE we get this error:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">atoi</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">atoi</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="n">atoi</span><span class="p">.</span><span class="n">ll</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">output</span> <span class="n">directory</span> <span class="n">is</span> <span class="s">&quot;/work/klee-out-4&quot;</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">WARNING</span><span class="o">:</span> <span class="n">undefined</span> <span class="n">reference</span> <span class="n">to</span> <span class="n">function</span><span class="o">:</span> <span class="n">atoi</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">WARNING</span> <span class="n">ONCE</span><span class="o">:</span> <span class="n">calling</span> <span class="n">external</span><span class="o">:</span> <span class="n">atoi</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">ERROR</span><span class="o">:</span> <span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="n">atoi</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">5</span><span class="o">:</span> <span class="n">failed</span> <span class="n">external</span> <span class="n">call</span><span class="o">:</span> <span class="n">atoi</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">now</span> <span class="n">ignoring</span> <span class="n">this</span> <span class="n">error</span> <span class="n">at</span> <span class="n">this</span> <span class="n">location</span>
+</span><span class='line'><span class="p">...</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>To fix this we can use the KLEE uClibc and POSIX runtime. Taken from the help:</p>
+
+<p><em>&ldquo;If we were running a normal native application, it would have been linked with the C library, but in this case KLEE is running the LLVM bitcode file directly. In order for KLEE to work effectively, it needs to have definitions for all the external functions the program may call. Similarly, a native application would be running on top of an operating system that provides lower level facilities like write(), which the C library uses in its implementation. As before, KLEE needs definitions for these functions in order to fully understand the program. We provide a POSIX runtime which is designed to work with KLEE and the uClibc library to provide the majority of operating system facilities used by command line applications&rdquo;</em>.</p>
+
+<p>Let&rsquo;s try to use these facilities to test our <code>atoi</code> function:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="o">--</span><span class="n">optimize</span> <span class="o">--</span><span class="n">libc</span><span class="o">=</span><span class="n">uclibc</span> <span class="o">--</span><span class="n">posix</span><span class="o">-</span><span class="n">runtime</span> <span class="n">atoi</span><span class="p">.</span><span class="n">ll</span> <span class="o">--</span><span class="n">sym</span><span class="o">-</span><span class="n">args</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">3</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">Using</span> <span class="n">klee</span><span class="o">-</span><span class="n">uclibc</span> <span class="o">:</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">klee</span><span class="o">/</span><span class="n">runtime</span><span class="o">/</span><span class="n">klee</span><span class="o">-</span><span class="n">uclibc</span><span class="p">.</span><span class="n">bca</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">Using</span> <span class="n">model</span><span class="o">:</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">klee</span><span class="o">/</span><span class="n">runtime</span><span class="o">/</span><span class="n">libkleeRuntimePOSIX</span><span class="p">.</span><span class="n">bca</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">output</span> <span class="n">directory</span> <span class="n">is</span> <span class="s">&quot;/work/klee-out-5&quot;</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">WARNING</span> <span class="n">ONCE</span><span class="o">:</span> <span class="n">calling</span> <span class="n">external</span><span class="o">:</span> <span class="n">syscall</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">21505</span><span class="p">,</span> <span class="mi">70495424</span><span class="p">)</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">ERROR</span><span class="o">:</span> <span class="o">/</span><span class="n">tmp</span><span class="o">/</span><span class="n">klee</span><span class="o">-</span><span class="n">uclibc</span><span class="o">/</span><span class="n">libc</span><span class="o">/</span><span class="n">stdlib</span><span class="o">/</span><span class="n">stdlib</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">526</span><span class="o">:</span> <span class="n">memory</span> <span class="n">error</span><span class="o">:</span> <span class="n">out</span> <span class="n">of</span> <span class="n">bound</span> <span class="n">pointer</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">now</span> <span class="n">ignoring</span> <span class="n">this</span> <span class="n">error</span> <span class="n">at</span> <span class="n">this</span> <span class="n">location</span>
+</span><span class='line'>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">total</span> <span class="n">instructions</span> <span class="o">=</span> <span class="mi">5756</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">completed</span> <span class="n">paths</span> <span class="o">=</span> <span class="mi">68</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">generated</span> <span class="n">tests</span> <span class="o">=</span> <span class="mi">68</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And KLEE founds the possible out of bound access in our program. Because you know, our program is bugged :) Before to jump and fix our code, let me briefly explain what these new flags did:</p>
+
+<ul>
+<li><code>--optimize</code>: this is for dead code elimination. It is actually a good idea to use this flag when working with non-trivial applications, since it speeds things up;</li>
+<li><code>--libc=uclibc</code> and <code>--posix-runtime</code>: these are the aforementioned options for uClibc and POSIX runtime;</li>
+<li><code>--sym-args 0 1 3</code>: this flag tells KLEE to run the program with minimum 0 and maximum 1 argument of length 3, and make the arguments symbolic.</li>
+</ul>
+
+
+<p>Note that adding <code>atoi</code> function to our code, adds 68 execution paths to the program. Using many libc functions in our code adds complexity, so we have to use them carefully when we want to reverse complex functions.</p>
+
+<p>Let now make the program safe by adding a check to the command line argument length. Let&rsquo;s also add an assertion, because it is fun :)</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;stdlib.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;assert.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;klee/klee.h&gt;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">result</span> <span class="o">=</span> <span class="n">argc</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="o">?</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">:</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">result</span> <span class="o">==</span> <span class="mi">42</span><span class="p">)</span>
+</span><span class='line'>        <span class="n">klee_assert</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We could also have written <code>klee_assert(result != 42)</code>, and get the same result. No matter what solution we adopt, now we have to run KLEE as before:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">atoi2</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">atoi2</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="o">--</span><span class="n">optimize</span> <span class="o">--</span><span class="n">libc</span><span class="o">=</span><span class="n">uclibc</span> <span class="o">--</span><span class="n">posix</span><span class="o">-</span><span class="n">runtime</span> <span class="n">atoi2</span><span class="p">.</span><span class="n">ll</span> <span class="o">--</span><span class="n">sym</span><span class="o">-</span><span class="n">args</span> <span class="mi">0</span> <span class="mi">1</span> <span class="mi">3</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">Using</span> <span class="n">klee</span><span class="o">-</span><span class="n">uclibc</span> <span class="o">:</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">klee</span><span class="o">/</span><span class="n">runtime</span><span class="o">/</span><span class="n">klee</span><span class="o">-</span><span class="n">uclibc</span><span class="p">.</span><span class="n">bca</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">Using</span> <span class="n">model</span><span class="o">:</span> <span class="o">/</span><span class="n">usr</span><span class="o">/</span><span class="n">local</span><span class="o">/</span><span class="n">lib</span><span class="o">/</span><span class="n">klee</span><span class="o">/</span><span class="n">runtime</span><span class="o">/</span><span class="n">libkleeRuntimePOSIX</span><span class="p">.</span><span class="n">bca</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">output</span> <span class="n">directory</span> <span class="n">is</span> <span class="s">&quot;/work/klee-out-6&quot;</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">WARNING</span> <span class="n">ONCE</span><span class="o">:</span> <span class="n">calling</span> <span class="n">external</span><span class="o">:</span> <span class="n">syscall</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">21505</span><span class="p">,</span> <span class="mi">53243904</span><span class="p">)</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">ERROR</span><span class="o">:</span> <span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="n">atoi2</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">8</span><span class="o">:</span> <span class="n">ASSERTION</span> <span class="n">FAIL</span><span class="o">:</span> <span class="mi">0</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">NOTE</span><span class="o">:</span> <span class="n">now</span> <span class="n">ignoring</span> <span class="n">this</span> <span class="n">error</span> <span class="n">at</span> <span class="n">this</span> <span class="n">location</span>
+</span><span class='line'>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">total</span> <span class="n">instructions</span> <span class="o">=</span> <span class="mi">5962</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">completed</span> <span class="n">paths</span> <span class="o">=</span> <span class="mi">73</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">done</span><span class="o">:</span> <span class="n">generated</span> <span class="n">tests</span> <span class="o">=</span> <span class="mi">69</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Here we go! We have fixed our bug. KLEE is also able to find an input to make the assertion fail:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">ls</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span> <span class="o">|</span> <span class="n">grep</span> <span class="n">err</span>
+</span><span class='line'><span class="n">test000016</span><span class="p">.</span><span class="n">assert</span><span class="p">.</span><span class="n">err</span>
+</span><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000016</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="n">ktest</span> <span class="n">file</span> <span class="o">:</span> <span class="err">&#39;</span><span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000016</span><span class="p">.</span><span class="n">ktest</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">args</span>       <span class="o">:</span> <span class="p">[</span><span class="err">&#39;</span><span class="n">atoi</span><span class="p">.</span><span class="n">ll</span><span class="err">&#39;</span><span class="p">,</span> <span class="err">&#39;</span><span class="o">--</span><span class="n">sym</span><span class="o">-</span><span class="n">args</span><span class="err">&#39;</span><span class="p">,</span> <span class="sc">&#39;0&#39;</span><span class="p">,</span> <span class="sc">&#39;1&#39;</span><span class="p">,</span> <span class="sc">&#39;3&#39;</span><span class="p">]</span>
+</span><span class='line'><span class="n">num</span> <span class="n">objects</span><span class="o">:</span> <span class="mi">3</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">name</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">arg0</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">size</span><span class="o">:</span> <span class="mi">4</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="err">&#39;</span><span class="o">+</span><span class="mi">42</span><span class="err">\</span><span class="n">x00</span><span class="err">&#39;</span>
+</span><span class='line'><span class="p">...</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And the answer is the string &ldquo;+42&rdquo;&hellip; as we know.</p>
+
+<p>There are many other KLEE options and functionalities, but let&rsquo;s move on and try to solve our original problem. Interested readers can find a good tutorial, for example, in <a href="http://klee.github.io/tutorials/testing-coreutils/">How to Use KLEE to Test GNU Coreutils</a>.</p>
+
+<h2>KLEE keygen</h2>
+
+<p>Now that we know basic KLEE commands, we can try to apply them to our particular case. We have understood some of the validation algorithm, but we don&rsquo;t know the computation details. They are just a mess of arithmetical and logical operations that we are tired to analyze.</p>
+
+<p>Here is our plan:</p>
+
+<ul>
+<li>we need at least a valid customer number, a serial number and a mail address;</li>
+<li>more ambitiously we want a list of them, to make a key generator.</li>
+</ul>
+
+
+<p>This is a possibility:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="c1">// copy and paste of all the registration code</span>
+</span><span class='line'><span class="k">enum</span> <span class="p">{</span>
+</span><span class='line'>    <span class="n">ERROR</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">STANDARD</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">PRO</span>
+</span><span class='line'><span class="p">}</span> <span class="n">license_type</span> <span class="o">=</span> <span class="n">ERROR</span><span class="p">;</span>
+</span><span class='line'><span class="c1">// ...</span>
+</span><span class='line'><span class="k">enum</span> <span class="n">result_t</span> <span class="nf">check_registration</span><span class="p">(</span><span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="kt">int</span> <span class="n">customer_num</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">mail</span><span class="p">);</span>
+</span><span class='line'><span class="c1">// ...</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="n">customer</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">char</span> <span class="n">mail</span><span class="p">[</span><span class="mi">10</span><span class="p">];</span>
+</span><span class='line'>    <span class="k">enum</span> <span class="n">result_t</span> <span class="n">result</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="o">&amp;</span><span class="n">serial</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">serial</span><span class="p">),</span> <span class="s">&quot;serial&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="o">&amp;</span><span class="n">customer</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">customer</span><span class="p">),</span> <span class="s">&quot;customer&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="o">&amp;</span><span class="n">mail</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">mail</span><span class="p">),</span> <span class="s">&quot;mail&quot;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">valid</span> <span class="o">=</span> <span class="n">check_registration</span><span class="p">(</span><span class="n">serial</span><span class="p">,</span> <span class="n">customer</span><span class="p">,</span> <span class="n">mail</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">valid</span> <span class="o">&amp;=</span> <span class="n">license_type</span> <span class="o">==</span> <span class="n">PRO</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_assert</span><span class="p">(</span><span class="o">!</span><span class="n">valid</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Super simple. Copy and paste everything, make the inputs symbolic and assert a certain result (negated, of course).</p>
+
+<p>No! That&rsquo;s not so simple. This is actually the most difficult part of the game. First of all, what do we want to copy? We don&rsquo;t have the source code. In my case I used Hex-Rays decompiler, so maybe I have cheated. When you decompile, however, you don&rsquo;t get immediately a compilable C source code, since there could be dependencies between functions, global variables, and specific Hex-Rays types. For this latter problem I&rsquo;ve prepared a <a href="https://github.com/mbrt/keygen-post/blob/master/src/ida_defs.h"><code>ida_defs.h</code></a> header, providing defines coming from IDA and from Windows headers.</p>
+
+<p>But what to copy? The high level picture of the validation algorithm I have presented is an ideal one. The <code>check_registration</code> function is actually a big set of auxiliary functions and data, very tightened with other parts of the program. Even if we now know the most interesting functions, we need to know how much of the related code, is useful or not. We cannot throw everything in our key generator, since every function brings itself other related data and functions. In this way we will end up having the whole program in it. We need to minimize the code KLEE has to analyze, otherwise it will be too difficult to have its job done.</p>
+
+<p>This is a picture of the high level workflow, as IDA proximity view proposes:</p>
+
+<p><img src="https://raw.githubusercontent.com/mbrt/keygen-post/master/known_license_func_diagram.png" alt="Known license functions" /></p>
+
+<p>and this is the overview for a single node of this schema (precisely <code>license_getType</code>):</p>
+
+<p><img src="https://raw.githubusercontent.com/mbrt/keygen-post/master/get_license_type_overview.png" alt="license_getType overview" /></p>
+
+<p>As you can imagine, the complete call graph becomes really big in the end.</p>
+
+<p>In the cleanup process I have done, a big bunch of functions removed is the one extracting and loading the table of valid mail addresses. To do this I stepped with the debugger until the table was completely loaded and then dumped the memory of the process. Then I&rsquo;ve used a nice &ldquo;export to C array&rdquo; functionality of <a href="http://www.hexworkshop.com/">HEX Workshop</a>, to export the actual piece of memory of the mail table to actual code:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">uint16_t</span> <span class="n">hashHeader</span><span class="p">[</span><span class="mi">8192</span><span class="p">]</span> <span class="o">=</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="mh">0x0</span><span class="p">,</span> <span class="mh">0x28</span><span class="p">,</span> <span class="mh">0x12</span><span class="p">,</span> <span class="mh">0x24</span><span class="p">,</span> <span class="mh">0x2d</span><span class="p">,</span> <span class="mh">0x2b</span><span class="p">,</span> <span class="mh">0x2e</span><span class="p">,</span> <span class="mh">0x23</span><span class="p">,</span> <span class="mh">0x2b</span><span class="p">,</span> <span class="mh">0x26</span><span class="p">,</span>
+</span><span class='line'>    <span class="c1">// ...</span>
+</span><span class='line'><span class="p">};</span>
+</span><span class='line'><span class="kt">int16_t</span> <span class="n">hashData</span><span class="p">[</span><span class="mi">1000000</span><span class="p">]</span> <span class="o">=</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="mi">15306</span><span class="p">,</span> <span class="mi">18899</span><span class="p">,</span> <span class="mi">18957</span><span class="p">,</span> <span class="o">-</span><span class="mi">24162</span><span class="p">,</span> <span class="mi">63045</span><span class="p">,</span> <span class="o">-</span><span class="mi">26834</span><span class="p">,</span> <span class="o">-</span><span class="mi">21</span><span class="p">,</span> <span class="o">-</span><span class="mi">39653</span><span class="p">,</span> <span class="mi">271441</span><span class="p">,</span> <span class="o">-</span><span class="mi">5588</span><span class="p">,</span>
+</span><span class='line'>    <span class="c1">// ...</span>
+</span><span class='line'><span class="p">};</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>But, cutting out code is not the only problem I&rsquo;ve found in this step. External constraints must be carefully considered. For example the <a href="http://www.cplusplus.com/reference/ctime/time/">time</a> function can be handled by KLEE itself. KLEE tries to generate useful values even from that function. This is good if we want to test bugs related to a strange current time, but in our case, since the code will be executed by the program <em>at a particular time</em>, we are only interested in the value provided at that time. We don&rsquo;t want KLEE traits this function as symbolic; we only want the right time value. To solve that problem, I have replaced all the calls to <code>time</code> to a <code>my_time</code> function, returning a fixed value, defined in the source code.</p>
+
+<p>Another problem comes from the extraction of the functions from their outer context. Often code is written with <em>implicit conventions</em> in mind. These are not self-evident in the code because checks are avoided. A trivial example is the null terminator and valid ASCII characters in strings. KLEE do not assumes those constraints, but the validation code do. This is because the GUI provides only valid strings. A less trivial example is that the mail address is always passed lowercase from the GUI to the lower level application logic. This is not self-evident if you do not follow every step from the user input to the actual computations with the data.</p>
+
+<p>The solution to this latter problem is to provide those constraints to KLEE:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">char</span> <span class="n">mail</span><span class="p">[</span><span class="mi">10</span><span class="p">];</span>
+</span><span class='line'><span class="kt">char</span> <span class="n">c</span><span class="p">;</span>
+</span><span class='line'><span class="n">klee_make_symbolic</span><span class="p">(</span><span class="n">mail</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">mail</span><span class="p">),</span> <span class="s">&quot;mail&quot;</span><span class="p">);</span>
+</span><span class='line'><span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">mail</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="n">c</span> <span class="o">=</span> <span class="n">mail</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">klee_assume</span><span class="p">(</span> <span class="p">(</span><span class="n">c</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;</span> <span class="n">c</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">c</span> <span class="o">&gt;=</span> <span class="sc">&#39;a&#39;</span> <span class="o">&amp;</span> <span class="n">c</span> <span class="o">&lt;=</span> <span class="sc">&#39;z&#39;</span><span class="p">)</span> <span class="o">|</span> <span class="n">c</span> <span class="o">==</span> <span class="sc">&#39;\0&#39;</span> <span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'><span class="n">klee_assume</span><span class="p">(</span><span class="n">mail</span><span class="p">[</span><span class="k">sizeof</span><span class="p">(</span><span class="n">mail</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;\0&#39;</span><span class="p">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Logical operators inside <code>klee_assume</code> function are bitwise and not logical (i.e. <code>&amp;</code> and <code>|</code> instead of <code>&amp;&amp;</code> and <code>||</code>) because they are simpler, since they do not add the extra branches required by lazy operators.</p>
+
+<h2>Throw everything into KLEE</h2>
+
+<p>Having extracted all the needed functions and global data and solved all the issues with the code, we can now move on and run KLEE with our brand new test program:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">attempt1</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">attempt1</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="o">--</span><span class="n">optimize</span> <span class="o">--</span><span class="n">libc</span><span class="o">=</span><span class="n">uclibc</span> <span class="o">--</span><span class="n">posix</span><span class="o">-</span><span class="n">runtime</span> <span class="n">attempt1</span><span class="p">.</span><span class="n">ll</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And then wait for an answer.</p>
+
+<p>And wait for another while.</p>
+
+<p>Make some coffee, drink it, come back and watch the PC heating up.</p>
+
+<p>Go out, walk around, come back, have a shower, and&hellip;. oh no! It&rsquo;s still running! OK, that&rsquo;s enough! Let&rsquo;s kill it.</p>
+
+<h2>Deconstruction approach</h2>
+
+<p>We have pretended too much from the tool. It&rsquo;s time to use the brain and ease its work a little bit.</p>
+
+<p>Let&rsquo;s decompose the big picture of the registration check presented before piece by piece. We will try to solve it bit by bit, to reduce the solution space and so, the complexity.</p>
+
+<p>Recall that the algorithm is composed by three main conditions:</p>
+
+<ul>
+<li>serial number must be valid by itself;</li>
+<li>serial number, combined with mail address have to correspond to the actual customer number;</li>
+<li>there has to be a correspondence between serial number and mail address, stored in a static table in the binary.</li>
+</ul>
+
+
+<p>Can we split them in different KLEE runs?</p>
+
+<p>Clearly the first one can be written as:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="cp">#include &lt;assert.h&gt;</span>
+</span><span class='line'><span class="cp">#include &lt;klee/klee.h&gt;</span>
+</span><span class='line'><span class="c1">// include all the functions extracted from the program</span>
+</span><span class='line'><span class="cp">#include &quot;extracted_code.c&quot;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">enum</span> <span class="p">{</span>
+</span><span class='line'>    <span class="n">ERROR</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">STANDARD</span><span class="p">,</span>
+</span><span class='line'>    <span class="n">PRO</span>
+</span><span class='line'><span class="p">}</span> <span class="n">license_type</span> <span class="o">=</span> <span class="n">ERROR</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="n">valid</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="o">&amp;</span><span class="n">serial</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">serial</span><span class="p">),</span> <span class="s">&quot;serial&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">license_type</span> <span class="o">=</span> <span class="n">get_license_type</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">valid</span> <span class="o">=</span> <span class="p">(</span><span class="n">license_type</span> <span class="o">==</span> <span class="n">PRO</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">klee_assert</span><span class="p">(</span><span class="o">!</span><span class="n">valid</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And let&rsquo;s see if KLEE can work with this single function:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">serial_type</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">serial_type</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="o">--</span><span class="n">optimize</span> <span class="o">--</span><span class="n">libc</span><span class="o">=</span><span class="n">uclibc</span> <span class="o">--</span><span class="n">posix</span><span class="o">-</span><span class="n">runtime</span> <span class="n">serial_type</span><span class="p">.</span><span class="n">ll</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">ERROR</span><span class="o">:</span> <span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="n">symbolic</span><span class="o">/</span><span class="n">serial_type</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">17</span><span class="o">:</span> <span class="n">ASSERTION</span> <span class="n">FAIL</span><span class="o">:</span> <span class="o">!</span><span class="n">valid</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'>
+</span><span class='line'><span class="err">$</span> <span class="n">ls</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span> <span class="o">|</span> <span class="n">grep</span> <span class="n">err</span>
+</span><span class='line'><span class="n">test000019</span><span class="p">.</span><span class="n">assert</span><span class="p">.</span><span class="n">err</span>
+</span><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">ints</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000019</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="n">ktest</span> <span class="n">file</span> <span class="o">:</span> <span class="err">&#39;</span><span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000019</span><span class="p">.</span><span class="n">ktest</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">args</span>       <span class="o">:</span> <span class="p">[</span><span class="err">&#39;</span><span class="n">serial_type</span><span class="p">.</span><span class="n">ll</span><span class="err">&#39;</span><span class="p">]</span>
+</span><span class='line'><span class="n">num</span> <span class="n">objects</span><span class="o">:</span> <span class="mi">2</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">name</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">model_version</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">size</span><span class="o">:</span> <span class="mi">4</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">0</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="mi">1</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">name</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">serial</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">size</span><span class="o">:</span> <span class="mi">4</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="mi">102690141</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Yes! we now have a serial number that is considered PRO by our target application.</p>
+
+<p>The third condition is less simple: we have a table in which are stored values matching mail addresses with serial numbers. The high level check is this:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">check</span><span class="p">(</span><span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">mail</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">index</span> <span class="o">=</span> <span class="n">get_index_in_mail_table</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">index</span> <span class="o">&gt;</span> <span class="n">HEADER_SIZE</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="n">VALID_IF_LAST_VERSION</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">mail_digest</span> <span class="o">=</span> <span class="n">compute_mail_digest</span><span class="p">(</span><span class="n">mail</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">if</span> <span class="p">(</span><span class="n">mail_digest_table</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">mail_digest</span><span class="p">)</span>
+</span><span class='line'>            <span class="k">return</span> <span class="n">VALID</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">INVALID</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This piece of code imposes constraints on our mail address and serial number, but not on the customer number. We can rewrite the checks in two parts, the one checking the serial, and the one checking the mail address:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">check_serial</span><span class="p">(</span><span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">mail</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">index</span> <span class="o">=</span> <span class="n">get_index_in_mail_table</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">valid</span> <span class="o">=</span> <span class="n">index</span> <span class="o">&lt;=</span> <span class="n">HEADER_SIZE</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">check_mail</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">mail</span><span class="p">,</span> <span class="kt">int</span> <span class="n">index</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">mail_digest</span> <span class="o">=</span> <span class="n">compute_mail_digest</span><span class="p">(</span><span class="n">mail</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">if</span> <span class="p">(</span><span class="n">mail_digest_table</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">mail_digest</span><span class="p">)</span>
+</span><span class='line'>            <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The <code>check_mail</code> function needs the index in the table as secondary input, so it is not completely independent from the other check function. However, <code>check_mail</code> can be incorporated by our successful test program used before:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="c1">// ...</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="n">valid</span><span class="p">,</span> <span class="n">index</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="o">&amp;</span><span class="n">serial</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">serial</span><span class="p">),</span> <span class="s">&quot;serial&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">license_type</span> <span class="o">=</span> <span class="n">get_license_type</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">valid</span> <span class="o">=</span> <span class="p">(</span><span class="n">license_type</span> <span class="o">==</span> <span class="n">PRO</span><span class="p">);</span>
+</span><span class='line'>    <span class="c1">// added just now</span>
+</span><span class='line'>    <span class="n">index</span> <span class="o">=</span> <span class="n">get_index_in_mail_table</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">valid</span> <span class="o">&amp;=</span> <span class="n">index</span> <span class="o">&lt;=</span> <span class="n">HEADER_SIZE</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">klee_assert</span><span class="p">(</span><span class="o">!</span><span class="n">valid</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>And if we run it, we get our revised serial number, that satisfies the additional constraint:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">serial</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">serial</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="o">--</span><span class="n">optimize</span> <span class="o">--</span><span class="n">libc</span><span class="o">=</span><span class="n">uclibc</span> <span class="o">--</span><span class="n">posix</span><span class="o">-</span><span class="n">runtime</span> <span class="n">serial</span><span class="p">.</span><span class="n">ll</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">ERROR</span><span class="o">:</span> <span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="n">symbolic</span><span class="o">/</span><span class="n">serial</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">21</span><span class="o">:</span> <span class="n">ASSERTION</span> <span class="n">FAIL</span><span class="o">:</span> <span class="o">!</span><span class="n">valid</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'>
+</span><span class='line'><span class="err">$</span> <span class="n">ls</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span> <span class="o">|</span> <span class="n">grep</span> <span class="n">err</span>
+</span><span class='line'><span class="n">test000032</span><span class="p">.</span><span class="n">assert</span><span class="p">.</span><span class="n">err</span>
+</span><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">ints</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000019</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">name</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">serial</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="mi">120300641</span>
+</span><span class='line'><span class="p">...</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>For those who are wondering if <code>get_index_in_mail_table</code> could return a negative index, and so possibly crash the program I can answer that they are not alone. <a href="https://twitter.com/0vercl0k">@0vercl0k</a> made me the same question, and unfortunately I have to answer a no. I tried, because I am a lazy ass, by changing the assertion above to <code>klee_assert(index &lt; 0)</code>, but it was not triggered by KLEE. I then manually checked the function&rsquo;s code and I saw a beautiful <code>if (result &lt; 0) result = 0</code>. So, the answer is no! You have not found a vulnerability in the application :(</p>
+
+<p>For the <code>check_mail</code> solution we have to provide the index of a serial, but wait&hellip; we have it! We have now a serial, so, computing the index of the table is simple as executing this:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="n">index</span> <span class="o">=</span> <span class="n">get_index_in_mail_table</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Therefore, given a serial number, we can solve the mail address in this way:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="c1">// ...</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="n">valid</span><span class="p">,</span> <span class="n">index</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">char</span> <span class="n">mail</span><span class="p">[</span><span class="mi">10</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// mail is symbolic</span>
+</span><span class='line'>    <span class="n">klee_make_symbolic</span><span class="p">(</span><span class="n">mail</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">mail</span><span class="p">),</span> <span class="s">&quot;mail&quot;</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">mail</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span><span class="p">)</span>
+</span><span class='line'>    <span class="p">{</span>
+</span><span class='line'>        <span class="n">c</span> <span class="o">=</span> <span class="n">mail</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+</span><span class='line'>        <span class="n">klee_assume</span><span class="p">(</span> <span class="p">(</span><span class="n">c</span> <span class="o">&gt;=</span> <span class="sc">&#39;0&#39;</span> <span class="o">&amp;</span> <span class="n">c</span> <span class="o">&lt;=</span> <span class="sc">&#39;9&#39;</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">c</span> <span class="o">&gt;=</span> <span class="sc">&#39;a&#39;</span> <span class="o">&amp;</span> <span class="n">c</span> <span class="o">&lt;=</span> <span class="sc">&#39;z&#39;</span><span class="p">)</span> <span class="o">|</span> <span class="n">c</span> <span class="o">==</span> <span class="sc">&#39;\0&#39;</span> <span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="n">klee_assume</span><span class="p">(</span><span class="n">mail</span><span class="p">[</span><span class="k">sizeof</span><span class="p">(</span><span class="n">mail</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="sc">&#39;\0&#39;</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// get serial as external input</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">serial</span> <span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// compute index</span>
+</span><span class='line'>    <span class="n">index</span> <span class="o">=</span> <span class="n">get_index_in_mail_table</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="c1">// check validity</span>
+</span><span class='line'>    <span class="n">valid</span> <span class="o">=</span> <span class="n">check_mail</span><span class="p">(</span><span class="n">mail</span><span class="p">,</span> <span class="n">index</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">klee_assert</span><span class="p">(</span><span class="o">!</span><span class="n">valid</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We only have to run KLEE with the additional serial argument, providing the computed one by the previous step.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">clang</span> <span class="o">-</span><span class="n">emit</span><span class="o">-</span><span class="n">llvm</span> <span class="o">-</span><span class="n">g</span> <span class="o">-</span><span class="n">o</span> <span class="n">mail</span><span class="p">.</span><span class="n">ll</span> <span class="o">-</span><span class="n">c</span> <span class="n">mail</span><span class="p">.</span><span class="n">c</span>
+</span><span class='line'><span class="err">$</span> <span class="n">klee</span> <span class="o">--</span><span class="n">optimize</span> <span class="o">--</span><span class="n">libc</span><span class="o">=</span><span class="n">uclibc</span> <span class="o">--</span><span class="n">posix</span><span class="o">-</span><span class="n">runtime</span> <span class="n">mail</span><span class="p">.</span><span class="n">ll</span> <span class="mi">120300641</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="nl">KLEE:</span> <span class="n">ERROR</span><span class="o">:</span> <span class="o">/</span><span class="n">work</span><span class="o">/</span><span class="n">symbolic</span><span class="o">/</span><span class="n">mail</span><span class="p">.</span><span class="n">c</span><span class="o">:</span><span class="mi">34</span><span class="o">:</span> <span class="n">ASSERTION</span> <span class="n">FAIL</span><span class="o">:</span> <span class="o">!</span><span class="n">valid</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="err">$</span> <span class="n">ls</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span> <span class="o">|</span> <span class="n">grep</span> <span class="n">err</span>
+</span><span class='line'><span class="n">test000023</span><span class="p">.</span><span class="n">assert</span><span class="p">.</span><span class="n">err</span>
+</span><span class='line'><span class="err">$</span> <span class="n">ktest</span><span class="o">-</span><span class="n">tool</span> <span class="n">klee</span><span class="o">-</span><span class="n">last</span><span class="o">/</span><span class="n">test000023</span><span class="p">.</span><span class="n">ktest</span>
+</span><span class='line'><span class="p">...</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">name</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">mail</span><span class="err">&#39;</span>
+</span><span class='line'><span class="n">object</span>    <span class="mi">1</span><span class="o">:</span> <span class="n">data</span><span class="o">:</span> <span class="err">&#39;</span><span class="n">yrwt</span><span class="err">\</span><span class="n">x00</span><span class="err">\</span><span class="n">x00</span><span class="err">\</span><span class="n">x00</span><span class="err">\</span><span class="n">x00</span><span class="err">\</span><span class="n">x00</span><span class="err">\</span><span class="n">x00</span><span class="err">&#39;</span>
+</span><span class='line'><span class="p">...</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>OK, the mail found by KLEE is &ldquo;yrwt&rdquo;. This is not a mail, of course, but in the code there is not a proper validation imposing the presence of &lsquo;@&rsquo; and &lsquo;.&rsquo; chars, so we are fine with it :)</p>
+
+<p>The last piece of the puzzle we need is the customer number. Here is the check:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="n">expected_customer</span> <span class="o">=</span> <span class="n">compute_customer_number</span><span class="p">(</span><span class="n">serial</span><span class="p">,</span> <span class="n">mail</span><span class="p">);</span>
+</span><span class='line'><span class="k">if</span> <span class="p">(</span><span class="n">expected_customer</span> <span class="o">!=</span> <span class="n">customer_num</span><span class="p">)</span>
+</span><span class='line'>    <span class="k">return</span> <span class="n">INVALID</span><span class="p">;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This is simpler than before, since we already have a serial and a mail, so the only thing missing is a customer number matching those. We can compute it directly, even without symbolic execution:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">serial</span> <span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+</span><span class='line'>    <span class="kt">char</span><span class="o">*</span> <span class="n">mail</span> <span class="o">=</span> <span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">customer_number</span> <span class="o">=</span> <span class="n">compute_customer_number</span><span class="p">(</span><span class="n">serial</span><span class="p">,</span> <span class="n">mail</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;%d</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">customer_number</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Let&rsquo;s execute it:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="err">$</span> <span class="n">gcc</span> <span class="n">customer</span><span class="p">.</span><span class="n">c</span> <span class="n">customer</span>
+</span><span class='line'><span class="err">$</span> <span class="p">.</span><span class="o">/</span><span class="n">customer</span> <span class="mi">120300641</span> <span class="n">yrwt</span>
+</span><span class='line'><span class="mi">1175211979</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Yeah! And if we try those numbers and mail address onto the real program, we are now legit and registered users :)</p>
+
+<h2>Want more keys?</h2>
+
+<p>We have just found one key, and that&rsquo;s cool, but what about making a keygen? KLEE is deterministic, so if you run the same code over and over you will get always the same results. So, we are now stuck with this single serial.</p>
+
+<p>To solve the problem we have to think about what variables we can move around to get different valid serial numbers to start with, and with them solve related mail addresses and compute a customer number.</p>
+
+<p>We have to add constraints to the serial generation, so that every time we can run a slightly different version of the program and get a different serial number. The simplest thing to do is to constraint <code>get_index_in_mail_table</code> to return an index inside a proper subset of the range [0, <code>HEADER_SIZE</code>] used before. For example we can divide it in equal chunks of size 5 and run the whole thing for every chunk.</p>
+
+<p>This is the modified version of the serial generation:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+</pre></td><td class='code'><pre><code class='c'><span class='line'><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">serial</span><span class="p">,</span> <span class="n">min_index</span><span class="p">,</span> <span class="n">max_index</span><span class="p">,</span> <span class="n">valid</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// get chunk bounds as external inputs</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">)</span>
+</span><span class='line'>        <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">min_index</span><span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+</span><span class='line'>    <span class="n">max_index</span><span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// check and assert</span>
+</span><span class='line'>    <span class="n">index</span> <span class="o">=</span> <span class="n">get_index_in_mail_table</span><span class="p">(</span><span class="n">serial</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">valid</span> <span class="o">=</span> <span class="n">index</span> <span class="o">&gt;=</span> <span class="n">min_index</span> <span class="o">&amp;&amp;</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="n">max_index</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">klee_assert</span><span class="p">(</span><span class="o">!</span><span class="n">valid</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>We now need a script that runs KLEE and collect the results for all those chunks. Here it is:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="c">#!/bin/bash</span>
+</span><span class='line'>
+</span><span class='line'><span class="nv">MIN_INDEX</span><span class="o">=</span>0
+</span><span class='line'><span class="nv">MAX_INDEX</span><span class="o">=</span>8033
+</span><span class='line'><span class="nv">STEP</span><span class="o">=</span>5
+</span><span class='line'>
+</span><span class='line'><span class="nb">echo</span> <span class="s2">&quot;Index;License;Mail;Customer&quot;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">for </span>INDEX in <span class="k">$(</span>seq <span class="nv">$MIN_INDEX</span> <span class="nv">$STEP</span> <span class="nv">$MAX_INDEX</span><span class="k">)</span>; <span class="k">do</span>
+</span><span class='line'><span class="k">    </span><span class="nb">echo</span> -n <span class="s2">&quot;$INDEX;&quot;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nv">CHUNK_MIN</span><span class="o">=</span><span class="nv">$INDEX</span>
+</span><span class='line'>    <span class="nv">CHUNK_MAX</span><span class="o">=</span><span class="k">$((</span> CHUNK_MIN <span class="o">+</span> STEP <span class="k">))</span>
+</span><span class='line'>    <span class="nv">LICENSE</span><span class="o">=</span><span class="k">$(</span>./solve.sh serial.ll <span class="nv">$CHUNK_MIN</span> <span class="nv">$CHUNK_MAX</span><span class="k">)</span>
+</span><span class='line'>    <span class="k">if</span> <span class="o">[</span> -z <span class="s2">&quot;$LICENSE&quot;</span> <span class="o">]</span>; <span class="k">then</span>
+</span><span class='line'><span class="k">        </span><span class="nb">echo</span> <span class="s2">&quot;;;&quot;</span>
+</span><span class='line'>        <span class="k">continue</span>
+</span><span class='line'><span class="k">    fi</span>
+</span><span class='line'><span class="k">    </span><span class="nv">MAIL_ARRAY</span><span class="o">=</span><span class="k">$(</span>./solve.sh mail.ll <span class="nv">$LICENSE</span><span class="k">)</span>
+</span><span class='line'>    <span class="k">if</span> <span class="o">[</span> -z <span class="s2">&quot;$MAIL_ARRAY&quot;</span> <span class="o">]</span>; <span class="k">then</span>
+</span><span class='line'><span class="k">        </span><span class="nb">echo</span> <span class="s2">&quot;;;&quot;</span>
+</span><span class='line'>        <span class="k">continue</span>
+</span><span class='line'><span class="k">    fi</span>
+</span><span class='line'><span class="k">    </span><span class="nv">MAIL</span><span class="o">=</span><span class="k">$(</span>sed <span class="s1">&#39;s/\\x00//g&#39;</span> <span class="o">&lt;&lt;&lt;</span> <span class="nv">$MAIL_ARRAY</span> | sed <span class="s2">&quot;s/&#39;//g&quot;</span><span class="k">)</span>
+</span><span class='line'>    <span class="nv">CUSTOMER</span><span class="o">=</span><span class="k">$(</span>./customer <span class="nv">$LICENSE</span> <span class="nv">$MAIL</span><span class="k">)</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="nb">echo</span> <span class="s2">&quot;$LICENSE;$MAIL;$CUSTOMER&quot;</span>
+</span><span class='line'><span class="k">done</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This script uses the <code>solve.sh</code> script, that does the actual work and prints the result of KLEE runs:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="c">#!/bin/bash</span>
+</span><span class='line'><span class="c"># do work</span>
+</span><span class='line'>klee <span class="nv">$@</span> &gt;/dev/null 2&gt;&amp;1
+</span><span class='line'><span class="c"># print result</span>
+</span><span class='line'><span class="nv">ASSERT_FILE</span><span class="o">=</span><span class="k">$(</span>ls klee-last | grep .assert.err<span class="k">)</span>
+</span><span class='line'><span class="nv">TEST_FILE</span><span class="o">=</span><span class="k">$(</span>basename klee-last/<span class="nv">$ASSERT_FILE</span> .assert.err<span class="k">)</span>
+</span><span class='line'><span class="nv">OUTPUT</span><span class="o">=</span><span class="k">$(</span>ktest-tool --write-ints klee-last/<span class="nv">$TEST_FILE</span>.ktest | grep data<span class="k">)</span>
+</span><span class='line'><span class="nv">RESULT</span><span class="o">=</span><span class="k">$(</span>sed <span class="s1">&#39;s/.*:.*: //&#39;</span> <span class="o">&lt;&lt;&lt;</span> <span class="nv">$OUTPUT</span><span class="k">)</span>
+</span><span class='line'><span class="nb">echo</span> <span class="nv">$RESULT</span>
+</span><span class='line'><span class="c"># cleanup</span>
+</span><span class='line'>rm -rf <span class="k">$(</span>readlink -f klee-last<span class="k">)</span>
+</span><span class='line'>rm -f klee-last
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Here is the final run:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="nv">$ </span>./keygen_all.sh
+</span><span class='line'>Index;License;Mail;Customer
+</span><span class='line'>...
+</span><span class='line'>2400;;;
+</span><span class='line'>2405;115019227;4h79;1162863222
+</span><span class='line'>2410;112625605;7cxd;554797040
+</span><span class='line'>...
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>Note that not all the serial numbers are solvable, but we are OK with that. We now have a bunch of solved registrations. We can put them in some simple GUI that exposes to the user one of them randomly.</p>
+
+<p>That&rsquo;s all folks.</p>
+
+<h1>Conclusion</h1>
+
+<p>This was a brief journey into the magic world of reversing and symbolic execution. We started with the dream to make a key generator for a real world application, and we&rsquo;ve got a list of serial numbers to put in some nice GUI (maybe with some MIDI soundtrack playing in the background to make users crazy). But this was not our purpose. The path we followed is far more interesting than ruining programmer&rsquo;s life. So, just to recap, here are the main steps we followed to generate our serial numbers:</p>
+
+<ol>
+<li>reverse the skeleton of the serial number validation procedure, understanding data and the most important functions, using a debugger, IDA, and all the reversing tools we can access;</li>
+<li>collect the functions and produce a C version of them (this could be quite difficult, unless you have access to HEX-Rays decompiler or similar tool);</li>
+<li>mark some strategic variable as symbolic and mark some strategic code path with an assert;</li>
+<li>ask KLEE to provide us the values for symbolic variables that make the assert to fail, and so to reach that code path;</li>
+<li>since the last step provides us only a single serial number, add an external input to the symbolic program, using it as additional constraint, in order to get different values for symbolic variables reaching the assert.</li>
+</ol>
+
+
+<p>The last point can be seen as quite obscure, I can admit that, but the idea is simple. Since KLEE&rsquo;s goal is to reach a path with some values for the symbolic variables, it is not interested in exploring all the possibilities for those values. We can force this exploration manually, by adding an additional constraint, and varying a parameter from run to run, and get (hopefully) different correct values for our serial number.</p>
+
+<p>I would like to thank <a href="https://twitter.com/0vercl0k">@0vercl0k</a>, <a href="https://twitter.com/jonathansalwan">@jonathansalwan</a> and <a href="https://twitter.com/__x86">@__x86</a> for their careful proofreading and good remarks!</p>
+
+<p>I hope you found this topic interesting. In the case, here are some links that can be useful for you to deepen some of the arguments touched in this post:</p>
+
+<ul>
+<li><a href="http://klee.github.io/">KLEE main site</a> in which you can find documentation, examples and some news;</li>
+<li>My <a href="https://registry.hub.docker.com/u/mbrt/klee/">Docker image of KLEE</a> that you can use as is if you want to avoid building KLEE from sources. It is an automated build (sources <a href="https://github.com/mbrt/docker-klee">here</a>) so you can use it safely;</li>
+<li>Tutorial on using KLEE onto <a href="http://www.gnu.org/software/coreutils/">GNU Coreutils</a> is <a href="http://klee.github.io/tutorials/testing-coreutils/">here</a> if you want to learn to use better KLEE for testing purposes.</li>
+<li>The Feliam&rsquo;s article <a href="https://feliam.wordpress.com/2010/10/07/the-symbolic-maze/">The Symbolic Maze!</a> that gave me insights on how to use KLEE for reversing purposes;</li>
+<li>The paper <a href="https://courses.engr.illinois.edu/cs477/king76symbolicexecution.pdf">Symbolic execution and program testing</a> of James C. King gives you a nice intro on symbolic execution topic;</li>
+<li>Slides from this <a href="http://www.seas.harvard.edu/courses/cs252/2011sp/slides/Lec13-SymExec.pdf">Harvard course</a> are useful to visualize symbolic execution with nice figures and examples;</li>
+<li><a href="http://shell-storm.org/talks/SecurityDay2015_dynamic_symbolic_execution_Jonathan_Salwan.pdf">Dynamic Binary Analysis and Instrumentation Covering a function using a DSE approach</a> by <a href="https://twitter.com/jonathansalwan">Jonathan Salwan</a>.</li>
+</ul>
+
+
+<p>Source code, examples and scripts used to produce this blog post are published in this <a href="https://github.com/mbrt/keygen-post">GitHub repo</a>.</p>
+
+<p>Cheers, <a href="https://twitter.com/brt_device">@brt_device</a>.</p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Michele "brt_device" Bertasi</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2015-08-18T22:12:00-07:00" pubdate data-updated="true">Aug 18<span>th</span>, 2015</time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/reverse-engineering/'>reverse-engineering</a>, <a class='category' href='/blog/categories/symbolic-execution/'>symbolic execution</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2015/02/08/spotlight-on-an-unprotected-aes128-whitebox-implementation/" title="Previous Post: Spotlight on an unprotected AES128 white-box implementation">&laquo; Spotlight on an unprotected AES128 white-box implementation</a>
+      
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2015/08/18/keygenning-with-klee/">Keygenning with KLEE</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2015/02/08/spotlight-on-an-unprotected-aes128-whitebox-implementation/">Spotlight on an unprotected AES128 white-box implementation</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/">Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Dissection of Quarkslab's 2014 security challenge</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2015 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
+	  
+  </span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  <script type="text/javascript">
+  jQuery(document).ready(function() {
+    // Put a TOC right before the entry content.
+    if(jQuery('div[id="tocBlock"]').length == 0)
+        generateTOC('.entry-content-toc', null);
+  });
+  </script>
+
+</body>
+</html>

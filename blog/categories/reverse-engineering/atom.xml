@@ -4,7 +4,7 @@
   <title><![CDATA[Category: reverse-engineering | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/reverse-engineering/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2015-06-10T20:38:12-07:00</updated>
+  <updated>2015-08-19T19:03:45-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -12,6 +12,1084 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[Keygenning with KLEE]]></title>
+    <link href="http://doar-e.github.io/blog/2015/08/18/keygenning-with-klee/"/>
+    <updated>2015-08-18T22:12:00-07:00</updated>
+    <id>http://doar-e.github.io/blog/2015/08/18/keygenning-with-klee</id>
+    <content type="html"><![CDATA[<h1>Introduction</h1>
+
+<p>In the past weeks I enjoyed working on reversing a software (don&rsquo;t ask me the name), to study how serial numbers are validated. The story the user has to follow is pretty common: download the trial, pay, get the serial number, use it in the annoying nag screen to get the fully functional version of the software.</p>
+
+<p>Since my purpose is to not damage the company developing the software, I will not mention the name of the software, nor I will publish the final key generator in binary form, nor its source code. My goal is instead to study a real case of serial number validation, and to highlight its weaknesses.</p>
+
+<p>In this post we are going to take a look at the steps I followed to reverse the serial validation process and to make a key generator using <a href="http://klee.github.io/">KLEE</a> symbolic virtual machine. We are not going to follow all the details on the reversing part, since you cannot reproduce them on your own. We will concentrate our thoughts on the key-generator itself: that is the most interesting part.</p>
+
+<div class='entry-content-toc'></div>
+
+
+
+
+<!--more-->
+
+
+<h2>Getting acquainted</h2>
+
+<p>The software is an <code>x86</code> executable, with no anti-debugging, nor anti-reversing techniques. When started it presents a nag screen asking for a registration composed by: customer number, serial number and a mail address. This is a fairly common software.</p>
+
+<h2>Tools of the trade</h2>
+
+<p>First steps in the reversing are devoted to find all the interesting functions to analyze. To do this I used <a href="https://www.hex-rays.com/products/ida/">IDA Pro</a> with Hex-Rays decompiler, and the <a href="https://msdn.microsoft.com/en-us/library/windows/hardware/ff551063%28v=vs.85%29.aspx">WinDbg</a> debugger. For the last part I used <a href="http://klee.github.io/">KLEE</a> symbolic virtual machine under Linux, <a href="https://gcc.gnu.org/">gcc compiler</a> and some bash scripting. The actual key generator was a simple <a href="https://msdn.microsoft.com/en-us/library/ms754130%28v=vs.100%29.aspx">WPF</a> application.</p>
+
+<p>Let me skip the first part, since it is not very interesting. You can find many other articles on the web that can guide you trough basic reversing techniques with IDA Pro. I only kept in mind some simple rules, while going forward:</p>
+
+<ul>
+<li>always rename functions that uses interesting data, even if you don&rsquo;t know precisely what they do. A name like <code>license_validation_unknown_8</code> is always better than a default like <code>sub_46fa39</code>;</li>
+<li>similarly, rename data whenever you find it interesting;</li>
+<li>change data types when you are sure they are wrong: use structs and arrays in case of aggregates;</li>
+<li>follow cross references of data and functions to expand your collection;</li>
+<li>validate your beliefs with the debugger if possible. For example, if you think a variable contains the serial, break with the debugger and see if it is the case.</li>
+</ul>
+
+
+<h2>Big picture</h2>
+
+<p>When I collected the most interesting functions, I tried to understand the high level flow and the simpler functions. Here are the main variables and types used in the validation process. As a note for the reader: most of them have been purged from uninteresting details, for the sake of simplicity.</p>
+
+<p>```c
+enum {</p>
+
+<pre><code>ERROR,
+STANDARD,
+PRO
+</code></pre>
+
+<p>} license_type = ERROR;
+```
+Here we have a global variable providing the type of the license, used to enable and disable features of the application.</p>
+
+<p>```c
+enum result_t {</p>
+
+<pre><code>INVALID,
+VALID,
+VALID_IF_LAST_VERSION
+</code></pre>
+
+<p>};
+<code>``
+This is a convenient</code>enum<code>used as a result for the validation.</code>INVALID<code>and</code>VALID<code>values are pretty self-explanatory. </code>VALID_IF_LAST_VERSION` tells that this registration is valid only if the current software version is the last available. The reasons for this strange possibility will be clear shortly.</p>
+
+<p>```c</p>
+
+<h1>define HEADER_SIZE 8192</h1>
+
+<p>struct {</p>
+
+<pre><code>int header[HEADER_SIZE];
+int data[1000000];
+</code></pre>
+
+<p>} mail_digest_table;
+<code>``
+This is a data structure, containing digests of mail addresses of known registered users. This is a pretty big file embedded in the executable itself. During startup, a resource is extracted in a temporary file and its content copied into this struct. Each element of the</code>header<code>vector is an offset pointing inside the</code>data` vector.</p>
+
+<p>Here we have a pseudo-C code for the registration check, that uses data types and variables explained above:
+```c
+enum result_t check_registration(int serial, int customer_num, const char* mail) {</p>
+
+<pre><code>// validate serial number
+license_type = get_license_type(serial);
+if (license_type == ERROR)
+    return INVALID;
+
+// validate customer number
+int expected_customer = compute_customer_number(serial, mail);
+if (expected_customer != customer_num)
+    return INVALID;
+
+// validate w.r.t. known registrations
+int index = get_index_in_mail_table(serial);
+if (index &gt; HEADER_SIZE)
+    return VALID_IF_LAST_VERSION;
+int mail_digest = compute_mail_digest(mail);
+for (int i = 0; i &lt; 3; ++i) {
+    if (mail_digest_table[index + i] == mail_digest)
+        return VALID;
+}
+return INVALID;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>The validation is divided in three main parts:</p>
+
+<ul>
+<li>serial number must be valid by itself;</li>
+<li>serial number, combined with mail address has to correspond to the actual customer number;</li>
+<li>there has to be a correspondence between serial number and mail address, stored in a static table in the binary.</li>
+</ul>
+
+
+<p>The last point is a little bit unusual. Let me restate it in this way: whenever a customer buy the software, the customer table gets updated with its data and become available in the <em>next</em> version of the software (because it is embedded in the binary and not downloaded trough the internet). This explains the <code>VALID_IF_LAST_VERSION</code> check: if you buy the software today, the current version does not contain your data. You are still allowed to get a &ldquo;pro&rdquo; version until a new version is released. In that moment you are forced to update to that new version, so the software can verify your registration with the updated table. Here is a pseudo-code of that check:</p>
+
+<p>```c
+switch (check_registration(serial, customer, mail)) {
+case VALID:</p>
+
+<pre><code>// the registration is OK! activate functionalities
+activate_pro_functionality();
+break;
+</code></pre>
+
+<p>case VALID_IF_LAST_VERSION:</p>
+
+<pre><code>{
+    // check if the current version is the last, by
+    // using the internet.
+    int current_version = get_current_version();
+    int last_version = get_last_version();
+    if (current_version == last_version)
+        // OK for now: a new version is not available
+        activate_pro_functionality();
+    else
+        // else, force the user to download the new version
+        // before proceed
+        ask_download();
+}
+break;
+</code></pre>
+
+<p>case INVALID:</p>
+
+<pre><code>// registration is not valid
+handle_invalid_registration();
+break;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>The version check is done by making an HTTP request to a specific page that returns a page having only the last version number of the software. Don&rsquo;t ask me why the protection is not completely server side but involves static tables, version checks and things like that. I don&rsquo;t know!</p>
+
+<p>Anyway, this is the big picture of the registration validation functions, and this is pretty boring. Let&rsquo;s move on to the interesting part. You may notice that I provided code for the main procedure, but not for the helper functions like <code>get_license_type</code>, <code>compute_customer_number</code>, and so on. This is because I did not have to reverse them. They contains a lot of arithmetical and logical operations on registration data, and they are very difficult to understand. The good news is that we do not have to understand them, we need only to reverse them!</p>
+
+<h2>Symbolic execution</h2>
+
+<p>Symbolic execution is a way to execute programs using symbolic variables instead of concrete values. A symbolic variable is used whenever a value can be controlled by user input (this can be done by hand or determined by using taint analysis), and could be a file, standard input, a network stream, etc. Symbolic execution translates the program&rsquo;s semantics into a logical formula. Each instruction cause that formula to be updated. By solving a formula for one path, we get concrete values for the variables. If those values are used in the program, the execution reaches that program point. Dynamic Symbolic Execution (DSE) builds the logical formula at runtime, step-by-step, following one path at a time. When a branch of the program is found during the execution, the engine transforms the condition into arithmetic operations. It then chooses the T (true) or F (false) branch and updates the formula with this new constraint (or its negation). At the end of a path, the engine can backtrack and select another path to execute. For example:</p>
+
+<p>```c
+int v1 = SymVar_1, v2 = SymVar_2; // symbolic variables
+if (v1 > 0)</p>
+
+<pre><code>v2 = 0;
+</code></pre>
+
+<p>if (v2 == 0 &amp;&amp; v1 &lt;= 0)
+   error();
+```</p>
+
+<p>We want to check if <code>error</code> is reachable, by using symbolic variables <code>SymVar_1</code> and <code>SymVar_2</code>, assigned to the program&rsquo;s variables <code>v1</code> and <code>v2</code>. In line 2 we have the condition <code>v1 &gt; 0</code> and so, the symbolic engine adds a constraint <code>SymVar_1 &gt; 0</code> for the <em>true branch</em> or conversely <code>SymVar_1 &lt;= 0</code> for the <em>false branch</em>. It then continues the execution trying with the first constraint. Whenever a new path condition is reached, new constraints are added to the symbolic state, until that condition is no more satisfiable. In that case, the engine backtracks and replaces some constraints with their negation, in order to reach other code paths. The execution engine tries to cover all code paths, by solving those constraints and their negations. For each portion of the code reached, the symbolic engine outputs a test case covering that part of the program, providing concrete values for the input variables. In the particular example given, the engine continues the execution, and finds the condition <code>v2 == 0 &amp;&amp; v1 &lt;= 0</code> at line 4. The path formula becomes so: <code>SymVar_1 &gt; 0 &amp;&amp; (SymVar_2 == 0 &amp;&amp; SymVar_1 &lt;= 0)</code>, that is not satisfiable. The symbolic engine provides then values for the variables that satisfies the previous formula (<code>SymVar_1 &gt; 0</code>). For example <code>SymVar_1 = 1</code> and some random value for <code>SymVar_2</code>. The engine then backtrack to the previous branch and uses the negation of the constraint, that is <code>SymVar_1 &lt;= 0</code>. It then adds the negation of the current constraint to cover the false branch, obtaining <code>SymVar_1 &lt;= 0 &amp;&amp; (SymVar_2 != 0 || SymVar_1 &gt; 0)</code>. This is satisfiable with <code>SymVar_1 = -1</code> and <code>SymVar_2 = 0</code>. This concludes the analysis of the program paths, and our symbolic execution engine can output the following test cases:</p>
+
+<ul>
+<li><code>v1 = 1</code>;</li>
+<li><code>v1 = -1</code>, <code>v2 = 0</code>.</li>
+</ul>
+
+
+<p>Those test cases are enough to cover all the paths of the program.</p>
+
+<p>This approach is useful for testing because it helps generating test cases. It is often effective, and it does not waste computational power of your brain. You know&hellip; tests are very difficult to do effectively, and brain power is such a scarce resource!</p>
+
+<p>I don&rsquo;t want to elaborate too much on this topic because it is way too big to fit in this post. Moreover, we are not going to use symbolic execution engines for testing purpose. This just because we don&rsquo;t like to use things in the way they are intended :)</p>
+
+<p>However, I will point you to some good references in the last section. Here I can list a series of common strengths and weaknesses of symbolic execution, just to give you a little bit of background:</p>
+
+<p>Strengths:</p>
+
+<ul>
+<li>when a test case fails, the program is proven to be incorrect;</li>
+<li>automatic test cases catch errors that often are overlooked in manual written test cases (this is from <a href="http://www.doc.ic.ac.uk/~cristic/papers/klee-osdi-08.pdf">KLEE paper</a>);</li>
+<li>when it works it&rsquo;s cool :) (and this is from <a href="https://twitter.com/__x86">Jérémy</a>);</li>
+</ul>
+
+
+<p>Weaknesses:</p>
+
+<ul>
+<li>when no tests fail we are not sure everything is correct, because no proof of correctness is given; static analysis can do that when it works (and often it does not!);</li>
+<li>covering all the paths is not enough, because a variable can hold different values in one path and only some of them cause a bug;</li>
+<li>complete coverage for non trivial programs is often impossible, due to path explosion or constraint solver timeout;</li>
+<li>scaling is difficult, and execution time of the engine can suffer;</li>
+<li>undefined behavior of CPU could lead to unexpected results;</li>
+<li>&hellip; and maybe there are a lot more remarks to add.</li>
+</ul>
+
+
+<h1>KLEE</h1>
+
+<p>KLEE is a great example of a symbolic execution engine. It operates on <a href="http://llvm.org/">LLVM</a> byte code, and it is used for software verification purposes. KLEE is capable to automatically generate test cases achieving high code coverage. KLEE is also able to find memory errors such as out of bound array accesses and many other common errors. To do that, it needs an LLVM byte code version of the program, symbolic variables and (optionally) assertions. I have also prepared a <a href="https://registry.hub.docker.com/u/mbrt/klee/">Docker image</a> with <code>clang</code> and <code>klee</code> already configured and ready to use. So, you have no excuses to not try it out! Take this example function:</p>
+
+<p>```c</p>
+
+<h1>define FALSE 0</h1>
+
+<h1>define TRUE 1</h1>
+
+<p>typedef int BOOL;</p>
+
+<p>BOOL check_arg(int a) {</p>
+
+<pre><code>if (a &gt; 10)
+    return FALSE;
+else if (a &lt;= 10)
+    return TRUE;
+return FALSE; // not reachable
+</code></pre>
+
+<p>}
+```</p>
+
+<p>This is actually a silly example, I know, but let&rsquo;s pretend to verify this function with this main:</p>
+
+<p>```c</p>
+
+<h1>include &lt;assert.h></h1>
+
+<h1>include &lt;klee/klee.h></h1>
+
+<p>int main() {</p>
+
+<pre><code>int input;
+klee_make_symbolic(&amp;input, sizeof(int), "input");
+return check_arg(input);
+</code></pre>
+
+<p>}
+```</p>
+
+<p>In <code>main</code> we have a symbolic variable used as input for the function to be tested. We can also modify it to include an assertion:</p>
+
+<p>```c
+BOOL check_arg(int a) {</p>
+
+<pre><code>if (a &gt; 10)
+    return FALSE;
+else if (a &lt;= 10)
+    return TRUE;
+klee_assert(FALSE);
+return FALSE; // not reachable
+</code></pre>
+
+<p>}
+```</p>
+
+<p>We can now use <code>clang</code> to compile the program to the LLVM byte code and run the test generation with the <code>klee</code> command:</p>
+
+<p><code>
+clang -emit-llvm -g -o test.ll -c test.c
+klee test.ll
+</code></p>
+
+<p>We get this output:</p>
+
+<p>```
+KLEE: output directory is &ldquo;/work/klee-out-0&rdquo;</p>
+
+<p>KLEE: done: total instructions = 26
+KLEE: done: completed paths = 2
+KLEE: done: generated tests = 2
+```</p>
+
+<p>KLEE will generate test cases for the <code>input</code> variable, trying to cover all the possible execution paths and to make the provided assertions to fail (if any given). In this case we have two execution paths and two generated test cases, covering them. Test cases are in the output directory (in this case <code>/work/klee-out-0</code>). The soft link <code>klee-last</code> is also provided for convenience, pointing to the last output directory. Inside that directory a bunch of files were created, including the two test cases named <code>test000001.ktest</code> and <code>test000002.ktest</code>. These are binary files, which can be examined with the <code>ktest-tool</code> utility. Let&rsquo;s try it:</p>
+
+<p><code>
+$ ktest-tool --write-ints klee-last/test000001.ktest
+ktest file : 'klee-last/test000001.ktest'
+args       : ['test.ll']
+num objects: 1
+object    0: name: 'input'
+object    0: size: 4
+object    0: data: 2147483647
+</code></p>
+
+<p>And the second one:</p>
+
+<p><code>
+$ ktest-tool --write-ints klee-last/test000002.ktest
+...
+object    0: data: 0
+</code></p>
+
+<p>In these test files, KLEE reports the command line arguments, the symbolic objects along with their size and the value provided for the test. To cover the whole program, we need <code>input</code> variable to get a value greater than 10 and one below or equal. You can see that this is the case: in the first test case the value 2147483647 is used, covering the first branch, while 0 is provided for the second, covering the other branch.</p>
+
+<p>So far, so good. But what if we change the function in this way?</p>
+
+<p>```c
+BOOL check_arg(int a) {</p>
+
+<pre><code>if (a &gt; 10)
+    return FALSE;
+else if (a &lt; 10)    // instead of &lt;=
+    return TRUE;
+klee_assert(FALSE);
+return FALSE;       // now reachable
+</code></pre>
+
+<p>}
+```</p>
+
+<p>We get this output:</p>
+
+<p>```
+$ klee test.ll
+KLEE: output directory is &ldquo;/work/klee-out-2&rdquo;
+KLEE: ERROR: /work/test.c:9: ASSERTION FAIL: 0
+KLEE: NOTE: now ignoring this error at this location</p>
+
+<p>KLEE: done: total instructions = 27
+KLEE: done: completed paths = 3
+KLEE: done: generated tests = 3
+```</p>
+
+<p>And this is the <code>klee-last</code> directory contents:</p>
+
+<p><code>
+$ ls klee-last/
+assembly.ll   run.istats        test000002.assert.err  test000003.ktest
+info          run.stats         test000002.ktest       warnings.txt
+messages.txt  test000001.ktest  test000002.pc
+</code></p>
+
+<p>Note the <code>test000002.assert.err</code> file. If we examine its corresponding test file, we have:</p>
+
+<p><code>
+$ ktest-tool --write-ints klee-last/test000002.ktest
+ktest file : 'klee-last/test000002.ktest'
+...
+object    0: data: 10
+</code></p>
+
+<p>As we had expected, the assertion fails when <code>input</code> value is 10. So, as we now have three execution paths, we also have three test cases, and the whole program gets covered. KLEE provides also the possibility to replay the tests with the real program, but we are not interested in it now. You can see an usage example in this <a href="http://klee.github.io/tutorials/testing-function/#replaying-a-test-case">KLEE tutorial</a>.</p>
+
+<p>KLEE abilities to find execution paths of an application are very good. According to the <a href="http://llvm.org/pubs/2008-12-OSDI-KLEE.html">OSDI 2008 paper</a>, KLEE has been successfully used to test all 89 stand-alone programs in GNU COREUTILS and the equivalent busybox port, finding previously undiscovered bugs, errors and inconsistencies. The achieved code coverage were more than 90% per tool. Pretty awesome!</p>
+
+<p>But, you may ask: <a href="https://www.youtube.com/watch?v=j_T9YtA1mRQ">The question is, who cares?</a>. You will see it in a moment.</p>
+
+<h2>KLEE to reverse a function</h2>
+
+<p>As we have a powerful tool to find execution paths, we can use it to find the path we are interested in. As showed by the nice <a href="https://feliam.wordpress.com/2010/10/07/the-symbolic-maze/">symbolic maze</a> post of Feliam, we can use KLEE to solve a maze. The idea is simple but very powerful: flag the portion of code you interested in with a <code>klee_assert(0)</code> call, causing KLEE to highlight the test case able to reach that point. In the maze example, this is as simple as changing a <code>read</code> call with a <code>klee_make_symbolic</code> and the <code>prinft("You win!\n")</code> with the already mentioned <code>klee_assert(0)</code>. Test cases triggering this assertion are the one solving the maze!</p>
+
+<p>For a concrete example, let&rsquo;s suppose we have this function:</p>
+
+<p>```c
+int magic_computation(int input) {</p>
+
+<pre><code>for (int i = 0; i &lt; 32; ++i)
+    input ^= 1 &lt;&lt; i;
+return input;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>And we want to know for what input we get the output 253. A main that tests this could be:</p>
+
+<p>```c
+int main(int argc, char* argv[]) {</p>
+
+<pre><code>int input = atoi(argv[1]);
+int output = magic_computation(input);
+if (output == 253)
+    printf("You win!\n");
+else
+    printf("You lose\n");
+return 0;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>KLEE can resolve this problem for us, if we provide symbolic inputs and actually an assert to trigger:</p>
+
+<p>```c
+int main(int argc, char* argv[]) {</p>
+
+<pre><code>int input, result;
+klee_make_symbolic(&amp;input, sizeof(int), "input");
+result = magic_computation(input);
+if (result == 253)
+    klee_assert(0);
+return 0;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>Run KLEE and print the result:</p>
+
+<p><code>
+$ clang -emit-llvm -g -o magic.ll -c magic.c
+$ klee magic.ll
+$ ktest-tool --write-ints klee-last/test000001.ktest
+ktest file : 'klee-last/test000001.ktest'
+args       : ['magic.ll']
+num objects: 1
+object    0: name: 'input'
+object    0: size: 4
+object    0: data: -254
+</code></p>
+
+<p>The answer is -254. Let&rsquo;s test it:</p>
+
+<p><code>
+$ gcc magic.c
+$ ./a.out -254
+You win!
+</code></p>
+
+<p>Yes!</p>
+
+<h2>KLEE, libc and command line arguments</h2>
+
+<p>Not all the functions are so simple. At least we could have calls to the C standard library such as <code>strlen</code>, <code>atoi</code>, and such. We cannot link our test code with the system available C library, as it is not inspectable by KLEE. For example:</p>
+
+<p>```c
+int main(int argc, char* argv[]) {</p>
+
+<pre><code>int input = atoi(argv[1]);
+return input;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>If we run it with KLEE we get this error:</p>
+
+<p><code>
+$ clang -emit-llvm -g -o atoi.ll -c atoi.c
+$ klee atoi.ll
+KLEE: output directory is "/work/klee-out-4"
+KLEE: WARNING: undefined reference to function: atoi
+KLEE: WARNING ONCE: calling external: atoi(0)
+KLEE: ERROR: /work/atoi.c:5: failed external call: atoi
+KLEE: NOTE: now ignoring this error at this location
+...
+</code></p>
+
+<p>To fix this we can use the KLEE uClibc and POSIX runtime. Taken from the help:</p>
+
+<p><em>&ldquo;If we were running a normal native application, it would have been linked with the C library, but in this case KLEE is running the LLVM bitcode file directly. In order for KLEE to work effectively, it needs to have definitions for all the external functions the program may call. Similarly, a native application would be running on top of an operating system that provides lower level facilities like write(), which the C library uses in its implementation. As before, KLEE needs definitions for these functions in order to fully understand the program. We provide a POSIX runtime which is designed to work with KLEE and the uClibc library to provide the majority of operating system facilities used by command line applications&rdquo;</em>.</p>
+
+<p>Let&rsquo;s try to use these facilities to test our <code>atoi</code> function:</p>
+
+<p>```
+$ klee &mdash;optimize &mdash;libc=uclibc &mdash;posix-runtime atoi.ll &mdash;sym-args 0 1 3
+KLEE: NOTE: Using klee-uclibc : /usr/local/lib/klee/runtime/klee-uclibc.bca
+KLEE: NOTE: Using model: /usr/local/lib/klee/runtime/libkleeRuntimePOSIX.bca
+KLEE: output directory is &ldquo;/work/klee-out-5&rdquo;
+KLEE: WARNING ONCE: calling external: syscall(16, 0, 21505, 70495424)
+KLEE: ERROR: /tmp/klee-uclibc/libc/stdlib/stdlib.c:526: memory error: out of bound pointer
+KLEE: NOTE: now ignoring this error at this location</p>
+
+<p>KLEE: done: total instructions = 5756
+KLEE: done: completed paths = 68
+KLEE: done: generated tests = 68
+```</p>
+
+<p>And KLEE founds the possible out of bound access in our program. Because you know, our program is bugged :) Before to jump and fix our code, let me briefly explain what these new flags did:</p>
+
+<ul>
+<li><code>--optimize</code>: this is for dead code elimination. It is actually a good idea to use this flag when working with non-trivial applications, since it speeds things up;</li>
+<li><code>--libc=uclibc</code> and <code>--posix-runtime</code>: these are the aforementioned options for uClibc and POSIX runtime;</li>
+<li><code>--sym-args 0 1 3</code>: this flag tells KLEE to run the program with minimum 0 and maximum 1 argument of length 3, and make the arguments symbolic.</li>
+</ul>
+
+
+<p>Note that adding <code>atoi</code> function to our code, adds 68 execution paths to the program. Using many libc functions in our code adds complexity, so we have to use them carefully when we want to reverse complex functions.</p>
+
+<p>Let now make the program safe by adding a check to the command line argument length. Let&rsquo;s also add an assertion, because it is fun :)</p>
+
+<p>```c</p>
+
+<h1>include &lt;stdlib.h></h1>
+
+<h1>include &lt;assert.h></h1>
+
+<h1>include &lt;klee/klee.h></h1>
+
+<p>int main(int argc, char* argv[]) {</p>
+
+<pre><code>int result = argc &gt; 1 ? atoi(argv[1]) : 0;
+if (result == 42)
+    klee_assert(0);
+return result;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>We could also have written <code>klee_assert(result != 42)</code>, and get the same result. No matter what solution we adopt, now we have to run KLEE as before:</p>
+
+<p>```
+$ clang -emit-llvm -g -o atoi2.ll -c atoi2.c
+$ klee &mdash;optimize &mdash;libc=uclibc &mdash;posix-runtime atoi2.ll &mdash;sym-args 0 1 3
+KLEE: NOTE: Using klee-uclibc : /usr/local/lib/klee/runtime/klee-uclibc.bca
+KLEE: NOTE: Using model: /usr/local/lib/klee/runtime/libkleeRuntimePOSIX.bca
+KLEE: output directory is &ldquo;/work/klee-out-6&rdquo;
+KLEE: WARNING ONCE: calling external: syscall(16, 0, 21505, 53243904)
+KLEE: ERROR: /work/atoi2.c:8: ASSERTION FAIL: 0
+KLEE: NOTE: now ignoring this error at this location</p>
+
+<p>KLEE: done: total instructions = 5962
+KLEE: done: completed paths = 73
+KLEE: done: generated tests = 69
+```</p>
+
+<p>Here we go! We have fixed our bug. KLEE is also able to find an input to make the assertion fail:</p>
+
+<p><code>
+$ ls klee-last/ | grep err
+test000016.assert.err
+$ ktest-tool klee-last/test000016.ktest
+ktest file : 'klee-last/test000016.ktest'
+args       : ['atoi.ll', '--sym-args', '0', '1', '3']
+num objects: 3
+...
+object    1: name: 'arg0'
+object    1: size: 4
+object    1: data: '+42\x00'
+...
+</code></p>
+
+<p>And the answer is the string &ldquo;+42&rdquo;&hellip; as we know.</p>
+
+<p>There are many other KLEE options and functionalities, but let&rsquo;s move on and try to solve our original problem. Interested readers can find a good tutorial, for example, in <a href="http://klee.github.io/tutorials/testing-coreutils/">How to Use KLEE to Test GNU Coreutils</a>.</p>
+
+<h2>KLEE keygen</h2>
+
+<p>Now that we know basic KLEE commands, we can try to apply them to our particular case. We have understood some of the validation algorithm, but we don&rsquo;t know the computation details. They are just a mess of arithmetical and logical operations that we are tired to analyze.</p>
+
+<p>Here is our plan:</p>
+
+<ul>
+<li>we need at least a valid customer number, a serial number and a mail address;</li>
+<li>more ambitiously we want a list of them, to make a key generator.</li>
+</ul>
+
+
+<p>This is a possibility:</p>
+
+<p>```c
+// copy and paste of all the registration code
+enum {</p>
+
+<pre><code>ERROR,
+STANDARD,
+PRO
+</code></pre>
+
+<p>} license_type = ERROR;
+// &hellip;
+enum result_t check_registration(int serial, int customer_num, const char* mail);
+// &hellip;</p>
+
+<p>int main(int argc, char* argv[]) {</p>
+
+<pre><code>int serial, customer;
+char mail[10];
+enum result_t result;
+klee_make_symbolic(&amp;serial, sizeof(serial), "serial");
+klee_make_symbolic(&amp;customer, sizeof(customer), "customer");
+klee_make_symbolic(&amp;mail, sizeof(mail), "mail");
+
+valid = check_registration(serial, customer, mail);
+valid &amp;= license_type == PRO;
+klee_assert(!valid);
+</code></pre>
+
+<p>}
+```</p>
+
+<p>Super simple. Copy and paste everything, make the inputs symbolic and assert a certain result (negated, of course).</p>
+
+<p>No! That&rsquo;s not so simple. This is actually the most difficult part of the game. First of all, what do we want to copy? We don&rsquo;t have the source code. In my case I used Hex-Rays decompiler, so maybe I have cheated. When you decompile, however, you don&rsquo;t get immediately a compilable C source code, since there could be dependencies between functions, global variables, and specific Hex-Rays types. For this latter problem I&rsquo;ve prepared a <a href="https://github.com/mbrt/keygen-post/blob/master/src/ida_defs.h"><code>ida_defs.h</code></a> header, providing defines coming from IDA and from Windows headers.</p>
+
+<p>But what to copy? The high level picture of the validation algorithm I have presented is an ideal one. The <code>check_registration</code> function is actually a big set of auxiliary functions and data, very tightened with other parts of the program. Even if we now know the most interesting functions, we need to know how much of the related code, is useful or not. We cannot throw everything in our key generator, since every function brings itself other related data and functions. In this way we will end up having the whole program in it. We need to minimize the code KLEE has to analyze, otherwise it will be too difficult to have its job done.</p>
+
+<p>This is a picture of the high level workflow, as IDA proximity view proposes:</p>
+
+<p><img src="https://raw.githubusercontent.com/mbrt/keygen-post/master/known_license_func_diagram.png" alt="Known license functions" /></p>
+
+<p>and this is the overview for a single node of this schema (precisely <code>license_getType</code>):</p>
+
+<p><img src="https://raw.githubusercontent.com/mbrt/keygen-post/master/get_license_type_overview.png" alt="license_getType overview" /></p>
+
+<p>As you can imagine, the complete call graph becomes really big in the end.</p>
+
+<p>In the cleanup process I have done, a big bunch of functions removed is the one extracting and loading the table of valid mail addresses. To do this I stepped with the debugger until the table was completely loaded and then dumped the memory of the process. Then I&rsquo;ve used a nice &ldquo;export to C array&rdquo; functionality of <a href="http://www.hexworkshop.com/">HEX Workshop</a>, to export the actual piece of memory of the mail table to actual code:</p>
+
+<p>```c
+uint16_t hashHeader[8192] =
+{</p>
+
+<pre><code>0x0, 0x28, 0x12, 0x24, 0x2d, 0x2b, 0x2e, 0x23, 0x2b, 0x26,
+// ...
+</code></pre>
+
+<p>};
+int16_t hashData[1000000] =
+{</p>
+
+<pre><code>15306, 18899, 18957, -24162, 63045, -26834, -21, -39653, 271441, -5588,
+// ...
+</code></pre>
+
+<p>};
+```</p>
+
+<p>But, cutting out code is not the only problem I&rsquo;ve found in this step. External constraints must be carefully considered. For example the <a href="http://www.cplusplus.com/reference/ctime/time/">time</a> function can be handled by KLEE itself. KLEE tries to generate useful values even from that function. This is good if we want to test bugs related to a strange current time, but in our case, since the code will be executed by the program <em>at a particular time</em>, we are only interested in the value provided at that time. We don&rsquo;t want KLEE traits this function as symbolic; we only want the right time value. To solve that problem, I have replaced all the calls to <code>time</code> to a <code>my_time</code> function, returning a fixed value, defined in the source code.</p>
+
+<p>Another problem comes from the extraction of the functions from their outer context. Often code is written with <em>implicit conventions</em> in mind. These are not self-evident in the code because checks are avoided. A trivial example is the null terminator and valid ASCII characters in strings. KLEE do not assumes those constraints, but the validation code do. This is because the GUI provides only valid strings. A less trivial example is that the mail address is always passed lowercase from the GUI to the lower level application logic. This is not self-evident if you do not follow every step from the user input to the actual computations with the data.</p>
+
+<p>The solution to this latter problem is to provide those constraints to KLEE:</p>
+
+<p>```c
+char mail[10];
+char c;
+klee_make_symbolic(mail, sizeof(mail), &ldquo;mail&rdquo;);
+for (i = 0; i &lt; sizeof(mail) &ndash; 1; ++i) {</p>
+
+<pre><code>c = mail[i];
+klee_assume( (c &gt;= '0' &amp; c &lt;= '9') | (c &gt;= 'a' &amp; c &lt;= 'z') | c == '\0' );
+</code></pre>
+
+<p>}
+klee_assume(mail[sizeof(mail) &ndash; 1] == &lsquo;\0&rsquo;);
+```</p>
+
+<p>Logical operators inside <code>klee_assume</code> function are bitwise and not logical (i.e. <code>&amp;</code> and <code>|</code> instead of <code>&amp;&amp;</code> and <code>||</code>) because they are simpler, since they do not add the extra branches required by lazy operators.</p>
+
+<h2>Throw everything into KLEE</h2>
+
+<p>Having extracted all the needed functions and global data and solved all the issues with the code, we can now move on and run KLEE with our brand new test program:</p>
+
+<p><code>
+$ clang -emit-llvm -g -o attempt1.ll -c attempt1.c
+$ klee --optimize --libc=uclibc --posix-runtime attempt1.ll
+</code></p>
+
+<p>And then wait for an answer.</p>
+
+<p>And wait for another while.</p>
+
+<p>Make some coffee, drink it, come back and watch the PC heating up.</p>
+
+<p>Go out, walk around, come back, have a shower, and&hellip;. oh no! It&rsquo;s still running! OK, that&rsquo;s enough! Let&rsquo;s kill it.</p>
+
+<h2>Deconstruction approach</h2>
+
+<p>We have pretended too much from the tool. It&rsquo;s time to use the brain and ease its work a little bit.</p>
+
+<p>Let&rsquo;s decompose the big picture of the registration check presented before piece by piece. We will try to solve it bit by bit, to reduce the solution space and so, the complexity.</p>
+
+<p>Recall that the algorithm is composed by three main conditions:</p>
+
+<ul>
+<li>serial number must be valid by itself;</li>
+<li>serial number, combined with mail address have to correspond to the actual customer number;</li>
+<li>there has to be a correspondence between serial number and mail address, stored in a static table in the binary.</li>
+</ul>
+
+
+<p>Can we split them in different KLEE runs?</p>
+
+<p>Clearly the first one can be written as:</p>
+
+<p>```c</p>
+
+<h1>include &lt;assert.h></h1>
+
+<h1>include &lt;klee/klee.h></h1>
+
+<p>// include all the functions extracted from the program</p>
+
+<h1>include &ldquo;extracted_code.c&rdquo;</h1>
+
+<p>enum {</p>
+
+<pre><code>ERROR,
+STANDARD,
+PRO
+</code></pre>
+
+<p>} license_type = ERROR;</p>
+
+<p>int main(int argc, char* argv[]) {</p>
+
+<pre><code>int serial, valid;
+klee_make_symbolic(&amp;serial, sizeof(serial), "serial");
+license_type = get_license_type(serial);
+valid = (license_type == PRO);
+klee_assert(!valid);
+</code></pre>
+
+<p>}
+```</p>
+
+<p>And let&rsquo;s see if KLEE can work with this single function:</p>
+
+<p>```
+$ clang -emit-llvm -g -o serial_type.ll -c serial_type.c
+$ klee &mdash;optimize &mdash;libc=uclibc &mdash;posix-runtime serial_type.ll
+&hellip;
+KLEE: ERROR: /work/symbolic/serial_type.c:17: ASSERTION FAIL: !valid
+&hellip;</p>
+
+<p>$ ls klee-last/ | grep err
+test000019.assert.err
+$ ktest-tool &mdash;write-ints klee-last/test000019.ktest
+ktest file : &lsquo;klee-last/test000019.ktest&rsquo;
+args       : [&lsquo;serial_type.ll&rsquo;]
+num objects: 2
+object    0: name: &lsquo;model_version&rsquo;
+object    0: size: 4
+object    0: data: 1
+object    1: name: &lsquo;serial&rsquo;
+object    1: size: 4
+object    1: data: 102690141
+```</p>
+
+<p>Yes! we now have a serial number that is considered PRO by our target application.</p>
+
+<p>The third condition is less simple: we have a table in which are stored values matching mail addresses with serial numbers. The high level check is this:</p>
+
+<p>```c
+int check(int serial, char* mail) {</p>
+
+<pre><code>int index = get_index_in_mail_table(serial);
+if (index &gt; HEADER_SIZE)
+    return VALID_IF_LAST_VERSION;
+int mail_digest = compute_mail_digest(mail);
+for (int i = 0; i &lt; 3; ++i) {
+    if (mail_digest_table[index + i] == mail_digest)
+        return VALID;
+}
+return INVALID;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>This piece of code imposes constraints on our mail address and serial number, but not on the customer number. We can rewrite the checks in two parts, the one checking the serial, and the one checking the mail address:</p>
+
+<p>```c
+int check_serial(int serial, char* mail) {</p>
+
+<pre><code>int index = get_index_in_mail_table(serial);
+int valid = index &lt;= HEADER_SIZE;
+</code></pre>
+
+<p>}</p>
+
+<p>int check_mail(char* mail, int index) {</p>
+
+<pre><code>int mail_digest = compute_mail_digest(mail);
+for (int i = 0; i &lt; 3; ++i) {
+    if (mail_digest_table[index + i] == mail_digest)
+        return 1;
+}
+return 0;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>The <code>check_mail</code> function needs the index in the table as secondary input, so it is not completely independent from the other check function. However, <code>check_mail</code> can be incorporated by our successful test program used before:</p>
+
+<p>```c
+// &hellip;</p>
+
+<p>int main(int argc, char* argv[]) {</p>
+
+<pre><code>int serial, valid, index;
+klee_make_symbolic(&amp;serial, sizeof(serial), "serial");
+license_type = get_license_type(serial);
+valid = (license_type == PRO);
+// added just now
+index = get_index_in_mail_table(serial);
+valid &amp;= index &lt;= HEADER_SIZE;
+
+klee_assert(!valid);
+</code></pre>
+
+<p>}
+```</p>
+
+<p>And if we run it, we get our revised serial number, that satisfies the additional constraint:</p>
+
+<p>```
+$ clang -emit-llvm -g -o serial.ll -c serial.c
+$ klee &mdash;optimize &mdash;libc=uclibc &mdash;posix-runtime serial.ll
+&hellip;
+KLEE: ERROR: /work/symbolic/serial.c:21: ASSERTION FAIL: !valid
+&hellip;</p>
+
+<p>$ ls klee-last/ | grep err
+test000032.assert.err
+$ ktest-tool &mdash;write-ints klee-last/test000019.ktest
+&hellip;
+object    1: name: &lsquo;serial&rsquo;
+object    1: data: 120300641
+&hellip;
+```</p>
+
+<p>For those who are wondering if <code>get_index_in_mail_table</code> could return a negative index, and so possibly crash the program I can answer that they are not alone. <a href="https://twitter.com/0vercl0k">@0vercl0k</a> made me the same question, and unfortunately I have to answer a no. I tried, because I am a lazy ass, by changing the assertion above to <code>klee_assert(index &lt; 0)</code>, but it was not triggered by KLEE. I then manually checked the function&rsquo;s code and I saw a beautiful <code>if (result &lt; 0) result = 0</code>. So, the answer is no! You have not found a vulnerability in the application :(</p>
+
+<p>For the <code>check_mail</code> solution we have to provide the index of a serial, but wait&hellip; we have it! We have now a serial, so, computing the index of the table is simple as executing this:</p>
+
+<p><code>c
+int index = get_index_in_mail_table(serial);
+</code></p>
+
+<p>Therefore, given a serial number, we can solve the mail address in this way:</p>
+
+<p>```c
+// &hellip;</p>
+
+<p>int main(int argc, char* argv[]) {</p>
+
+<pre><code>int serial, valid, index;
+char mail[10];
+
+// mail is symbolic
+klee_make_symbolic(mail, sizeof(mail), "mail");
+for (i = 0; i &lt; sizeof(mail) - 1; ++i)
+{
+    c = mail[i];
+    klee_assume( (c &gt;= '0' &amp; c &lt;= '9') | (c &gt;= 'a' &amp; c &lt;= 'z') | c == '\0' );
+}
+klee_assume(mail[sizeof(mail) - 1] == '\0');
+
+// get serial as external input
+if (argc &lt; 2)
+    return 1;
+serial = atoi(argv[1]);
+
+// compute index
+index = get_index_in_mail_table(serial);
+// check validity
+valid = check_mail(mail, index);
+klee_assert(!valid);
+</code></pre>
+
+<p>}
+```</p>
+
+<p>We only have to run KLEE with the additional serial argument, providing the computed one by the previous step.</p>
+
+<p><code>
+$ clang -emit-llvm -g -o mail.ll -c mail.c
+$ klee --optimize --libc=uclibc --posix-runtime mail.ll 120300641
+...
+KLEE: ERROR: /work/symbolic/mail.c:34: ASSERTION FAIL: !valid
+...
+$ ls klee-last/ | grep err
+test000023.assert.err
+$ ktest-tool klee-last/test000023.ktest
+...
+object    1: name: 'mail'
+object    1: data: 'yrwt\x00\x00\x00\x00\x00\x00'
+...
+</code></p>
+
+<p>OK, the mail found by KLEE is &ldquo;yrwt&rdquo;. This is not a mail, of course, but in the code there is not a proper validation imposing the presence of &lsquo;@&rsquo; and &lsquo;.&rsquo; chars, so we are fine with it :)</p>
+
+<p>The last piece of the puzzle we need is the customer number. Here is the check:</p>
+
+<p>```c
+int expected_customer = compute_customer_number(serial, mail);
+if (expected_customer != customer_num)</p>
+
+<pre><code>return INVALID;
+</code></pre>
+
+<p>```</p>
+
+<p>This is simpler than before, since we already have a serial and a mail, so the only thing missing is a customer number matching those. We can compute it directly, even without symbolic execution:</p>
+
+<p>```c
+int main(int argc, char* argv[])
+{</p>
+
+<pre><code>if (argc &lt; 3)
+    return 1;
+
+int serial = atoi(argv[1]);
+char* mail = argv[2];
+int customer_number = compute_customer_number(serial, mail);
+printf("%d\n", customer_number);
+return 0;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>Let&rsquo;s execute it:</p>
+
+<p><code>
+$ gcc customer.c customer
+$ ./customer 120300641 yrwt
+1175211979
+</code></p>
+
+<p>Yeah! And if we try those numbers and mail address onto the real program, we are now legit and registered users :)</p>
+
+<h2>Want more keys?</h2>
+
+<p>We have just found one key, and that&rsquo;s cool, but what about making a keygen? KLEE is deterministic, so if you run the same code over and over you will get always the same results. So, we are now stuck with this single serial.</p>
+
+<p>To solve the problem we have to think about what variables we can move around to get different valid serial numbers to start with, and with them solve related mail addresses and compute a customer number.</p>
+
+<p>We have to add constraints to the serial generation, so that every time we can run a slightly different version of the program and get a different serial number. The simplest thing to do is to constraint <code>get_index_in_mail_table</code> to return an index inside a proper subset of the range [0, <code>HEADER_SIZE</code>] used before. For example we can divide it in equal chunks of size 5 and run the whole thing for every chunk.</p>
+
+<p>This is the modified version of the serial generation:</p>
+
+<p>```c
+int main(int argc, char* argv[]) {</p>
+
+<pre><code>int serial, min_index, max_index, valid;
+
+// get chunk bounds as external inputs
+if (argc &lt; 3)
+    return 1;
+min_index= atoi(argv[1]);
+max_index= atoi(argv[2]);
+
+// check and assert
+index = get_index_in_mail_table(serial);
+valid = index &gt;= min_index &amp;&amp; index &lt; max_index;
+klee_assert(!valid);
+return 0;
+</code></pre>
+
+<p>}
+```</p>
+
+<p>We now need a script that runs KLEE and collect the results for all those chunks. Here it is:</p>
+
+<p>```bash</p>
+
+<h1>!/bin/bash</h1>
+
+<p>MIN_INDEX=0
+MAX_INDEX=8033
+STEP=5</p>
+
+<p>echo &ldquo;Index;License;Mail;Customer&rdquo;</p>
+
+<p>for INDEX in $(seq $MIN_INDEX $STEP $MAX_INDEX); do</p>
+
+<pre><code>echo -n "$INDEX;"
+
+CHUNK_MIN=$INDEX
+CHUNK_MAX=$(( CHUNK_MIN + STEP ))
+LICENSE=$(./solve.sh serial.ll $CHUNK_MIN $CHUNK_MAX)
+if [ -z "$LICENSE" ]; then
+    echo ";;"
+    continue
+fi
+MAIL_ARRAY=$(./solve.sh mail.ll $LICENSE)
+if [ -z "$MAIL_ARRAY" ]; then
+    echo ";;"
+    continue
+fi
+MAIL=$(sed 's/\\x00//g' &lt;&lt;&lt; $MAIL_ARRAY | sed "s/'//g")
+CUSTOMER=$(./customer $LICENSE $MAIL)
+
+echo "$LICENSE;$MAIL;$CUSTOMER"
+</code></pre>
+
+<p>done
+```</p>
+
+<p>This script uses the <code>solve.sh</code> script, that does the actual work and prints the result of KLEE runs:</p>
+
+<p>```bash</p>
+
+<h1>!/bin/bash</h1>
+
+<h1>do work</h1>
+
+<p>klee $@ >/dev/null 2>&amp;1</p>
+
+<h1>print result</h1>
+
+<p>ASSERT_FILE=$(ls klee-last | grep .assert.err)
+TEST_FILE=$(basename klee-last/$ASSERT_FILE .assert.err)
+OUTPUT=$(ktest-tool &mdash;write-ints klee-last/$TEST_FILE.ktest | grep data)
+RESULT=$(sed &rsquo;s/.<em>:.</em>: //&lsquo; &lt;&lt;&lt; $OUTPUT)
+echo $RESULT</p>
+
+<h1>cleanup</h1>
+
+<p>rm -rf $(readlink -f klee-last)
+rm -f klee-last
+```</p>
+
+<p>Here is the final run:</p>
+
+<p><code>
+$ ./keygen_all.sh
+Index;License;Mail;Customer
+...
+2400;;;
+2405;115019227;4h79;1162863222
+2410;112625605;7cxd;554797040
+...
+</code></p>
+
+<p>Note that not all the serial numbers are solvable, but we are OK with that. We now have a bunch of solved registrations. We can put them in some simple GUI that exposes to the user one of them randomly.</p>
+
+<p>That&rsquo;s all folks.</p>
+
+<h1>Conclusion</h1>
+
+<p>This was a brief journey into the magic world of reversing and symbolic execution. We started with the dream to make a key generator for a real world application, and we&rsquo;ve got a list of serial numbers to put in some nice GUI (maybe with some MIDI soundtrack playing in the background to make users crazy). But this was not our purpose. The path we followed is far more interesting than ruining programmer&rsquo;s life. So, just to recap, here are the main steps we followed to generate our serial numbers:</p>
+
+<ol>
+<li>reverse the skeleton of the serial number validation procedure, understanding data and the most important functions, using a debugger, IDA, and all the reversing tools we can access;</li>
+<li>collect the functions and produce a C version of them (this could be quite difficult, unless you have access to HEX-Rays decompiler or similar tool);</li>
+<li>mark some strategic variable as symbolic and mark some strategic code path with an assert;</li>
+<li>ask KLEE to provide us the values for symbolic variables that make the assert to fail, and so to reach that code path;</li>
+<li>since the last step provides us only a single serial number, add an external input to the symbolic program, using it as additional constraint, in order to get different values for symbolic variables reaching the assert.</li>
+</ol>
+
+
+<p>The last point can be seen as quite obscure, I can admit that, but the idea is simple. Since KLEE&rsquo;s goal is to reach a path with some values for the symbolic variables, it is not interested in exploring all the possibilities for those values. We can force this exploration manually, by adding an additional constraint, and varying a parameter from run to run, and get (hopefully) different correct values for our serial number.</p>
+
+<p>I would like to thank <a href="https://twitter.com/0vercl0k">@0vercl0k</a>, <a href="https://twitter.com/jonathansalwan">@jonathansalwan</a> and <a href="https://twitter.com/__x86">@__x86</a> for their careful proofreading and good remarks!</p>
+
+<p>I hope you found this topic interesting. In the case, here are some links that can be useful for you to deepen some of the arguments touched in this post:</p>
+
+<ul>
+<li><a href="http://klee.github.io/">KLEE main site</a> in which you can find documentation, examples and some news;</li>
+<li>My <a href="https://registry.hub.docker.com/u/mbrt/klee/">Docker image of KLEE</a> that you can use as is if you want to avoid building KLEE from sources. It is an automated build (sources <a href="https://github.com/mbrt/docker-klee">here</a>) so you can use it safely;</li>
+<li>Tutorial on using KLEE onto <a href="http://www.gnu.org/software/coreutils/">GNU Coreutils</a> is <a href="http://klee.github.io/tutorials/testing-coreutils/">here</a> if you want to learn to use better KLEE for testing purposes.</li>
+<li>The Feliam&rsquo;s article <a href="https://feliam.wordpress.com/2010/10/07/the-symbolic-maze/">The Symbolic Maze!</a> that gave me insights on how to use KLEE for reversing purposes;</li>
+<li>The paper <a href="https://courses.engr.illinois.edu/cs477/king76symbolicexecution.pdf">Symbolic execution and program testing</a> of James C. King gives you a nice intro on symbolic execution topic;</li>
+<li>Slides from this <a href="http://www.seas.harvard.edu/courses/cs252/2011sp/slides/Lec13-SymExec.pdf">Harvard course</a> are useful to visualize symbolic execution with nice figures and examples;</li>
+<li><a href="http://shell-storm.org/talks/SecurityDay2015_dynamic_symbolic_execution_Jonathan_Salwan.pdf">Dynamic Binary Analysis and Instrumentation Covering a function using a DSE approach</a> by <a href="https://twitter.com/jonathansalwan">Jonathan Salwan</a>.</li>
+</ul>
+
+
+<p>Source code, examples and scripts used to produce this blog post are published in this <a href="https://github.com/mbrt/keygen-post">GitHub repo</a>.</p>
+
+<p>Cheers, <a href="https://twitter.com/brt_device">@brt_device</a>.</p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme]]></title>
@@ -68,7 +1146,7 @@ qemu-system-mipsel -M malta -kernel vmlinux-3.2.0-4-4kc-malta -hda debian_wheezy
 overclok@wildout:~/chall/nsc2014$ ./start_vm.sh
 [    0.000000] Initializing cgroup subsys cpuset
 [    0.000000] Initializing cgroup subsys cpu
-[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#109;&#x61;&#x69;&#x6c;&#x74;&#111;&#x3a;&#x64;&#101;&#x62;&#105;&#x61;&#110;&#x2d;&#107;&#x65;&#x72;&#110;&#x65;&#108;&#64;&#x6c;&#105;&#x73;&#116;&#115;&#x2e;&#100;&#101;&#98;&#105;&#97;&#x6e;&#x2e;&#111;&#x72;&#103;">&#100;&#101;&#x62;&#105;&#97;&#110;&#45;&#x6b;&#x65;&#x72;&#x6e;&#101;&#108;&#x40;&#x6c;&#105;&#115;&#x74;&#115;&#46;&#100;&#101;&#98;&#x69;&#97;&#x6e;&#46;&#x6f;&#x72;&#103;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
+[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#109;&#x61;&#105;&#108;&#x74;&#111;&#58;&#100;&#101;&#x62;&#x69;&#97;&#x6e;&#x2d;&#x6b;&#101;&#x72;&#110;&#x65;&#108;&#x40;&#108;&#x69;&#115;&#116;&#x73;&#46;&#x64;&#x65;&#x62;&#105;&#x61;&#x6e;&#x2e;&#x6f;&#x72;&#103;">&#100;&#101;&#98;&#x69;&#x61;&#x6e;&#x2d;&#x6b;&#101;&#x72;&#110;&#x65;&#108;&#x40;&#108;&#105;&#115;&#x74;&#x73;&#x2e;&#x64;&#x65;&#98;&#x69;&#97;&#110;&#46;&#111;&#114;&#103;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
 [&hellip;]
 debian-mipsel login: root
 Password:
@@ -292,7 +1370,7 @@ Let&rsquo;s not focus on what the block is actually doing though, we will develo
 </ul>
 
 
-<p>{%img center /images/taming_a_wild_nanomite-protected_mips_binary_with_symbolic_execution_no_such_crackme/father_code.png %}</p>
+<p><img class="center" src="/images/taming_a_wild_nanomite-protected_mips_binary_with_symbolic_execution_no_such_crackme/father_code.png"></p>
 
 <ul>
 <li>This <em>magic value</em> is then used to find a specific entry in an array of <em>QWORD</em>s (606 <em>QWORD</em>s which is 6 times the number of <em>break</em> instructions in the son &mdash; you will understand that a bit later don&rsquo;t worry). Basically, the code is going to loop over every single <em>QWORD</em> of this array until finding one that has the high <em>DWORD</em> equals to the <em>magic value</em>. From there you get another <em>magic value</em> which is the lowest <em>DWORD</em> of the matching <em>QWORD</em>.</li>
@@ -323,7 +1401,7 @@ Let&rsquo;s not focus on what the block is actually doing though, we will develo
 
 <p>Anyway, after this long theoretical speech let&rsquo;s have a look at some code. The first important job of the engine is to be able to parse MIPS assembly: fortunately for us this is really easy. We are directly feeding plain-text MIPS disassembly directly copied from IDA to our engine:</p>
 
-<p>```python <a href="&#109;&#97;&#105;&#108;&#116;&#x6f;&#x3a;&#109;&#105;&#110;&#x69;&#x5f;&#109;&#x69;&#112;&#115;&#95;&#x73;&#121;&#109;&#101;&#120;&#101;&#x63;&#x5f;&#101;&#x6e;&#103;&#x69;&#110;&#x65;&#46;&#112;&#121;&#x40;&#x4d;&#105;&#x6e;&#x69;&#77;&#x69;&#x70;&#x73;&#x53;&#x79;&#x6d;&#69;&#120;&#101;&#99;&#x45;&#x6e;&#x67;&#x69;&#110;&#101;&#x2e;&#x5f;&#112;&#97;&#x72;&#x73;&#x65;&#x5f;&#108;&#105;&#110;&#101;">&#x6d;&#x69;&#110;&#105;&#95;&#x6d;&#x69;&#x70;&#x73;&#x5f;&#x73;&#121;&#109;&#101;&#x78;&#x65;&#99;&#95;&#101;&#x6e;&#x67;&#x69;&#x6e;&#x65;&#46;&#x70;&#x79;&#x40;&#x4d;&#105;&#x6e;&#x69;&#77;&#105;&#x70;&#115;&#x53;&#x79;&#109;&#x45;&#x78;&#101;&#x63;&#69;&#x6e;&#x67;&#x69;&#x6e;&#x65;&#x2e;&#95;&#112;&#97;&#x72;&#x73;&#101;&#x5f;&#x6c;&#105;&#110;&#101;</a>
+<p>```python <a href="&#109;&#97;&#105;&#x6c;&#116;&#x6f;&#x3a;&#109;&#x69;&#110;&#105;&#x5f;&#109;&#x69;&#x70;&#x73;&#x5f;&#115;&#x79;&#109;&#x65;&#x78;&#x65;&#x63;&#95;&#101;&#x6e;&#103;&#105;&#110;&#x65;&#46;&#112;&#x79;&#x40;&#x4d;&#x69;&#x6e;&#x69;&#77;&#105;&#112;&#x73;&#x53;&#121;&#x6d;&#69;&#x78;&#x65;&#x63;&#69;&#x6e;&#x67;&#105;&#x6e;&#x65;&#x2e;&#95;&#x70;&#97;&#x72;&#115;&#x65;&#x5f;&#x6c;&#x69;&#x6e;&#x65;">&#109;&#105;&#110;&#x69;&#95;&#x6d;&#105;&#112;&#x73;&#x5f;&#115;&#x79;&#109;&#x65;&#x78;&#x65;&#x63;&#95;&#x65;&#110;&#x67;&#105;&#110;&#x65;&#46;&#112;&#x79;&#x40;&#77;&#x69;&#x6e;&#105;&#x4d;&#105;&#x70;&#115;&#x53;&#121;&#109;&#x45;&#x78;&#101;&#x63;&#x45;&#x6e;&#x67;&#105;&#110;&#101;&#46;&#x5f;&#112;&#97;&#x72;&#x73;&#101;&#x5f;&#108;&#x69;&#x6e;&#x65;</a>
 def _parse_line(self, line):
   addr_seg, instr, rest = line.split(None, 2)
   args = rest.split(&lsquo;,&rsquo;)
@@ -1627,7 +2705,7 @@ I hope it gave you an understandable example of symbolic execution and what you 
 
 <p>The challenge has been written by <a href="http://blog.quarkslab.com/author/serge-guelton.html">Serge Guelton</a>, a R&amp;D engineer specialized in compilers/parallel computations. At the time of writing, already eight different people manage to solve the challenge, and one of the ticket seems to have been won by <code>hackedd</code>, so congrats to him!</p>
 
-<p>{%img center /images/dissection_of_quarkslab_s_2014_security_challenge/woot.png %}</p>
+<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/woot.png"></p>
 
 <p>According to the description of the challenge Python is heavily involved, which is a good thing for at least two reasons:</p>
 
@@ -2093,11 +3171,11 @@ done!
 
 <p>Once the tool has finished its analysis we just have to check the list of unmatched function names (around one hundred of them, so it&rsquo;s pretty quick), and eventually we see that:</p>
 
-<p>{%img center /images/dissection_of_quarkslab_s_2014_security_challenge/initdo_not_run_me.png %}</p>
+<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/initdo_not_run_me.png"></p>
 
 <p>That function directly caught my eyes (you can even check it doesn&rsquo;t exist in the <em>Python278</em> source tree obviously :&ndash;)), and it appears this function is just setting up a Python module called <em>do_not_run_me</em>.</p>
 
-<p>{%img center /images/dissection_of_quarkslab_s_2014_security_challenge/initdonotrunme_assembly.png %}</p>
+<p><img class="center" src="/images/dissection_of_quarkslab_s_2014_security_challenge/initdonotrunme_assembly.png"></p>
 
 <p>Let&rsquo;s import it:</p>
 
@@ -2788,7 +3866,7 @@ quarkslab
 
 <p>An integer overflow in <em>tcpip!IppSortDestinationAddresses</em> allows to allocate a wrong-sized non-paged pool memory chunk. Below you can see the diff between the vulnerable version and the patched version.</p>
 
-<p>{%img center /images/MS10-058/diff.png %}</p>
+<p><img class="center" src="/images/MS10-058/diff.png"></p>
 
 <div class='entry-content-toc'></div>
 
@@ -3040,7 +4118,7 @@ for (i = 0x140; i &lt; 0x1140; i += 8) {</p>
 
 <p>This is illustrated in <em>payload()</em>.</p>
 
-<p>{%img center /images/MS10-058/screenshot.png %}</p>
+<p><img class="center" src="/images/MS10-058/screenshot.png"></p>
 
 <h1>Greetings</h1>
 
@@ -3075,7 +4153,7 @@ for (i = 0x140; i &lt; 0x1140; i += 8) {</p>
 
 <p><em>Kryptonite</em> was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic-preserving transformations in order to not break the original program. One of the main idea was for example to build a home-made 32 bits adder to replace the <em>add</em> LLVM instruction. Instead of having a single asm instruction generated at the end of the pipeline, you will end up with a ton of assembly codes doing only an addition. If you never read my article, and you are interested in it here it is: <a href="http://0vercl0k.tuxfamily.org/bl0g/?p=260">Obfuscation of steel: meet my Kryptonite</a>.</p>
 
-<p>{% img center /images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png %}</p>
+<p><img class="center" src="/images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png"></p>
 
 <p>In this post I wanted to show you how we can manage to break that obfuscation with symbolic execution. We are going to write a really tiny symbolic execution engine with IDAPy, and we will use Z3Py to simplify all our equations. Note that a friend of mine <a href="https://twitter.com/elvanderb">@elvanderb</a> used a similar approach (more generic though) to simplify some parts of the <a href="http://download.tuxfamily.org/overclokblog/Obfuscation%20of%20steel%3a%20meet%20my%20Kryptonite/binaries/">crackme</a> ; but he didn&rsquo;t wanted to publish it, so here is my blog post about it!</p>
 
@@ -3904,299 +4982,6 @@ EAX=arg0 + arg1
 
 
 <p>PS: By the way, for those who like weird machines, I&rsquo;ve managed to code a MOV/JMP turing machine based on <a href="http://www.cl.cam.ac.uk/~sd601/papers/mov.pdf">mov is Turing-complete</a> here: <a href="https://github.com/0vercl0k/stuffz/blob/master/fun_with_mov_turing_completeness.cpp">fun_with_mov_turing_completeness.cpp</a>!</p>
-]]></content>
-  </entry>
-  
-  <entry>
-    <title type="html"><![CDATA[Pinpointing heap-related issues: OllyDbg2 off-by-one story]]></title>
-    <link href="http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/"/>
-    <updated>2013-09-09T09:53:00-07:00</updated>
-    <id>http://doar-e.github.io/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story</id>
-    <content type="html"><![CDATA[<h1>Introduction</h1>
-
-<p>Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
-As usual, in those type of situations you fire up your debugger in order to understand what is going on under the hood.
-That was a bit weird, to give you a bit of context I was doing some inline x86 assembly, and I&rsquo;ve put on purpose an <em>int3</em> just
-before the piece of assembly code I thought was buggy. Once my file loaded in <a href="http://ollydbg.de/version2.html">OllyDbg2</a>, I hit <em>F9</em> in order to reach quickly the <em>int3</em> I&rsquo;ve slipped into the inline assembly code. A bit of single-stepping, and <strong>BOOM</strong> I got a nasty crash. It happens sometimes, and that&rsquo;s uncool.
-Then, I relaunch my binary and try to reproduce the bug: same actions and <strong>BOOM</strong> again. OK, this time it&rsquo;s cool, I got a reproducible crash in OllyDbg2.</p>
-
-<p>I like when things like that happens to me (remember the crashes I&rsquo;ve found in OllyDbg/IDA here: <a href="http://download.tuxfamily.org/overclokblog/PDB%20ain%27t%20PDD/0vercl0k_pdb_aint_pdd.pdf">PDB Ain&rsquo;t PDD</a>), it&rsquo;s always a nice exercise for me where I&rsquo;ve to:</p>
-
-<ul>
-<li>pinpoint the bug in the application: usually not trivial when it&rsquo;s a real/big application</li>
-<li>reverse-engineer the codes involved in the bug in order to figure out why it&rsquo;s happening (sometimes I got the sources, sometimes I don&rsquo;t like this time)</li>
-</ul>
-
-
-<p>In this post, I will show you how I&rsquo;ve manage to pinpoint where the bug was, using <a href="http://msdn.microsoft.com/en-us/library/windows/hardware/ff549561(v=vs.85).aspx">GFlags, PageHeap</a> and <a href="http://www.windbg.info/">WinDbg</a>. Then, we will reverse-engineer the buggy code in order to understand why the bug is happening, and how we can code a clean trigger.</p>
-
-<div class='entry-content-toc'></div>
-
-
-
-
-<!--more-->
-
-
-<h1>The crash</h1>
-
-<p>The first thing I did was to launch WinDbg to debug OllyDbg2 to debug my binary (yeah.). Once OllyDbg2 has been started up, I reproduced exactly the same steps as previously to trigger the bug and here is what WinDbg was telling me:</p>
-
-<p>```text
-HEAP[ollydbg.exe]: Heap block at 00987AB0 modified at 00987D88 past
-requested size of 2d0</p>
-
-<p>(a60.12ac): Break instruction exception &ndash; code 80000003 (first chance)
-eax=00987ab0 ebx=00987d88 ecx=76f30b42 edx=001898a5 esi=00987ab0 edi=000002d0
-eip=76f90574 esp=00189aec ebp=00189aec iopl=0         nv up ei pl nz na po nc
-cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200202
-ntdll!RtlpBreakPointHeap+0x23:
-76f90574 cc              int     3
-```</p>
-
-<p>We got a debug message from the heap allocator informing us the process has written outside of its heap buffer. The thing is, this message and the breakpoint are not triggered when the faulty write is done but triggered like <em>after</em>, when another call to the allocator has been made. At this moment, the allocator is checking the chunks are OK and if it sees something weird, it outputs a message and breaks. The stack-trace should confirm that:</p>
-
-<p><code>text
-0:000&gt; k
-ChildEBP RetAddr  
-00189aec 76f757c2 ntdll!RtlpBreakPointHeap+0x23
-00189b04 76f52a8a ntdll!RtlpCheckBusyBlockTail+0x171
-00189b24 76f915cf ntdll!RtlpValidateHeapEntry+0x116
-00189b6c 76f4ac29 ntdll!RtlDebugFreeHeap+0x9a
-00189c60 76ef34a2 ntdll!RtlpFreeHeap+0x5d
-00189c80 75d8537d ntdll!RtlFreeHeap+0x142
-00189cc8 00403cfc KERNELBASE!GlobalFree+0x27
-00189cd4 004cefc0 ollydbg!Memfree+0x3c
-...
-</code></p>
-
-<p>As we said just above, the message from the heap allocator has been probably triggered when OllyDbg2 wanted to free a chunk of memory.</p>
-
-<p>Basically, the problem with our issue is the fact we don&rsquo;t know:</p>
-
-<ul>
-<li>where the heap chunk has been allocated</li>
-<li>where the faulty write has been made</li>
-</ul>
-
-
-<p>That&rsquo;s what makes our bug not trivial to debug without the suitable tools. If you want to have more information about debugging heap issues efficiently, you should definitely read the heap chapter in <a href="http://advancedwindowsdebugging.com/">Advanced Windows Debugging</a> (cheers <a href="https://twitter.com/Ivanlef0u">`Ivan</a>).</p>
-
-<h1>Pinpointing the heap issue: introducing full PageHeap</h1>
-
-<p>In a nutshell, the full PageHeap option is really powerful to diagnostic heap issues, here are at least two reasons why:</p>
-
-<ul>
-<li>it will save where each heap chunk has been allocated</li>
-<li>it will allocate a guard page at the end of our chunk (thus when the faulty write occurs, we might have a write access exception)</li>
-</ul>
-
-
-<p>To do so, this option changes a bit how the allocator works (it adds more meta-data for each heap chunk, etc.) ; if you want more information, try at home allocating stuff with/without page heap and compare the allocated memory. Here is how looks like a heap chunk when PageHeap full is enabled:</p>
-
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/heapchunk.gif %}</p>
-
-<p>To enable it for <em>ollydbg.exe</em>, it&rsquo;s trivial. We just launch the <em>gflags.exe</em> binary (it&rsquo;s in Windbg&rsquo;s directory) and you tick the features you want to enable.</p>
-
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/gflags.png %}</p>
-
-<p>Now, you just have to relaunch your target in WinDbg, reproduce the bug and here is what I get now:</p>
-
-<p>```text
-(f48.1140): Access violation &ndash; code c0000005 (first chance)
-First chance exceptions are reported before any exception handling.
-This exception may be expected and handled.</p>
-
-<p>eax=000000b4 ebx=0f919abc ecx=0f00ed30 edx=00000b73 esi=00188694 edi=005d203c
-eip=004ce769 esp=00187d60 ebp=00187d80 iopl=0         nv up ei pl zr na pe nc
-cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00010246
-ollydbg!Findfreehardbreakslot+0x21d9:
-004ce769 891481          mov     dword ptr [ecx+eax*4],edx ds:002b:0f00f000=????????
-```</p>
-
-<p>Woot, this is very cool, because now we know <strong>exactly</strong> where something is going wrong. Let&rsquo;s get more information about the heap chunk now:</p>
-
-<p>```text
-0:000> !heap -p -a ecx</p>
-
-<pre><code>address 0f00ed30 found in
-_DPH_HEAP_ROOT @ 4f11000
-in busy allocation
-(  DPH_HEAP_BLOCK:  UserAddr  UserSize -  VirtAddr VirtSize)
-          f6f1b2c:  f00ed30        2d0 -  f00e000  2000
-
-6e858e89 verifier!AVrfDebugPageHeapAllocate+0x00000229
-76f90d96 ntdll!RtlDebugAllocateHeap+0x00000030
-76f4af0d ntdll!RtlpAllocateHeap+0x000000c4
-76ef3cfe ntdll!RtlAllocateHeap+0x0000023a
-75d84e55 KERNELBASE!GlobalAlloc+0x0000006e
-00403bef ollydbg!Memalloc+0x00000033
-004ce5ec ollydbg!Findfreehardbreakslot+0x0000205c
-004cf1df ollydbg!Getsourceline+0x0000007f
-00479e1b ollydbg!Getactivetab+0x0000241b
-0047b341 ollydbg!Setcpu+0x000006e1
-004570f4 ollydbg!Checkfordebugevent+0x00003f38
-0040fc51 ollydbg!Setstatus+0x00006441
-004ef9ef ollydbg!Pluginshowoptions+0x0001214f
-</code></pre>
-
-<p>```</p>
-
-<p>With this really handy command we got a lot of relevant information:</p>
-
-<ul>
-<li>This chunk has a size of 0x2d0 bytes. Thus, starting from 0xf00ed30 to 0xf00efff.</li>
-<li>The faulty write now makes sense: the application tries to write 4 bytes outside of its heap buffer (off-by-one on an unsigned array I guess).</li>
-<li>The memory has been allocated in <em>ollydbg!Memalloc</em> (called by <em>ollydbg!Getsourceline</em>, PDB related ?). We will study that routine later in the post.</li>
-<li>The faulty write occurs at address 0x4ce769.</li>
-</ul>
-
-
-<h1>Looking inside OllyDbg2</h1>
-
-<p>We are kind of lucky, the routines involved with this bug are quite simple to reverse-engineer, and Hexrays works just like a charm. Here is the C code (the interesting part at least) of the buggy function:</p>
-
-<p>```c ollydbg!buggy @ 0x004CE424
-signed int buggy(struct_a1 <em>u)
-{
-  int file_size;
-  unsigned int nbchar;
-  unsigned __int8 </em>file_content;
-  int nb_lines;
-  int idx;</p>
-
-<p>  // &hellip;
-  file_content = (unsigned __int8 *)Readfile(&amp;u->sourcefile, 0, &amp;file_size);
-  // &hellip;
-  nbchar = 0;
-  nb_lines = 0;
-  while(nbchar &lt; file_size)
-  {</p>
-
-<pre><code>// doing stuff to count all the char, and all the lines in the file
-// ...
-</code></pre>
-
-<p>  }</p>
-
-<p>  u->mem1_ov = (unsigned int *)Memalloc(12 * (nb_lines + 1), 3);
-  u->mem2 = Memalloc(8 * (nb_lines + 1), 3);
-  if ( u->mem1_ov &amp;&amp; u->mem2 )
-  {</p>
-
-<pre><code>nbchar = 0;
-nb_lines2 = 0;
-while ( nbchar &lt; file_size &amp;&amp; file_content[nbchar] )
-{
-  u-&gt;mem1_ov[3 * nb_lines2] = nbchar;
-  u-&gt;mem1_ov[3 * nb_lines2 + 1] = -1;
-  if ( nbchar &lt; file_size )
-  {
-    while ( file_content[nbchar] )
-    {
-        // Consume a line, increment stuff until finding a '\r' or '\n' sequence
-        // ..
-    }
-  }
-  ++nb_lines2;
-}
-// BOOM!
-u-&gt;mem1_ov[3 * nb_lines2] = nbchar;
-// ...
-</code></pre>
-
-<p>  }
-}
-```</p>
-
-<p>So, let me explain what this routine does:</p>
-
-<ul>
-<li>This routine is called by OllyDbg2 when it finds a PDB database for your binary and, more precisely, when in this database it finds the path of your application&rsquo;s source codes. It&rsquo;s useful to have those kind of information when you are debugging, OllyDbg2 is able to tell you at which line of your C code you&rsquo;re currently at.</li>
-</ul>
-
-
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/source.png %}</p>
-
-<ul>
-<li>At line 10: &ldquo;u->Sourcefile&rdquo; is a string pointer on the path of your source code (found in the PDB database). The routine is just reading the whole file, giving you its size, and a pointer on the file content now stored memory.</li>
-<li>From line 12 to 18: we have a loop counting the total number of lines in your source code.</li>
-<li><p>At line 20: we have the allocation of our chunk. It allocates 12*(nb_lines + 1) bytes. We saw previously in WinDbg that the size of the chunk was 0x2d0: it should means we have exactly ((0x2d0 / 12) &ndash; 1) = 59 lines in our source code:
-<code>text
-D:\TODO\crashes\odb2-OOB-write-heap&gt;wc -l OOB-write-heap-OllyDbg2h-trigger.c
-59 OOB-write-heap-OllyDbg2h-trigger.c
-</code>
-Good.</p></li>
-<li><p>From line 24 to 39: we have a loop similar to previous one. It&rsquo;s basically counting lines again and initializing the memory we just allocated with some information.</p></li>
-<li>At line 41: we have our bug. Somehow, we can manage to get out of the loop with &ldquo;nb_lines2 = nb_lines + 1&rdquo;. That means the line 41 will try to write one cell outside of our buffer. In our case, if we have &ldquo;nb_lines2 = 60&rdquo; and our heap buffer starting at 0xf00ed30, it means we&rsquo;re going to try to write at (0xf00ed30+60<em>3</em>4)=0xf00f000. That&rsquo;s exactly what we saw earlier.</li>
-</ul>
-
-
-<p>At this point, we have fully explained the bug. If you want to do some dynamic analysis in order to follow important routines, I&rsquo;ve made several breakpoints, here they are:
-<code>text
-bp 004CF1BF ".printf \"[Getsourceline] %mu\\n[Getsourceline] struct: 0x%x\", poi(esp + 4), eax ; .if(eax != 0){ .if(poi(eax + 0x218) == 0){ .printf \" field: 0x%x\\n\", poi(eax + 0x218); gc }; } .else { .printf \"\\n\\n\" ; gc; };"
-bp 004CE5DD ".printf \"[buggy] Nbline: 0x%x \\n\", eax ; gc"
-bp 004CE5E7 ".printf \"[buggy] Nbbytes to alloc: 0x%x \\n\", poi(esp) ; gc"
-bp 004CE742 ".printf \"[buggy] NbChar: 0x%x / 0x%x - Idx: 0x%x\\n\", eax, poi(ebp - 1C), poi(ebp - 8) ; gc"
-bp 004CE769 ".printf \"[buggy] mov [0x%x + 0x%x], 0x%x\\n\", ecx, eax * 4, edx"
-</code></p>
-
-<p>On my environment, it gives me something like:</p>
-
-<p>```text
-[Getsourceline] f:\dd\vctools\crt_bld\self_x86\crt\src\crt0.c
-[Getsourceline] struct: 0x0
-[&hellip;]
-[Getsourceline] oob-write-heap-ollydbg2h-trigger.c
-[Getsourceline] struct: 0xaf00238 field: 0x0
-[buggy] Nbline: 0x3b
-[buggy] Nbbytes to alloc: 0x2d0
-[buggy] NbChar: 0x0 / 0xb73 &ndash; Idx: 0x0
-[buggy] NbChar: 0x4 / 0xb73 &ndash; Idx: 0x1
-[buggy] NbChar: 0x5a / 0xb73 &ndash; Idx: 0x2
-[buggy] NbChar: 0xa4 / 0xb73 &ndash; Idx: 0x3
-[buggy] NbChar: 0xee / 0xb73 &ndash; Idx: 0x4
-[&hellip;]
-[buggy] NbChar: 0xb73 / 0xb73 &ndash; Idx: 0x3c
-[buggy] mov [0xb031d30 + 0x2d0], 0xb73</p>
-
-<p>eax=000000b4 ebx=12dfed04 ecx=0b031d30 edx=00000b73 esi=00188694 edi=005d203c
-eip=004ce769 esp=00187d60 ebp=00187d80 iopl=0         nv up ei pl zr na pe nc
-cs=0023  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00200246
-ollydbg!Findfreehardbreakslot+0x21d9:
-004ce769 891481          mov     dword ptr [ecx+eax*4],edx ds:002b:0b032000=????????
-```</p>
-
-<h1>Repro@home</h1>
-
-<ol>
-<li>Download the last version of OllyDbg2 <a href="http://ollydbg.de/odbg201h.zip">here</a>, extract the files</li>
-<li>Download the three files from <a href="https://github.com/0vercl0k/stuffz/tree/master/odb2-OOB-write-heap">odb2-oob-write-heap</a>, put them in the same directory than <em>ollydbg.exe</em> is</li>
-<li>Launch WinDbg and open the last version of OllyDbg2</li>
-<li>Set your breakpoints (or not), F5 to launch</li>
-<li>Open the trigger in OllyDbg2</li>
-<li>Press F9 when the binary is fully loaded</li>
-<li><strong>BOOM</strong> :). Note that you may not have a visible crash (remember, that&rsquo;s what made our bug not trivial to debug without full pageheap). Try to poke around with the debugger: restarting the binary or closing OllyDbg2 should be enough to get the message from the heap allocator in your debugger.</li>
-</ol>
-
-
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/woot.png %}</p>
-
-<h1>Fun fact</h1>
-
-<p>You can even trigger the bug with only the binary and the PDB database. The trick is to tamper the PDB, and more precisely where it keeps the path to your source code. That way, when OllyDbg2 will load the PDB database, it will read that same database like it&rsquo;s the source code of the application. Awesome.</p>
-
-<p>{% img center /images/pinpointing_heap_related_issues__ollydbg2_off_by_one_story/fun.png %}</p>
-
-<h1>Conclusion</h1>
-
-<p>Those kind of crashes are always an occasion to learn new things. Either it&rsquo;s trivial to debug/repro and you won&rsquo;t waste much of your time, or it&rsquo;s not and you will improve your debugger/reverse-engineer-fu on a <strong>real</strong> example. So do it!</p>
-
-<p>By the way, I doubt the bug is exploitable and I didn&rsquo;t even try to exploit it ; but if you succeed I would be really glad to read your write-up! But if we assume it&rsquo;s exploitable for a second, you would still have to distribute the PDB file, the source file (I guess it would give you more control than with the PDB) and the binary to your victim. So no big deal.</p>
-
-<p>If you are too lazy to debug your crashes, send them to me, I may have a look at it!</p>
-
-<p>Oh, I almost forgot: <a href="http://doar-e.github.io/about/">we are still looking for motivated contributors to write cool posts</a>, spread the world.</p>
 ]]></content>
   </entry>
   
