@@ -8,7 +8,7 @@ categories: [reverse-engineering, symbolic execution]
 toc: true
 ---
 # Introduction
-In the past weeks I enjoyed working on reversing a software (don't ask me the name), to study how serial numbers are validated. The story the user has to follow is pretty common: download the trial, pay, get the serial number, use it in the annoying nag screen to get the fully functional version of the software.
+In the past weeks I enjoyed working on reversing a piece of software (don't ask me the name), to study how serial numbers are validated. The story the user has to follow is pretty common: download the trial, pay, get the serial number, use it in the annoying nag screen to get the fully functional version of the software.
 
 Since my purpose is to not damage the company developing the software, I will not mention the name of the software, nor I will publish the final key generator in binary form, nor its source code. My goal is instead to study a real case of serial number validation, and to highlight its weaknesses.
 
@@ -19,12 +19,12 @@ In this post we are going to take a look at the steps I followed to reverse the 
 <!--more-->
 
 ## Getting acquainted
-The software is an `x86` executable, with no anti-debugging, nor anti-reversing techniques. When started it presents a nag screen asking for a registration composed by: customer number, serial number and a mail address. This is a fairly common software.
+The software is an `x86` executable, with no anti-debugging, nor anti-reversing techniques. When started it presents a nag screen asking for a registration composed by: customer number, serial number and a mail address. This is fairly common in software.
 
 ## Tools of the trade
 First steps in the reversing are devoted to find all the interesting functions to analyze. To do this I used [IDA Pro](https://www.hex-rays.com/products/ida/) with Hex-Rays decompiler, and the [WinDbg](https://msdn.microsoft.com/en-us/library/windows/hardware/ff551063%28v=vs.85%29.aspx) debugger. For the last part I used [KLEE](http://klee.github.io/) symbolic virtual machine under Linux, [gcc compiler](https://gcc.gnu.org/) and some bash scripting. The actual key generator was a simple [WPF](https://msdn.microsoft.com/en-us/library/ms754130%28v=vs.100%29.aspx) application.
 
-Let me skip the first part, since it is not very interesting. You can find many other articles on the web that can guide you trough basic reversing techniques with IDA Pro. I only kept in mind some simple rules, while going forward:
+Let me skip the first part, since it is not very interesting. You can find many other articles on the web that can guide you through basic reversing techniques with IDA Pro. I only kept in mind some simple rules, while going forward:
 
 * always rename functions that uses interesting data, even if you don't know precisely what they do. A name like `license_validation_unknown_8` is always better than a default like `sub_46fa39`;
 * similarly, rename data whenever you find it interesting;
@@ -33,7 +33,7 @@ Let me skip the first part, since it is not very interesting. You can find many 
 * validate your beliefs with the debugger if possible. For example, if you think a variable contains the serial, break with the debugger and see if it is the case.
 
 ## Big picture
-When I collected the most interesting functions, I tried to understand the high level flow and the simpler functions. Here are the main variables and types used in the validation process. As a note for the reader: most of them have been purged from uninteresting details, for the sake of simplicity.
+When I collected the most interesting functions, I tried to understand the high level flow and the simpler functions. Here are the main variables and types used in the validation process. As a note for the reader: most of them have been purged of uninteresting details, for the sake of simplicity.
 
 ```c
 enum {
@@ -94,7 +94,7 @@ The validation is divided in three main parts:
 * serial number, combined with mail address has to correspond to the actual customer number;
 * there has to be a correspondence between serial number and mail address, stored in a static table in the binary.
 
-The last point is a little bit unusual. Let me restate it in this way: whenever a customer buy the software, the customer table gets updated with its data and become available in the *next* version of the software (because it is embedded in the binary and not downloaded trough the internet). This explains the `VALID_IF_LAST_VERSION` check: if you buy the software today, the current version does not contain your data. You are still allowed to get a "pro" version until a new version is released. In that moment you are forced to update to that new version, so the software can verify your registration with the updated table. Here is a pseudo-code of that check:
+The last point is a little bit unusual. Let me restate it in this way: whenever a customer buys the software, the customer table gets updated with its data and become available in the *next* version of the software (because it is embedded in the binary and not downloaded trough the internet). This explains the `VALID_IF_LAST_VERSION` check: if you buy the software today, the current version does not contain your data. You are still allowed to get a "pro" version until a new version is released. In that moment you are forced to update to that new version, so the software can verify your registration with the updated table. Here is a pseudo-code of that check:
 
 ```c
 switch (check_registration(serial, customer, mail)) {
@@ -126,7 +126,7 @@ case INVALID:
 
 The version check is done by making an HTTP request to a specific page that returns a page having only the last version number of the software. Don't ask me why the protection is not completely server side but involves static tables, version checks and things like that. I don't know!
 
-Anyway, this is the big picture of the registration validation functions, and this is pretty boring. Let's move on to the interesting part. You may notice that I provided code for the main procedure, but not for the helper functions like `get_license_type`, `compute_customer_number`, and so on. This is because I did not have to reverse them. They contains a lot of arithmetical and logical operations on registration data, and they are very difficult to understand. The good news is that we do not have to understand them, we need only to reverse them!
+Anyway, this is the big picture of the registration validation functions, and this is pretty boring. Let's move on to the interesting part. You may notice that I provided code for the main procedure, but not for the helper functions like `get_license_type`, `compute_customer_number`, and so on. This is because I did not have to reverse them. They contain a lot of arithmetical and logical operations on registration data, and they are very difficult to understand. The good news is that we do not have to understand them, we need only to reverse them!
 
 ## Symbolic execution
 Symbolic execution is a way to execute programs using symbolic variables instead of concrete values. A symbolic variable is used whenever a value can be controlled by user input (this can be done by hand or determined by using taint analysis), and could be a file, standard input, a network stream, etc. Symbolic execution translates the program's semantics into a logical formula. Each instruction cause that formula to be updated. By solving a formula for one path, we get concrete values for the variables. If those values are used in the program, the execution reaches that program point. Dynamic Symbolic Execution (DSE) builds the logical formula at runtime, step-by-step, following one path at a time. When a branch of the program is found during the execution, the engine transforms the condition into arithmetic operations. It then chooses the T (true) or F (false) branch and updates the formula with this new constraint (or its negation). At the end of a path, the engine can backtrack and select another path to execute. For example:
@@ -148,7 +148,7 @@ Those test cases are enough to cover all the paths of the program.
 
 This approach is useful for testing because it helps generating test cases. It is often effective, and it does not waste computational power of your brain. You know... tests are very difficult to do effectively, and brain power is such a scarce resource!
 
-I don't want to elaborate too much on this topic because it is way too big to fit in this post. Moreover, we are not going to use symbolic execution engines for testing purpose. This just because we don't like to use things in the way they are intended :)
+I don't want to elaborate too much on this topic because it is way too big to fit in this post. Moreover, we are not going to use symbolic execution engines for testing purpose. This is just because we don't like to use things in the way they are intended :)
 
 However, I will point you to some good references in the last section. Here I can list a series of common strengths and weaknesses of symbolic execution, just to give you a little bit of background:
 
@@ -293,9 +293,9 @@ ktest file : 'klee-last/test000002.ktest'
 object    0: data: 10
 ```
 
-As we had expected, the assertion fails when `input` value is 10. So, as we now have three execution paths, we also have three test cases, and the whole program gets covered. KLEE provides also the possibility to replay the tests with the real program, but we are not interested in it now. You can see an usage example in this [KLEE tutorial](http://klee.github.io/tutorials/testing-function/#replaying-a-test-case).
+As we had expected, the assertion fails when `input` value is 10. So, as we now have three execution paths, we also have three test cases, and the whole program gets covered. KLEE provides also the possibility to replay the tests with the real program, but we are not interested in it now. You can see a usage example in this [KLEE tutorial](http://klee.github.io/tutorials/testing-function/#replaying-a-test-case).
 
-KLEE abilities to find execution paths of an application are very good. According to the [OSDI 2008 paper](http://llvm.org/pubs/2008-12-OSDI-KLEE.html), KLEE has been successfully used to test all 89 stand-alone programs in GNU COREUTILS and the equivalent busybox port, finding previously undiscovered bugs, errors and inconsistencies. The achieved code coverage were more than 90% per tool. Pretty awesome!
+KLEE's abilities to find execution paths of an application are very good. According to the [OSDI 2008 paper](http://llvm.org/pubs/2008-12-OSDI-KLEE.html), KLEE has been successfully used to test all 89 stand-alone programs in GNU COREUTILS and the equivalent busybox port, finding previously undiscovered bugs, errors and inconsistencies. The achieved code coverage were more than 90% per tool. Pretty awesome!
 
 But, you may ask: [The question is, who cares?](https://www.youtube.com/watch?v=j_T9YtA1mRQ). You will see it in a moment.
 
@@ -537,7 +537,7 @@ int16_t hashData[1000000] =
 
 But, cutting out code is not the only problem I've found in this step. External constraints must be carefully considered. For example the [time](http://www.cplusplus.com/reference/ctime/time/) function can be handled by KLEE itself. KLEE tries to generate useful values even from that function. This is good if we want to test bugs related to a strange current time, but in our case, since the code will be executed by the program *at a particular time*, we are only interested in the value provided at that time. We don't want KLEE traits this function as symbolic; we only want the right time value. To solve that problem, I have replaced all the calls to `time` to a `my_time` function, returning a fixed value, defined in the source code.
 
-Another problem comes from the extraction of the functions from their outer context. Often code is written with *implicit conventions* in mind. These are not self-evident in the code because checks are avoided. A trivial example is the null terminator and valid ASCII characters in strings. KLEE do not assumes those constraints, but the validation code do. This is because the GUI provides only valid strings. A less trivial example is that the mail address is always passed lowercase from the GUI to the lower level application logic. This is not self-evident if you do not follow every step from the user input to the actual computations with the data.
+Another problem comes from the extraction of the functions from their outer context. Often code is written with *implicit conventions* in mind. These are not self-evident in the code because checks are avoided. A trivial example is the null terminator and valid ASCII characters in strings. KLEE does not assume those constraints, but the validation code does. This is because the GUI provides only valid strings. A less trivial example is that the mail address is always passed lowercase from the GUI to the lower level application logic. This is not self-evident if you do not follow every step from the user input to the actual computations with the data.
 
 The solution to this latter problem is to provide those constraints to KLEE:
 
@@ -573,7 +573,7 @@ Go out, walk around, come back, have a shower, and.... oh no! It's still running
 
 ## Deconstruction approach
 
-We have pretended too much from the tool. It's time to use the brain and ease its work a little bit.
+We have assumed too much from the tool. It's time to use the brain and ease its work a little bit.
 
 Let's decompose the big picture of the registration check presented before piece by piece. We will try to solve it bit by bit, to reduce the solution space and so, the complexity.
 
@@ -703,7 +703,7 @@ object    1: data: 120300641
 ...
 ```
 
-For those who are wondering if `get_index_in_mail_table` could return a negative index, and so possibly crash the program I can answer that they are not alone. [@0vercl0k](https://twitter.com/0vercl0k) made me the same question, and unfortunately I have to answer a no. I tried, because I am a lazy ass, by changing the assertion above to `klee_assert(index < 0)`, but it was not triggered by KLEE. I then manually checked the function's code and I saw a beautiful `if (result < 0) result = 0`. So, the answer is no! You have not found a vulnerability in the application :(
+For those who are wondering if `get_index_in_mail_table` could return a negative index, and so possibly crash the program I can answer that they are not alone. [@0vercl0k](https://twitter.com/0vercl0k) asked me the same question, and unfortunately I have to answer a no. I tried, because I am a lazy ass, by changing the assertion above to `klee_assert(index < 0)`, but it was not triggered by KLEE. I then manually checked the function's code and I saw a beautiful `if (result < 0) result = 0`. So, the answer is no! You have not found a vulnerability in the application :(
 
 For the `check_mail` solution we have to provide the index of a serial, but wait... we have it! We have now a serial, so, computing the index of the table is simple as executing this:
 
