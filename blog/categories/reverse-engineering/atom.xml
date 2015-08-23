@@ -4,7 +4,7 @@
   <title><![CDATA[Category: reverse-engineering | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/reverse-engineering/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2015-08-19T19:03:45-07:00</updated>
+  <updated>2015-08-22T18:37:45-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -20,7 +20,7 @@
     <id>http://doar-e.github.io/blog/2015/08/18/keygenning-with-klee</id>
     <content type="html"><![CDATA[<h1>Introduction</h1>
 
-<p>In the past weeks I enjoyed working on reversing a software (don&rsquo;t ask me the name), to study how serial numbers are validated. The story the user has to follow is pretty common: download the trial, pay, get the serial number, use it in the annoying nag screen to get the fully functional version of the software.</p>
+<p>In the past weeks I enjoyed working on reversing a piece of software (don&rsquo;t ask me the name), to study how serial numbers are validated. The story the user has to follow is pretty common: download the trial, pay, get the serial number, use it in the annoying nag screen to get the fully functional version of the software.</p>
 
 <p>Since my purpose is to not damage the company developing the software, I will not mention the name of the software, nor I will publish the final key generator in binary form, nor its source code. My goal is instead to study a real case of serial number validation, and to highlight its weaknesses.</p>
 
@@ -36,13 +36,13 @@
 
 <h2>Getting acquainted</h2>
 
-<p>The software is an <code>x86</code> executable, with no anti-debugging, nor anti-reversing techniques. When started it presents a nag screen asking for a registration composed by: customer number, serial number and a mail address. This is a fairly common software.</p>
+<p>The software is an <code>x86</code> executable, with no anti-debugging, nor anti-reversing techniques. When started it presents a nag screen asking for a registration composed by: customer number, serial number and a mail address. This is fairly common in software.</p>
 
 <h2>Tools of the trade</h2>
 
 <p>First steps in the reversing are devoted to find all the interesting functions to analyze. To do this I used <a href="https://www.hex-rays.com/products/ida/">IDA Pro</a> with Hex-Rays decompiler, and the <a href="https://msdn.microsoft.com/en-us/library/windows/hardware/ff551063%28v=vs.85%29.aspx">WinDbg</a> debugger. For the last part I used <a href="http://klee.github.io/">KLEE</a> symbolic virtual machine under Linux, <a href="https://gcc.gnu.org/">gcc compiler</a> and some bash scripting. The actual key generator was a simple <a href="https://msdn.microsoft.com/en-us/library/ms754130%28v=vs.100%29.aspx">WPF</a> application.</p>
 
-<p>Let me skip the first part, since it is not very interesting. You can find many other articles on the web that can guide you trough basic reversing techniques with IDA Pro. I only kept in mind some simple rules, while going forward:</p>
+<p>Let me skip the first part, since it is not very interesting. You can find many other articles on the web that can guide you through basic reversing techniques with IDA Pro. I only kept in mind some simple rules, while going forward:</p>
 
 <ul>
 <li>always rename functions that uses interesting data, even if you don&rsquo;t know precisely what they do. A name like <code>license_validation_unknown_8</code> is always better than a default like <code>sub_46fa39</code>;</li>
@@ -55,7 +55,7 @@
 
 <h2>Big picture</h2>
 
-<p>When I collected the most interesting functions, I tried to understand the high level flow and the simpler functions. Here are the main variables and types used in the validation process. As a note for the reader: most of them have been purged from uninteresting details, for the sake of simplicity.</p>
+<p>When I collected the most interesting functions, I tried to understand the high level flow and the simpler functions. Here are the main variables and types used in the validation process. As a note for the reader: most of them have been purged of uninteresting details, for the sake of simplicity.</p>
 
 <p>```c
 enum {</p>
@@ -133,7 +133,7 @@ return INVALID;
 </ul>
 
 
-<p>The last point is a little bit unusual. Let me restate it in this way: whenever a customer buy the software, the customer table gets updated with its data and become available in the <em>next</em> version of the software (because it is embedded in the binary and not downloaded trough the internet). This explains the <code>VALID_IF_LAST_VERSION</code> check: if you buy the software today, the current version does not contain your data. You are still allowed to get a &ldquo;pro&rdquo; version until a new version is released. In that moment you are forced to update to that new version, so the software can verify your registration with the updated table. Here is a pseudo-code of that check:</p>
+<p>The last point is a little bit unusual. Let me restate it in this way: whenever a customer buys the software, the customer table gets updated with its data and become available in the <em>next</em> version of the software (because it is embedded in the binary and not downloaded trough the internet). This explains the <code>VALID_IF_LAST_VERSION</code> check: if you buy the software today, the current version does not contain your data. You are still allowed to get a &ldquo;pro&rdquo; version until a new version is released. In that moment you are forced to update to that new version, so the software can verify your registration with the updated table. Here is a pseudo-code of that check:</p>
 
 <p>```c
 switch (check_registration(serial, customer, mail)) {
@@ -174,7 +174,7 @@ break;
 
 <p>The version check is done by making an HTTP request to a specific page that returns a page having only the last version number of the software. Don&rsquo;t ask me why the protection is not completely server side but involves static tables, version checks and things like that. I don&rsquo;t know!</p>
 
-<p>Anyway, this is the big picture of the registration validation functions, and this is pretty boring. Let&rsquo;s move on to the interesting part. You may notice that I provided code for the main procedure, but not for the helper functions like <code>get_license_type</code>, <code>compute_customer_number</code>, and so on. This is because I did not have to reverse them. They contains a lot of arithmetical and logical operations on registration data, and they are very difficult to understand. The good news is that we do not have to understand them, we need only to reverse them!</p>
+<p>Anyway, this is the big picture of the registration validation functions, and this is pretty boring. Let&rsquo;s move on to the interesting part. You may notice that I provided code for the main procedure, but not for the helper functions like <code>get_license_type</code>, <code>compute_customer_number</code>, and so on. This is because I did not have to reverse them. They contain a lot of arithmetical and logical operations on registration data, and they are very difficult to understand. The good news is that we do not have to understand them, we need only to reverse them!</p>
 
 <h2>Symbolic execution</h2>
 
@@ -203,7 +203,7 @@ if (v1 > 0)</p>
 
 <p>This approach is useful for testing because it helps generating test cases. It is often effective, and it does not waste computational power of your brain. You know&hellip; tests are very difficult to do effectively, and brain power is such a scarce resource!</p>
 
-<p>I don&rsquo;t want to elaborate too much on this topic because it is way too big to fit in this post. Moreover, we are not going to use symbolic execution engines for testing purpose. This just because we don&rsquo;t like to use things in the way they are intended :)</p>
+<p>I don&rsquo;t want to elaborate too much on this topic because it is way too big to fit in this post. Moreover, we are not going to use symbolic execution engines for testing purpose. This is just because we don&rsquo;t like to use things in the way they are intended :)</p>
 
 <p>However, I will point you to some good references in the last section. Here I can list a series of common strengths and weaknesses of symbolic execution, just to give you a little bit of background:</p>
 
@@ -372,9 +372,9 @@ ktest file : 'klee-last/test000002.ktest'
 object    0: data: 10
 </code></p>
 
-<p>As we had expected, the assertion fails when <code>input</code> value is 10. So, as we now have three execution paths, we also have three test cases, and the whole program gets covered. KLEE provides also the possibility to replay the tests with the real program, but we are not interested in it now. You can see an usage example in this <a href="http://klee.github.io/tutorials/testing-function/#replaying-a-test-case">KLEE tutorial</a>.</p>
+<p>As we had expected, the assertion fails when <code>input</code> value is 10. So, as we now have three execution paths, we also have three test cases, and the whole program gets covered. KLEE provides also the possibility to replay the tests with the real program, but we are not interested in it now. You can see a usage example in this <a href="http://klee.github.io/tutorials/testing-function/#replaying-a-test-case">KLEE tutorial</a>.</p>
 
-<p>KLEE abilities to find execution paths of an application are very good. According to the <a href="http://llvm.org/pubs/2008-12-OSDI-KLEE.html">OSDI 2008 paper</a>, KLEE has been successfully used to test all 89 stand-alone programs in GNU COREUTILS and the equivalent busybox port, finding previously undiscovered bugs, errors and inconsistencies. The achieved code coverage were more than 90% per tool. Pretty awesome!</p>
+<p>KLEE&rsquo;s abilities to find execution paths of an application are very good. According to the <a href="http://llvm.org/pubs/2008-12-OSDI-KLEE.html">OSDI 2008 paper</a>, KLEE has been successfully used to test all 89 stand-alone programs in GNU COREUTILS and the equivalent busybox port, finding previously undiscovered bugs, errors and inconsistencies. The achieved code coverage were more than 90% per tool. Pretty awesome!</p>
 
 <p>But, you may ask: <a href="https://www.youtube.com/watch?v=j_T9YtA1mRQ">The question is, who cares?</a>. You will see it in a moment.</p>
 
@@ -652,7 +652,7 @@ int16_t hashData[1000000] =
 
 <p>But, cutting out code is not the only problem I&rsquo;ve found in this step. External constraints must be carefully considered. For example the <a href="http://www.cplusplus.com/reference/ctime/time/">time</a> function can be handled by KLEE itself. KLEE tries to generate useful values even from that function. This is good if we want to test bugs related to a strange current time, but in our case, since the code will be executed by the program <em>at a particular time</em>, we are only interested in the value provided at that time. We don&rsquo;t want KLEE traits this function as symbolic; we only want the right time value. To solve that problem, I have replaced all the calls to <code>time</code> to a <code>my_time</code> function, returning a fixed value, defined in the source code.</p>
 
-<p>Another problem comes from the extraction of the functions from their outer context. Often code is written with <em>implicit conventions</em> in mind. These are not self-evident in the code because checks are avoided. A trivial example is the null terminator and valid ASCII characters in strings. KLEE do not assumes those constraints, but the validation code do. This is because the GUI provides only valid strings. A less trivial example is that the mail address is always passed lowercase from the GUI to the lower level application logic. This is not self-evident if you do not follow every step from the user input to the actual computations with the data.</p>
+<p>Another problem comes from the extraction of the functions from their outer context. Often code is written with <em>implicit conventions</em> in mind. These are not self-evident in the code because checks are avoided. A trivial example is the null terminator and valid ASCII characters in strings. KLEE does not assume those constraints, but the validation code does. This is because the GUI provides only valid strings. A less trivial example is that the mail address is always passed lowercase from the GUI to the lower level application logic. This is not self-evident if you do not follow every step from the user input to the actual computations with the data.</p>
 
 <p>The solution to this latter problem is to provide those constraints to KLEE:</p>
 
@@ -691,7 +691,7 @@ $ klee --optimize --libc=uclibc --posix-runtime attempt1.ll
 
 <h2>Deconstruction approach</h2>
 
-<p>We have pretended too much from the tool. It&rsquo;s time to use the brain and ease its work a little bit.</p>
+<p>We have assumed too much from the tool. It&rsquo;s time to use the brain and ease its work a little bit.</p>
 
 <p>Let&rsquo;s decompose the big picture of the registration check presented before piece by piece. We will try to solve it bit by bit, to reduce the solution space and so, the complexity.</p>
 
@@ -846,7 +846,7 @@ object    1: data: 120300641
 &hellip;
 ```</p>
 
-<p>For those who are wondering if <code>get_index_in_mail_table</code> could return a negative index, and so possibly crash the program I can answer that they are not alone. <a href="https://twitter.com/0vercl0k">@0vercl0k</a> made me the same question, and unfortunately I have to answer a no. I tried, because I am a lazy ass, by changing the assertion above to <code>klee_assert(index &lt; 0)</code>, but it was not triggered by KLEE. I then manually checked the function&rsquo;s code and I saw a beautiful <code>if (result &lt; 0) result = 0</code>. So, the answer is no! You have not found a vulnerability in the application :(</p>
+<p>For those who are wondering if <code>get_index_in_mail_table</code> could return a negative index, and so possibly crash the program I can answer that they are not alone. <a href="https://twitter.com/0vercl0k">@0vercl0k</a> asked me the same question, and unfortunately I have to answer a no. I tried, because I am a lazy ass, by changing the assertion above to <code>klee_assert(index &lt; 0)</code>, but it was not triggered by KLEE. I then manually checked the function&rsquo;s code and I saw a beautiful <code>if (result &lt; 0) result = 0</code>. So, the answer is no! You have not found a vulnerability in the application :(</p>
 
 <p>For the <code>check_mail</code> solution we have to provide the index of a serial, but wait&hellip; we have it! We have now a serial, so, computing the index of the table is simple as executing this:</p>
 
@@ -1146,7 +1146,7 @@ qemu-system-mipsel -M malta -kernel vmlinux-3.2.0-4-4kc-malta -hda debian_wheezy
 overclok@wildout:~/chall/nsc2014$ ./start_vm.sh
 [    0.000000] Initializing cgroup subsys cpuset
 [    0.000000] Initializing cgroup subsys cpu
-[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#109;&#x61;&#105;&#108;&#x74;&#111;&#58;&#100;&#101;&#x62;&#x69;&#97;&#x6e;&#x2d;&#x6b;&#101;&#x72;&#110;&#x65;&#108;&#x40;&#108;&#x69;&#115;&#116;&#x73;&#46;&#x64;&#x65;&#x62;&#105;&#x61;&#x6e;&#x2e;&#x6f;&#x72;&#103;">&#100;&#101;&#98;&#x69;&#x61;&#x6e;&#x2d;&#x6b;&#101;&#x72;&#110;&#x65;&#108;&#x40;&#108;&#105;&#115;&#x74;&#x73;&#x2e;&#x64;&#x65;&#98;&#x69;&#97;&#110;&#46;&#111;&#114;&#103;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
+[    0.000000] Linux version 3.2.0-4-4kc-malta (<a href="&#109;&#x61;&#x69;&#x6c;&#116;&#x6f;&#x3a;&#100;&#101;&#98;&#x69;&#97;&#x6e;&#45;&#107;&#x65;&#114;&#110;&#101;&#x6c;&#64;&#108;&#105;&#115;&#x74;&#115;&#46;&#x64;&#x65;&#x62;&#x69;&#x61;&#x6e;&#46;&#111;&#114;&#103;">&#100;&#101;&#x62;&#105;&#x61;&#110;&#x2d;&#107;&#x65;&#x72;&#110;&#101;&#108;&#64;&#108;&#x69;&#x73;&#x74;&#x73;&#x2e;&#100;&#101;&#x62;&#105;&#97;&#110;&#x2e;&#x6f;&#x72;&#103;</a>) (gcc version 4.6.3 (Debian 4.6.3-14) ) #1 Debian 3.2.51-1
 [&hellip;]
 debian-mipsel login: root
 Password:
@@ -1401,7 +1401,7 @@ Let&rsquo;s not focus on what the block is actually doing though, we will develo
 
 <p>Anyway, after this long theoretical speech let&rsquo;s have a look at some code. The first important job of the engine is to be able to parse MIPS assembly: fortunately for us this is really easy. We are directly feeding plain-text MIPS disassembly directly copied from IDA to our engine:</p>
 
-<p>```python <a href="&#109;&#97;&#105;&#x6c;&#116;&#x6f;&#x3a;&#109;&#x69;&#110;&#105;&#x5f;&#109;&#x69;&#x70;&#x73;&#x5f;&#115;&#x79;&#109;&#x65;&#x78;&#x65;&#x63;&#95;&#101;&#x6e;&#103;&#105;&#110;&#x65;&#46;&#112;&#x79;&#x40;&#x4d;&#x69;&#x6e;&#x69;&#77;&#105;&#112;&#x73;&#x53;&#121;&#x6d;&#69;&#x78;&#x65;&#x63;&#69;&#x6e;&#x67;&#105;&#x6e;&#x65;&#x2e;&#95;&#x70;&#97;&#x72;&#115;&#x65;&#x5f;&#x6c;&#x69;&#x6e;&#x65;">&#109;&#105;&#110;&#x69;&#95;&#x6d;&#105;&#112;&#x73;&#x5f;&#115;&#x79;&#109;&#x65;&#x78;&#x65;&#x63;&#95;&#x65;&#110;&#x67;&#105;&#110;&#x65;&#46;&#112;&#x79;&#x40;&#77;&#x69;&#x6e;&#105;&#x4d;&#105;&#x70;&#115;&#x53;&#121;&#109;&#x45;&#x78;&#101;&#x63;&#x45;&#x6e;&#x67;&#105;&#110;&#101;&#46;&#x5f;&#112;&#97;&#x72;&#x73;&#101;&#x5f;&#108;&#x69;&#x6e;&#x65;</a>
+<p>```python <a href="&#109;&#x61;&#x69;&#x6c;&#116;&#x6f;&#x3a;&#x6d;&#x69;&#x6e;&#105;&#95;&#109;&#105;&#112;&#115;&#x5f;&#115;&#121;&#x6d;&#x65;&#x78;&#101;&#x63;&#95;&#x65;&#110;&#x67;&#x69;&#110;&#x65;&#46;&#112;&#x79;&#64;&#x4d;&#x69;&#110;&#105;&#x4d;&#105;&#112;&#115;&#83;&#x79;&#x6d;&#x45;&#x78;&#x65;&#99;&#x45;&#x6e;&#x67;&#105;&#x6e;&#101;&#46;&#95;&#112;&#x61;&#x72;&#x73;&#x65;&#95;&#108;&#105;&#110;&#x65;">&#109;&#x69;&#x6e;&#105;&#x5f;&#x6d;&#x69;&#x70;&#x73;&#x5f;&#115;&#x79;&#109;&#x65;&#120;&#x65;&#x63;&#95;&#101;&#110;&#x67;&#105;&#x6e;&#x65;&#46;&#112;&#x79;&#64;&#x4d;&#105;&#x6e;&#x69;&#77;&#105;&#112;&#x73;&#x53;&#x79;&#109;&#69;&#x78;&#101;&#99;&#x45;&#110;&#x67;&#105;&#x6e;&#101;&#46;&#x5f;&#x70;&#97;&#x72;&#115;&#x65;&#x5f;&#x6c;&#105;&#110;&#x65;</a>
 def _parse_line(self, line):
   addr_seg, instr, rest = line.split(None, 2)
   args = rest.split(&lsquo;,&rsquo;)
