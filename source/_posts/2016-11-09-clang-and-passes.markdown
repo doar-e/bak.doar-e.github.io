@@ -47,7 +47,7 @@ What if instead of relying on a runtime solution that requires you to:
 
 ..we build the dictionary at compile time. The idea behind this, is to have another pass hooking the build process, is looking for tokens at *compile* time and is building a dictionary ready to use for your first fuzz run. Thanks to LLVM this can be written with less than 400 lines of code. It is also easy to read, easy to write and is architecture independent as it is even running before the back-end.
 
-This is the the problem that I will walk you through in this post, AKA yet-another-example-of-llvm-pass. Here we are anyway, an occasion to get back at blogging one might even say!
+This is the problem that I will walk you through in this post, AKA yet-another-example-of-llvm-pass. Here we are anyway, an occasion to get back at blogging one might even say!
 
 Before diving in, here what we actually want the pass to do:
 
