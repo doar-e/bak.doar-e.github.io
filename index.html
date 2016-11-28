@@ -9,7 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction In the past weeks I enjoyed working on reversing a piece of software (don&rsquo;t ask me the name), to study how serial numbers are &hellip;">
+  <meta name="description" content="Introduction About three years ago, the LLVM framework started to pique my interest for a lot of different reasons. This collection of industrial &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -87,6 +87,66 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2016/11/27/clang-and-passes/">Token Capture via an Llvm-based Analysis Pass</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2016-11-27T20:43:00-08:00" pubdate data-updated="true">Nov 27<span>th</span>, 2016</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>About three years ago, the LLVM framework started to pique my interest for a lot of different reasons. This collection of industrial strength compiler technology, as <a href="http://llvm.org/pubs/2008-10-04-ACAT-LLVM-Intro.pdf">Latner</a> said in 2008, was designed in a very modular way. It also looked like it had a lot of interesting features that could be used in a lot of (different) domains: code-optimization (think <a href="https://github.com/JonathanSalwan/Tigress_protection">deobfuscation</a>), (architecture independent) <a href="https://github.com/0vercl0k/articles/blob/master/Obfuscation%20of%20steel%20meet%20Kryptonite.pdf">code obfuscation</a>, static code instrumentation (think <a href="https://github.com/google/sanitizers/wiki">sanitizers</a>), <a href="http://clang-analyzer.llvm.org/index.html">static analysis</a>, for runtime software exploitation mitigations (think <a href="http://clang.llvm.org/docs/ControlFlowIntegrity.html">cfi</a>, <a href="http://clang.llvm.org/docs/SafeStack.html">safestack</a>), power a fuzzing framework (think <a href="http://llvm.org/docs/LibFuzzer.html">libFuzzer</a>), ..you name it.</p>
+
+<p>A lot of the power that came with this giant library was partly because it would operate in mainly three stages, and you were free to hook your code in any of those: front-end, mid-end, back-end. Other strengths included: the high number of back-ends, the documentation, the C/C++ APIs, the community, ease of use compared to than gcc (see below from kcc&rsquo;s <a href="https://gcc.gnu.org/wiki/cauldron2012?action=AttachFile&amp;do=get&amp;target=kcc.pdf">presentation</a>), etc.</p>
+
+<p><img class="center" src="/images/token_capture_via_llvm_based_static_analysis_pass/llvmvsgcc.png" title="GCC from a newcomer's perspective" ></p>
+
+<p>The front-end part takes as input source code and generates LLVM IL code, the middle part operates on LLVM IL and finally the last one receives LLVM IL in order to output assembly code and or an executable file.</p>
+
+<p><img class="center" src="/images/token_capture_via_llvm_based_static_analysis_pass/llvm_architecture.png" title="Major components in a three phase compiler" ></p>
+
+<p>In this post we will walk through a simple LLVM pass that does neither optimization, nor obfuscation; but acts more as a token finder for fuzzing purposes.</p>
+
+<div class='entry-content-toc'></div>
+
+
+
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2016/11/27/clang-and-passes/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
   
   
     <article>
@@ -677,70 +737,6 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
 
     </article>
   
-  
-    <article>
-      
-  <header>
-  
-    
-      <h1 class="entry-title"><a href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Pinpointing Heap-related Issues: OllyDbg2 Off-by-one Story</a></h1>
-      
-      
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2013-09-09T09:53:00-07:00" pubdate data-updated="true">Sep 9<span>th</span>, 2013</time>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><h1>Introduction</h1>
-
-<p>Yesterday afternoon, I was peacefully coding some stuff you know but I couldn&rsquo;t make my code working.
-As usual, in those type of situations you fire up your debugger in order to understand what is going on under the hood.
-That was a bit weird, to give you a bit of context I was doing some inline x86 assembly, and I&rsquo;ve put on purpose an <em>int3</em> just
-before the piece of assembly code I thought was buggy. Once my file loaded in <a href="http://ollydbg.de/version2.html">OllyDbg2</a>, I hit <em>F9</em> in order to reach quickly the <em>int3</em> I&rsquo;ve slipped into the inline assembly code. A bit of single-stepping, and <strong>BOOM</strong> I got a nasty crash. It happens sometimes, and that&rsquo;s uncool.
-Then, I relaunch my binary and try to reproduce the bug: same actions and <strong>BOOM</strong> again. OK, this time it&rsquo;s cool, I got a reproducible crash in OllyDbg2.</p>
-
-<p>I like when things like that happens to me (remember the crashes I&rsquo;ve found in OllyDbg/IDA here: <a href="http://download.tuxfamily.org/overclokblog/PDB%20ain%27t%20PDD/0vercl0k_pdb_aint_pdd.pdf">PDB Ain&rsquo;t PDD</a>), it&rsquo;s always a nice exercise for me where I&rsquo;ve to:</p>
-
-<ul>
-<li>pinpoint the bug in the application: usually not trivial when it&rsquo;s a real/big application</li>
-<li>reverse-engineer the codes involved in the bug in order to figure out why it&rsquo;s happening (sometimes I got the sources, sometimes I don&rsquo;t like this time)</li>
-</ul>
-
-
-<p>In this post, I will show you how I&rsquo;ve manage to pinpoint where the bug was, using <a href="http://msdn.microsoft.com/en-us/library/windows/hardware/ff549561(v=vs.85).aspx">GFlags, PageHeap</a> and <a href="http://www.windbg.info/">WinDbg</a>. Then, we will reverse-engineer the buggy code in order to understand why the bug is happening, and how we can code a clean trigger.</p>
-
-<div class='entry-content-toc'></div>
-
-
-
-
-</div>
-  
-  
-    <footer>
-      <a rel="full-article" href="/blog/2013/09/09/pinpointing-heap-related-issues-ollydbg2-off-by-one-story/">Read on &rarr;</a>
-    </footer>
-  
-
-
-    </article>
-  
   <div class="pagination">
     
       <a class="prev" href="/blog/page/2/">&larr; Older</a>
@@ -754,6 +750,10 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     <section>
   <h1>Recent Posts</h1>
   <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2016/11/27/clang-and-passes/">Token capture via an llvm-based analysis pass</a>
+      </li>
     
       <li class="post">
         <a href="/blog/2015/08/18/keygenning-with-klee/">Keygenning with KLEE</a>
@@ -771,10 +771,6 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
         <a href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Dissection of Quarkslab&#8217;s 2014 security challenge</a>
       </li>
     
-      <li class="post">
-        <a href="/blog/2014/04/30/corrupting-arm-evt/">Corrupting the ARM Exception Vector Table</a>
-      </li>
-    
   </ul>
 </section>
 
@@ -788,7 +784,7 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     </div>
   </div>
   <footer role="contentinfo"><p>
-  Copyright &copy; 2015 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  Copyright &copy; 2016 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
   <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
 	  
   </span>
