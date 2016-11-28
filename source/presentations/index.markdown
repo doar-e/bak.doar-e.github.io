@@ -16,3 +16,7 @@ footer: true
  * **Jonathan Salwan** for his "[Dynamic Behavior Analysis Using Binary Instrumentation](https://doar-e.github.io/presentations/sthack2015/StHack2015_Dynamic_Behavior_Analysis_using_Binary_Instrumentation_Jonathan_Salwan.pdf)" talk given at [St'Hack](https://www.sthack.fr/en) in Bordeaux, 2015.
 <br />
  * **Jonathan Salwan** and **Florent Saudel** for their "[Triton: A Concolic Execution Framework](https://doar-e.github.io/presentations/sstic2015/SSTIC2015_Triton_Concolic_Execution_FrameWork_FSaudel_JSalwan.pdf)" talk given at [SSTIC](https://www.sstic.org/) in Rennes, 2015.
+<br />
+ * **Jonathan Salwan** and **Romain Thomas** for their "[How Triton can help to reverse virtual machine based software protections](https://doar-e.github.io/presentations/csaw2016/csaw2016-sos-rthomas-jsalwan.pdf)" talk given at [CSAW SOS](https://csaw.engineering.nyu.edu/events/security-open-source-workshop) in NYC, 2016.
+<br />
+ * **Jonathan Salwan** and **Romain Thomas** for their "[Dynamic Binary Analysis and Obfuscated Codes](https://doar-e.github.io/presentations/sthack2016/sthack2016-rthomas-jsalwan.pdf)" talk given at [St'Hack](https://www.sthack.fr/) in Bordeaux, 2016.
