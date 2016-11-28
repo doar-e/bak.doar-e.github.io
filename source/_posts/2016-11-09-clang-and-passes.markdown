@@ -39,7 +39,7 @@ A little later, some discussions on the googlegroup led the readers to believe t
 
 ## afl-llvm-tokencap
 
-What if instead on relying on a runtime solution that requires you to:
+What if instead of relying on a runtime solution that requires you to:
 
 * Have built a complete enough corpus to exercise the code that will expose the tokens,
 * Recompile your target with a set of extra options that tell your compiler to not use the built-ins version of `strcmp`/`strncmp`/etc,
@@ -57,7 +57,7 @@ Before diving in, here what we actually want the pass to do:
 
 # afl-llvm-tokencap-pass.so.cc
 
-In case you are already very familiar with LLVM and its pass mechanism, here is [afl-llvm-tokencap-pass.so.cc](https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/afl-llvm-tokencap-pass.so.cc) - it is about 300 lines of C++ and is pretty straightforward to understand.
+In case you are already very familiar with LLVM and its pass mechanism, here is [afl-llvm-tokencap-pass.so.cc](https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/afl-llvm-tokencap-pass.so.cc) and the [afl.patch](https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/afl-2.31b.patch) - it is about 300 lines of C++ and is pretty straightforward to understand.
 
 Now, for all the others that would like a walk-through the source code let's do it.
 
@@ -67,7 +67,7 @@ But before diving in it, let's put down what
 
 The most important part of this file is the `AFLTokenCap` class which is walking through the LLVM IL instructions looking for tokens. LLVM gives you the possibility to work at [different granularity levels](http://llvm.org/docs/WritingAnLLVMPass.html) when writing a pass (more granular to the less granular): BasicBlockPass, FunctionPass, ModulePass, etc. Note that those are not the only ones, there are quite a few others that work slightly differently: MachineFunctionPass, RegionPass, LoopPass, etc.
 
-When you are writing a pass, you write a class that subclasses a `*Pass` mother class. Doing that means you are expected to implement different virtual methods that will be called under specific circumstances - but basically you have three functions: `doInitialization`, `runOn*` and `doFinalization`. The first one and the last one are rarely used, but they can provide you a way to execute code once all the basic-blocks have been run through or prior. The `runOn*` function is important though: this is the function that is going to get called with an LLVM object you are free to walk-through (*Analysis* passes according to the [LLVM nomenclature](http://llvm.org/docs/Passes.html)) or modify (*Transformation* passes) it. As I said above, the LLVM objects are basically `Module`/`Function`/`BasicBlock` instances. In case it is not that obvious, a `Module` (a `.c` file) is made of `Function`s, and a `Function` is made of `BasicBlock`s, and a `BasicBlock` is a set of `Instruction`s. I also suggest you take a look at the [HelloWorld pass](http://llvm.org/docs/WritingAnLLVMPass.html#writing-an-llvm-pass-basiccode) from the LLVM wiki, it should give you another simple example to wrap your head around the concept of pass.
+When you are writing a pass, you write a class that subclasses a `*Pass` parent class. Doing that means you are expected to implement different virtual methods that will be called under specific circumstances - but basically you have three functions: `doInitialization`, `runOn*` and `doFinalization`. The first one and the last one are rarely used, but they can provide you a way to execute code once all the basic-blocks have been run through or prior. The `runOn*` function is important though: this is the function that is going to get called with an LLVM object you are free to walk-through (*Analysis* passes according to the [LLVM nomenclature](http://llvm.org/docs/Passes.html)) or modify (*Transformation* passes) it. As I said above, the LLVM objects are basically `Module`/`Function`/`BasicBlock` instances. In case it is not that obvious, a `Module` (a `.c` file) is made of `Function`s, and a `Function` is made of `BasicBlock`s, and a `BasicBlock` is a set of `Instruction`s. I also suggest you take a look at the [HelloWorld pass](http://llvm.org/docs/WritingAnLLVMPass.html#writing-an-llvm-pass-basiccode) from the LLVM wiki, it should give you another simple example to wrap your head around the concept of pass.
 
 For today's use-case I have chosen to subclass `BasicBlockPass` because our analysis doesn't need anything else than a `BasicBlock` to work. This is the case because we are mainly interested to capture certain arguments passed to certain function calls. Here is what looks like a function call in the [LLVM IR](http://llvm.org/docs/LangRef.html) world:
 
@@ -207,7 +207,7 @@ bool AFLTokenCap::runOnBasicBlock(BasicBlock &B) {
     return false;
 ```
 
-Another thing I wanted to experiment on, but did not, was to provide a regular expression like string (think "test/*") and not process every files/path that are matching it. You could easily blacklist a whole directly of tests with this.
+Another thing I wanted to experiment on, but did not, was to provide a regular expression like string (think "test/*") and not process every files/path that are matching it. You could easily blacklist a whole directory of tests with this.
 
 ## Demo
 
@@ -540,6 +540,20 @@ over@bubuntu:~/workz/libxml2$ sort -u /tmp/xml.dict
 "xpointer"
 ```
 
+Performance wise - here is what we are looking at on `libpng` (+0.283s):
+
+```text time difference on lpng
+over@bubuntu:~/workz/lpng1625$ make clean && time AFL_TOKEN_FILE=/tmp/png.dict make && make clean && time make
+[...]
+real    0m12.320s
+user    0m11.732s
+sys     0m0.360s
+[...]
+real    0m12.037s
+user    0m11.436s
+sys     0m0.384s
+```
+
 # Last words
 
 I am very interested in hearing from you if you give a shot to this analysis pass on your code-base and / or your fuzzing sessions, so feel free to hit me up! Also, note that [libfuzzer](http://llvm.org/docs/LibFuzzer.html) supports the same feature and is compatible with afl's dictionary syntax - so you get it for free!
@@ -552,6 +566,6 @@ Here is a list of interesting articles talking about transformation/analysis pas
 * [llvm/lib/Analysis](https://github.com/llvm-mirror/llvm/tree/master/lib/Analysis)
 * [llvm/lib/Transforms](https://github.com/llvm-mirror/llvm/tree/master/lib/Transforms)
 
-Special shout-out to my proofreader: [yrp](https://twitter.com/yrp604), [mongo](https://twitter.com/mongobug) & [jonathan](https://twitter.com/JonathanSalwan).
+Special shout-outs to my proofreaders: [yrp](https://twitter.com/yrp604), [mongo](https://twitter.com/mongobug) & [jonathan](https://twitter.com/JonathanSalwan).
 
 Go hax clang and or LLVM!
