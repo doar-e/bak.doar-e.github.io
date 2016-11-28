@@ -61,8 +61,6 @@ In case you are already very familiar with LLVM and its pass mechanism, here is 
 
 Now, for all the others that would like a walk-through the source code let's do it.
 
-But before diving in it, let's put down what 
-
 ## AFLTokenCap class
 
 The most important part of this file is the `AFLTokenCap` class which is walking through the LLVM IL instructions looking for tokens. LLVM gives you the possibility to work at [different granularity levels](http://llvm.org/docs/WritingAnLLVMPass.html) when writing a pass (more granular to the less granular): BasicBlockPass, FunctionPass, ModulePass, etc. Note that those are not the only ones, there are quite a few others that work slightly differently: MachineFunctionPass, RegionPass, LoopPass, etc.
