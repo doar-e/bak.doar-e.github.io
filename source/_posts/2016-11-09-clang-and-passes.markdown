@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Token capture via a llvm-based static analysis pass"
-date: 2016-11-09 20:43
+date: 2016-11-27 20:43
 comments: true
 categories: [fuzzing, clang, llvm, analysis pass, pass]
 author: Axel "0vercl0k" Souchet
@@ -10,9 +10,9 @@ toc: true
 ---
 # Introduction
 
-About three years ago, the LLVM framework started to peak my interest for a lot of different reasons. This collection of industrial strength compiler technology, as [Latner](http://llvm.org/pubs/2008-10-04-ACAT-LLVM-Intro.pdf) said in 2008, was designed in a very modular way. It also looked it had a lot of interesting features that could be used in a lot of (different) domains: code-optimization (think [deobfuscation](https://github.com/JonathanSalwan/Tigress_protection)), (architecture independent) [code obfuscation](https://github.com/0vercl0k/articles/blob/master/Obfuscation%20of%20steel%20meet%20Kryptonite.pdf), static code instrumentation (think [sanitizers](https://github.com/google/sanitizers/wiki)), [static analysis](http://clang-analyzer.llvm.org/index.html), for runtime software exploitation mitigations (think [cfi](http://clang.llvm.org/docs/ControlFlowIntegrity.html), [safestack](http://clang.llvm.org/docs/SafeStack.html)), power a fuzzing framework (think [libFuzzer](http://llvm.org/docs/LibFuzzer.html)), ..you name it.
+About three years ago, the LLVM framework started to pique my interest for a lot of different reasons. This collection of industrial strength compiler technology, as [Latner](http://llvm.org/pubs/2008-10-04-ACAT-LLVM-Intro.pdf) said in 2008, was designed in a very modular way. It also looked like it had a lot of interesting features that could be used in a lot of (different) domains: code-optimization (think [deobfuscation](https://github.com/JonathanSalwan/Tigress_protection)), (architecture independent) [code obfuscation](https://github.com/0vercl0k/articles/blob/master/Obfuscation%20of%20steel%20meet%20Kryptonite.pdf), static code instrumentation (think [sanitizers](https://github.com/google/sanitizers/wiki)), [static analysis](http://clang-analyzer.llvm.org/index.html), for runtime software exploitation mitigations (think [cfi](http://clang.llvm.org/docs/ControlFlowIntegrity.html), [safestack](http://clang.llvm.org/docs/SafeStack.html)), power a fuzzing framework (think [libFuzzer](http://llvm.org/docs/LibFuzzer.html)), ..you name it.
 
-A lot of the power that came with this giant library was partly because it would operate in mainly three stages, and you were free to hook your code in any of those: front-end, mid-end, back-end. Other strengths included: the high number of back-ends, the documentation, the C/C++ APIs, the community, how easy/easier it is than gcc (see below from kcc's [presentation](https://gcc.gnu.org/wiki/cauldron2012?action=AttachFile&do=get&target=kcc.pdf)), etc.
+A lot of the power that came with this giant library was partly because it would operate in mainly three stages, and you were free to hook your code in any of those: front-end, mid-end, back-end. Other strengths included: the high number of back-ends, the documentation, the C/C++ APIs, the community, ease of use compared to than gcc (see below from kcc's [presentation](https://gcc.gnu.org/wiki/cauldron2012?action=AttachFile&do=get&target=kcc.pdf)), etc.
 
 {%img center /images/token_capture_via_llvm_based_static_analysis_pass/llvmvsgcc.png GCC from a newcomer's perspective %}
 
@@ -20,7 +20,7 @@ The front-end part takes as input source code and generates LLVM IL code, the mi
 
 {%img center /images/token_capture_via_llvm_based_static_analysis_pass/llvm_architecture.png Major components in a three phase compiler %}
 
-In this post we will walk through a simple LLVM pass that doesn't do neither optimization, neither obfuscation; but acts more as a token finder for fuzzing purposes. 
+In this post we will walk through a simple LLVM pass that does neither optimization, nor obfuscation; but acts more as a token finder for fuzzing purposes. 
 
 <div class='entry-content-toc'></div>
 
@@ -31,11 +31,11 @@ In this post we will walk through a simple LLVM pass that doesn't do neither opt
 
 If you haven't heard of the new lcamtuf's coverage-guided fuzzer, it's most likely because you have lived in a cave for the past year or two as it has been basically mentioned everywhere (now on this blog too!). The [sources](https://github.com/mcarpenter/afl), the [documentation](http://lcamtuf.coredump.cx/afl/README.txt) and the [afl-users group](https://groups.google.com/forum/#!forum/afl-users) are really awesome resources if you'd like to know a little bit more and follow its development.
 
-What you have to know for this post though, is that the fuzzer generates test cases and will pick and keep the interesting ones based on the code-coverage that they will exercise. You end-up with a set of test cases covering different part of the code, and can spend more time hammering and mutating a small number of files, instead of a zillion. It is also packed with [clever hacks](https://lcamtuf.blogspot.fr/2015/05/lesser-known-features-of-afl-fuzz.html) that just makes it one of the most used/easy fuzzer to use today (don't ask me proof to back this claim).
+What you have to know for this post though, is that the fuzzer generates test cases and will pick and keep the interesting ones based on the code-coverage that they will exercise. You end-up with a set of test cases covering different part of the code, and can spend more time hammering and mutating a small number of files, instead of a zillion. It is also packed with [clever hacks](https://lcamtuf.blogspot.fr/2015/05/lesser-known-features-of-afl-fuzz.html) that just makes it one of the most used/easy fuzzer to use today (don't ask me for proof to back this claim).
 
-In order to measure the code-coverage, the first version of AFL would hook in the compiler toolchain and instrument basic block in the .S files generated by gcc. The instrumentation flips a bit in a bitmap as a sign of "I've executed this part of the code". This tiny per-block static instrumentation (as opposed to DBI based ones) makes it hella fast, and can actually be used while fuzzing without too much of overheard. After a little bit of time, a LLVM based version has been designed (by Laszlo Szekeres and lcamtuf) in order to be less hacky, architecture independent (bonus that you get for free when writing a pass) and very elegant (no more reading/modifying raw .S files). The way this has been implemented is hooking into the mid-end in order to statically add the extra instrumentation afl-fuzz needs to have the code-coverage feedback. This is now known as [afl-clang-fast](https://github.com/mirrorer/afl/tree/master/llvm_mode).
+In order to measure the code-coverage, the first version of AFL would hook in the compiler toolchain and instrument basic block in the .S files generated by gcc. The instrumentation flips a bit in a bitmap as a sign of "I've executed this part of the code". This tiny per-block static instrumentation (as opposed to DBI based ones) makes it hella fast, and can actually be used while fuzzing without too much of overheard. After a little bit of time, an LLVM based version has been designed (by László Szekeres and lcamtuf) in order to be less hacky, architecture independent (bonus that you get for free when writing a pass), and very elegant (no more reading/modifying raw .S files). The way this has been implemented is hooking into the mid-end in order to statically add the extra instrumentation afl-fuzz needs to have the code-coverage feedback. This is now known as [afl-clang-fast](https://github.com/mirrorer/afl/tree/master/llvm_mode).
 
-A little later, some discussions on the googlegroup led to believe that knowing "magics" used by a library would make the fuzzing more efficient. If I know all the magics and have a way to detect where they are located in a test-case, then I can use them instead of bit-flipping and hope it would lead to "better" fuzzing. This list of "magics" is called a  dictionary. And what I just called "magics" are "tokens". You can provide such a dictionary (list of tokens) to afl via the -X option. In order to ease, automate the process of semi-automatically generate a dictionary file, lcamtuf developed a runtime solution based on `LD_PRELOAD` and instrumenting calls to memory compare like routines: `strcmp`, `memcmp`, etc. If one of the argument comes from a read-only section, then it is most likely a token  and it is most likely a good candidate for the dictionary. This is called [afl-tokencap](https://groups.google.com/forum/#!msg/afl-users/jiQ9u5Tr5P0/nTTcBGQHCwAJ).
+A little later, some discussions on the googlegroup led the readers to believe that knowing "magics" used by a library would make the fuzzing more efficient. If I know all the magics and have a way to detect where they are located in a test-case, then I can use them instead of bit-flipping and hope it would lead to "better" fuzzing. This list of "magics" is called a  dictionary. And what I just called "magics" are "tokens". You can provide such a dictionary (list of tokens) to afl via the -X option. In order to ease, automate the process of semi-automatically generate a dictionary file, lcamtuf developed a runtime solution based on `LD_PRELOAD` and instrumenting calls to memory compare like routines: `strcmp`, `memcmp`, etc. If one of the argument comes from a read-only section, then it is most likely a token  and it is most likely a good candidate for the dictionary. This is called [afl-tokencap](https://groups.google.com/forum/#!msg/afl-users/jiQ9u5Tr5P0/nTTcBGQHCwAJ).
 
 ## afl-llvm-tokencap
 
@@ -45,9 +45,15 @@ What if instead on relying on a runtime solution that requires you to:
 * Recompile your target with a set of extra options that tell your compiler to not use the built-ins version of `strcmp`/`strncmp`/etc,
 * Run every test cases through the new binary with the libtokencap `LD_PRELOAD`'d.
 
-The idea behind this, is to have another pass hooking the build process, is looking for tokens at *compile* time and is building a dictionary ready to use for your first fuzz run. Thanks to LLVM this can be written with less than 400 lines of code. It is also easy to read, easy to write and is architecture independent as it is even running before the back-end.
+..we build the dictionary at compile time. The idea behind this, is to have another pass hooking the build process, is looking for tokens at *compile* time and is building a dictionary ready to use for your first fuzz run. Thanks to LLVM this can be written with less than 400 lines of code. It is also easy to read, easy to write and is architecture independent as it is even running before the back-end.
 
-This is the the problem that I will walk you through in this blogpost, AKA yet-another-example-of-llvm-pass. Here we are anyway, an occasion to get back at blogging one might even say!
+This is the the problem that I will walk you through in this post, AKA yet-another-example-of-llvm-pass. Here we are anyway, an occasion to get back at blogging one might even say!
+
+Before diving in, here what we actually want the pass to do:
+
+* Walk through every instructions compiled, find all the function calls,
+* When the function call target is one of the function of interest (`strcmp`, `memcmp`, etc), we extract the arguments,
+* If one of the arguments is an hard-coded string, then we save it as a token in the dictionary being built at compile time.
 
 # afl-llvm-tokencap-pass.so.cc
 
@@ -55,11 +61,13 @@ In case you are already very familiar with LLVM and its pass mechanism, here is 
 
 Now, for all the others that would like a walk-through the source code let's do it.
 
+But before diving in it, let's put down what 
+
 ## AFLTokenCap class
 
-The most important part of this file is the `AFLTokenCap` class which is walking through the LLVM IL instructions looking for tokens. LLVM gives you the possibility to work at [different granularity levels](http://llvm.org/docs/WritingAnLLVMPass.html) when writing a pass (most granular to the less granular): BasicBlockPass, FunctionPass, ModulePass, etc. Note that those are not the only ones, there are quite a few others that work slightly differently: MachineFunctionPass, RegionPass, LoopPass, etc.
+The most important part of this file is the `AFLTokenCap` class which is walking through the LLVM IL instructions looking for tokens. LLVM gives you the possibility to work at [different granularity levels](http://llvm.org/docs/WritingAnLLVMPass.html) when writing a pass (more granular to the less granular): BasicBlockPass, FunctionPass, ModulePass, etc. Note that those are not the only ones, there are quite a few others that work slightly differently: MachineFunctionPass, RegionPass, LoopPass, etc.
 
-When you are writing a pass, you write a class that subclasses a `*Pass` mother class. Doing that means you are expected to implement different virtual methods that will be called under specific circumstances - but basically you have three functions: `doInitialization`, `runOn*` and `doFinalization`. The first one and the last one are rarely used, but they can provide you a way to execute code once all the basic-blocks have been run through or prior. The `runOn*` function is important though: this is the function that is going to get called with an LLVM object you are free to walk-trough (*Analysis* passes according to the [LLVM nomenclature](http://llvm.org/docs/Passes.html)) or modify (*Transformation* passes) it. As I said above, the LLVM objects are basically `Module`/`Function`/`BasicBlock` instances. In case it is not that obvious, a `Module` (a `.c` file) is made of `Function`s, and a `Function` is made of `BasicBlock`s, and a `BasicBlock` is a set of `Instruction`s. I also suggest you take a look at the [HelloWorld pass](http://llvm.org/docs/WritingAnLLVMPass.html#writing-an-llvm-pass-basiccode) from the LLVM wiki, it should give you another simple example to wrap your head around the concept of pass.
+When you are writing a pass, you write a class that subclasses a `*Pass` mother class. Doing that means you are expected to implement different virtual methods that will be called under specific circumstances - but basically you have three functions: `doInitialization`, `runOn*` and `doFinalization`. The first one and the last one are rarely used, but they can provide you a way to execute code once all the basic-blocks have been run through or prior. The `runOn*` function is important though: this is the function that is going to get called with an LLVM object you are free to walk-through (*Analysis* passes according to the [LLVM nomenclature](http://llvm.org/docs/Passes.html)) or modify (*Transformation* passes) it. As I said above, the LLVM objects are basically `Module`/`Function`/`BasicBlock` instances. In case it is not that obvious, a `Module` (a `.c` file) is made of `Function`s, and a `Function` is made of `BasicBlock`s, and a `BasicBlock` is a set of `Instruction`s. I also suggest you take a look at the [HelloWorld pass](http://llvm.org/docs/WritingAnLLVMPass.html#writing-an-llvm-pass-basiccode) from the LLVM wiki, it should give you another simple example to wrap your head around the concept of pass.
 
 For today's use-case I have chosen to subclass `BasicBlockPass` because our analysis doesn't need anything else than a `BasicBlock` to work. This is the case because we are mainly interested to capture certain arguments passed to certain function calls. Here is what looks like a function call in the [LLVM IR](http://llvm.org/docs/LangRef.html) world:
 
@@ -97,8 +105,9 @@ bool AFLTokenCap::runOnBasicBlock(BasicBlock &B) {
 Once we have found a [llvm::CallInst](http://llvm.org/docs/doxygen/html/classllvm_1_1CallInst.html) instance, we need to:
 
 * Get the name of the called function, assuming it is not an indirect target: [llvm::CallInst::getCalledFunction](http://llvm.org/docs/doxygen/html/classllvm_1_1CallInst.html#a0bcd4131e1a1d92215f5385b4e16cd2e)
+* Further the analysis only if only it is a [function of interest](https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/afl-llvm-tokencap-pass.so.cc#L193): `strcmp`, `strncmp`, `strcasecmp`, `strncasecmp`, `memcmp`
 * Extract the arguments passed to the function: [llvm::CallInst::getNumArgOperands](http://llvm.org/docs/doxygen/html/classllvm_1_1CallInst.html#ac88b95273e6c753188f6a54d65548579), [llvm::CallInst::getArgOperand](http://llvm.org/docs/doxygen/html/classllvm_1_1CallInst.html#a150b33ecedbc8c7803c2db8040fbe3f8)
-* Detect hard-coded strings (we will consider a subset of them as tokens): 
+* Detect hard-coded strings (we will consider a subset of them as tokens)
 
 Not sure you have noticed yet, but all the objects we are playing with are not only subclassed from `llvm::Instruction`. You also have to deal with [llvm::Value](http://llvm.org/docs/doxygen/html/classllvm_1_1Value.html) which is an even more top-level class (`llvm::Instruction` is a child of `llvm::Value`). But `llvm::Value` is also used to represent constants: think of hard-coded strings, integers, etc.
 
@@ -533,7 +542,7 @@ over@bubuntu:~/workz/libxml2$ sort -u /tmp/xml.dict
 
 # Last words
 
-I am very interested in hearing from you if you give a shot to this analysis pass on your code-base and / or your fuzzing sessions, so feel free to hit me up! Also, note that [libfuzzer](http://llvm.org/docs/LibFuzzer.html) supports the same feature and is compatible with afl's dictionnary syntax - so you get it for free!
+I am very interested in hearing from you if you give a shot to this analysis pass on your code-base and / or your fuzzing sessions, so feel free to hit me up! Also, note that [libfuzzer](http://llvm.org/docs/LibFuzzer.html) supports the same feature and is compatible with afl's dictionary syntax - so you get it for free!
 
 Here is a list of interesting articles talking about transformation/analysis passes that I recommend you read if you want to know more:
 
@@ -542,5 +551,7 @@ Here is a list of interesting articles talking about transformation/analysis pas
 * [quarkslab/llvm-passes](https://github.com/quarkslab/llvm-passes)
 * [llvm/lib/Analysis](https://github.com/llvm-mirror/llvm/tree/master/lib/Analysis)
 * [llvm/lib/Transforms](https://github.com/llvm-mirror/llvm/tree/master/lib/Transforms)
+
+Special shout-out to my proofreader: [yrp](https://twitter.com/yrp604), [mongo](https://twitter.com/mongobug) & [jonathan](https://twitter.com/JonathanSalwan).
 
 Go hax clang and or LLVM!
