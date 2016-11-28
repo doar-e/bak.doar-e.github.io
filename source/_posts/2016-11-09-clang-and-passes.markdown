@@ -1,11 +1,11 @@
 ---
 layout: post
-title: "Token capture via a llvm-based static analysis pass"
+title: "Token capture via an llvm-based analysis pass"
 date: 2016-11-27 20:43
 comments: true
 categories: [fuzzing, clang, llvm, analysis pass, pass]
 author: Axel "0vercl0k" Souchet
-published: false
+published: true
 toc: true
 ---
 # Introduction
