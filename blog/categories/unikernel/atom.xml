@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: unikernel | Diary of a reverse-engineer]]></title>
+  <link href="http://doar-e.github.io/blog/categories/unikernel/atom.xml" rel="self"/>
+  <link href="http://doar-e.github.io/"/>
+  <updated>2016-12-21T19:34:34-08:00</updated>
+  <id>http://doar-e.github.io/</id>
+  <author>
+    <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[happy unikernels]]></title>
+    <link href="http://doar-e.github.io/blog/2016/12/21/happy-unikernels/"/>
+    <updated>2016-12-21T18:59:00-08:00</updated>
+    <id>http://doar-e.github.io/blog/2016/12/21/happy-unikernels</id>
+    <content type="html"><![CDATA[<h1>Intro</h1>
+
+<p>Below is a collection of notes regarding unikernels. I had originally prepared this stuff to submit to EkoParty’s CFP, but ended up not wanting to devote time to stabilizing PHP7’s heap structures and I lost interest in the rest of the project before it was complete. However, there are still some cool takeaways I figured I could write down. Maybe they’ll come in handy? If so, please let let me know.</p>
+
+<p>Unikernels are a continuation of turning everything into a container or VM. Basically, as many VMs currently just run one userland application, the idea is that we can simplify our entire software stack by removing the userland/kernelland barrier and essentially compiling our usermode process into the kernel. This is, in the implementation I looked at, done with a NetBSD kernel and a variety of either <a href="https://github.com/rumpkernel/rumprun-packages">native or lightly-patched POSIX applications</a>  (bonus: there is significant lag time between upstream fixes and rump package fixes, just like every other containerized solution).</p>
+
+<p>While I don’t necessarily think that conceptually unikernels are a good idea (attack surface reduction vs mitigation removal), I do think people will start more widely deploying them shortly and I was curious what memory corruption exploitation would look like inside of them, and more generally what your payload options are like.</p>
+
+<p>All of the following is based off of two unikernel programs, nginx and php5 and only makes use of public vulnerabilities. I am happy to provide all referenced code (in varying states of incompleteness), on request.</p>
+
+<div class='entry-content-toc'></div>
+
+
+
+
+<!--more-->
+
+
+<h1>Basic ‘Hello World’ Example</h1>
+
+<p>To get a basic understanding of a unikernel, we’ll walk through a simple ‘Hello World’ example. First, you’ll need to clone and build (<code>./build-rr.sh</code>) the <a href="https://github.com/rumpkernel/rumprun">rumprun</a> toolchain. This will set you up with the various utilities you&rsquo;ll need.</p>
+
+<h2>Compiling and ‘Baking’</h2>
+
+<p>In a rumpkernel application, we have a standard POSIX environment, minus anything involving multiple processes. Standard memory, file system, and networking calls all work as expected. The only differences lie in the multi-process related calls such as <code>fork()</code>, <code>signal()</code>, <code>pthread_create()</code>, etc. The scope of these differences can be found in the <a href="http://www.fixup.fi/misc/rumpkernel-book/rumpkernel-bookv2-20160802.pdf">The Design and Implementation of the Anykernel and Rump Kernels [pdf]</a>.</p>
+
+<p>From a super basic, standard ‘hello world’ program:</p>
+
+<p>```c</p>
+
+<h1>include &lt;stdio.h></h1>
+
+<p>void main(void)
+{
+   printf(&ldquo;Hello\n&rdquo;);
+}
+```</p>
+
+<p>After building <code>rumprun</code> we should have a new compiler, <code>x86_64-rumprun-netbsd-gcc</code>. This is a cross compiler targeting the rumpkernel platform. We can compile as normal <code>x86_64-rumprun-netbsd-gcc hello.c -o hello-rump</code> and in fact the output is an ELF: <code>hello-rump: ELF 64-bit LSB relocatable, x86-64, version 1 (SYSV), not stripped</code>. However, as we obviously cannot directly boot an ELF we must manipulate the executable (&lsquo;baking&rsquo; in rumpkernel terms).</p>
+
+<p>Rump kernels provide a <code>rumprun-bake</code> shell script. This script takes an ELF from compiling with the rumprun toolchain and converts it into a bootable image which we can then give to qemu or xen. Continuing in our example: <code>rumprun-bake hw_generic hello.bin hello-rump</code>, where the <code>hw_generic</code> just indicates we are targeting qemu.</p>
+
+<h2>Booting and Debugging</h2>
+
+<p>At this point assuming you have qemu installed, booting your new image should be as easy as <code>rumprun qemu -g "-curses" -i hello.bin</code>. If everything went according to plan, you should see something like:</p>
+
+<p><img src="http://i.imgur.com/Or38ajp.png" alt="hello" /></p>
+
+<p>Because this is just qemu at this point, if you need to debug you can easily attach via qemu’s system debugger. Additionally, a nice side effect of this toolchain is very easy debugging — you can essentially debug most of your problems on the native architecture, then just switch compilers to build a bootable image. Also, because the boot time is so much faster, debugging and fixing problems is vastly sped up.</p>
+
+<p>If you have further questions, or would like more detail, the <a href="https://github.com/rumpkernel/wiki">Rumpkernel Wiki</a> has some very good documents explaining the various components and options.</p>
+
+<h1>Peek/Poke Tool</h1>
+
+<p>Initially to develop some familiarity with the code, I wrote a simple peek/poke primitive process. The VM would boot and expose a tcp socket that would allow clients read or write arbitrary memory, as well as wrappers around <code>malloc()</code> and <code>free()</code> to play with the heap state. Most of the knowledge here is derived from this test code, poking at it with a debugger, and reading the rump kernel source.</p>
+
+<h2>Memory Protections</h2>
+
+<p>One of the benefits of unikernels is you can prune components you might not need. For example, if your unikernel application does not touch the filesystem, that code can be removed from your resulting VM. One interesting consequence of this involves only running one process — because there is only one process running on the VM, there is no need for a virtual memory system to separate address spaces by process.</p>
+
+<p>Right now this means that all memory is read-write-execute. I&rsquo;m not sure if it&rsquo;s possible to configure the MMU in a hypervisor to enforce memory proections without enabling virtual memory, as most of the virtual memory code I&rsquo;ve looked at has been related to process separation with page tables, etc. In any case, currently it’s pretty trivial to introduce new code into the system and there shouldn’t be much need to resort to ROP.</p>
+
+<h1>nginx</h1>
+
+<p>Nginx was the first target I looked at; I figured I could dig up the stack smash from 2013 (CVE-2013-2028) and use that as a baseline exploit to see what was possible. This ultimately failed, but exposed some interesting things along the way.</p>
+
+<h2>Reason Why This Doesn’t Work</h2>
+
+<p>CVE-2013-2028 is a stack buffer overflow in the nginx handler for chunked requests. I thought this would be a good test as the user controls much of the data on the stack, however, various attempts to trigger the overflow failed. Running the VM in a debugger you could see the bug was not triggered despite the size value being large enough. In fact, the syscall returned an error.</p>
+
+<p>It turns out however that NetBSD has code to prevent against this inside the kernel:</p>
+
+<p>```c
+do_sys_recvmsg_so(struct lwp <em>l, int s, struct socket </em>so, struct msghdr *mp,</p>
+
+<pre><code>  struct mbuf **from, struct mbuf **control, register_t *retsize) {
+</code></pre>
+
+<p>// …</p>
+
+<pre><code>    if (tiov-&gt;iov_len &gt; SSIZE_MAX || auio.uio_resid &gt; SSIZE_MAX) {
+        error = EINVAL;
+        goto out;
+    }
+</code></pre>
+
+<p>// …
+```</p>
+
+<p>iov_len is our <code>recv()</code> size parameter, so this bug is dead in the water. As an aside, this also made me wonder how Linux applications would respond if you passed a size greater than LONG_MAX into <code>recv()</code> and it succeeded…</p>
+
+<h2>Something Interesting</h2>
+
+<p>Traditionally when exploiting this bug one has to worry about stack cookies. Nginx has a worker pool of processes forked from the main process. In the event of a crash, a new process will be forked from the parent, meaning that the stack cookie will remain constant across subsequent connections. This allows you to break it down into four, 1 byte brute forces as opposed to one 4 byte, meaning it can be done in a maximum of 1024 connections. However, inside the unikernel, there is only one process — if a process crashes the entire VM must be restarted, and because the only process is the kernel, the stack cookie should (in theory) be regenerated. Looking at the disassembled nginx code, you can see the stack cookie checks in all off the relevant functions.</p>
+
+<p>In practice, the point is moot because the stack cookies are always zero. The compiler creates and checks the cookies, it just never populates <code>fs:0x28</code> (the location of the cookie value), so it’s always a constant value and assuming you can write null bytes, this should pose no problem.</p>
+
+<h1>ASLR</h1>
+
+<p>I was curious if unikernels would implement some form of ASLR, as during the build process they get compiled to an ELF (which is quite nice for analysis!) which might make position independent code easier to deal with. They don’t: all images are loaded at <code>0x100000</code>. There is however &ldquo;natures ASLR&rdquo; as these images aren’t distributed in binary form. Thus, as everyone must compile their own images, these will vary slightly depending on compiler version, software version, etc. However, even this constraint gets made easier. If you look at the format of the loaded images, they look something like this:</p>
+
+<p><code>
+0x100000: &lt;unikernel init code&gt;
+…
+0x110410: &lt;application code starts&gt;
+</code></p>
+
+<p>This means across any unikernel application you’ll have approximately 0x10000 bytes of fixed value, fixed location executable memory. If you find an exploitable bug it should be possible to construct a payload entirely from the code in this section. This payload could be used to leak the application code, install persistence, whatever.</p>
+
+<h1>PHP</h1>
+
+<p>Once nginx was off the table, I needed another application that had a rumpkernel package and a history of exploitable bugs. The PHP interpreter fits the bill. I ended up using Sean Heelan&rsquo;s PHP bug <a href="https://bugs.php.net/bug.php?id=70068">#70068</a>, because of the provided trigger in the bug description, and detailed description explaining the bug. Rather than try to poorly recap Sean&rsquo;s work, I&rsquo;d encourage you to just read the inital report if you&rsquo;re curious about the bug.</p>
+
+<p>In retrospect, I took a poor exploitation path for this bug. Because the heap slabs have no ASLR, you can fairly confidently predict mapped addresses inside the PHP interpreter. Furthermore, by controlling the size of the payload, you can determine which bucket it will fall into and pick a lesser used bucket for more stability. This allows you to be lazy, and hard code payload addresses, leading to easy exploitation. This works very well &mdash; I was basically able to take Sean&rsquo;s trigger, slap some addresses and a payload into it, and get code exec out of it. However, the downsides to this approach quickly became apparent. When trying to return from my payload and leave the interpreter in a sane state (as in, running) I realized that I would need to actually understand the PHP heap to repair it. I started this process by examining the rump heap (see below), but got bored when I ended up in the PHP heap.</p>
+
+<h1>Persistence</h1>
+
+<p>This was the portion I wanted to finish for EkoParty, and it didn’t get done. In theory, as all memory is read-write-execute, it should be pretty trivial to just patch <code>recv()</code> or something to inspect the data received, and if matching some constant execute the rest of the packet. This is strictly in memory, anything touching disk will be application specific.</p>
+
+<p>Assuming your payload is stable, you should be able to install an in-memory backdoor which will persist for the runtime of that session (and be deleted on poweroff). While in many configurations there is no writable persistent storage which will survive reboots this is not true for all unikernels (e.g. mysql). In those cases it might be possible to persist across power cycles, but this will be application specific.</p>
+
+<p>One final, and hopefully obvious note: one of the largest differences in exploitation of unikernels is the lack of multiple processes. Exploits frequently use the existence of multiple processes to avoid cleaning up application state after a payload is run. In a unikernel, your payload must repair application state or crash the VM. In this way it is much more similar to a kernel exploit.</p>
+
+<h1>Heap Notes</h1>
+
+<p>The unikernel heap is quite nice from an exploitation perspective. It&rsquo;s a slab-style allocator with in-line metadata on every block. Specifically, the metadata contains the ‘bucket’ the allocation belongs to (and thus the freelist the block should be released to). This means a relative overwrite plus <code>free()</code>ing into a smaller bucket should allow for fairly fine grained control of contents. Additionally the heap is LIFO, allowing for standard heap massaging.</p>
+
+<p>Also, while kinda untested, I believe rumpkernel applications are compiled without <code>QUEUEDEBUG</code> defined. This is relevant as the sanity checks on <code>unlink</code> operations (&ldquo;safe unlink&rdquo;) require this to be defined. This means that in some cases, if freelists themselves can be overflown then removed you can get a write-what-where. However, I think this is fairly unlikely in practice, and with the lack of memory protections elsewhere, I&rsquo;d be surprised if it would currently be useful.</p>
+
+<p>You can find most of the relevant heap source <a href="https://github.com/rumpkernel/rumprun/blob/master/lib/libbmk_core/memalloc.c">here</a></p>
+
+<h1>Symbol Resolution</h1>
+
+<p>Rumpkernels helpfully include an entire syscall table under the <code>mysys</code> symbol. When rumpkernel images get loaded, the ELF header gets stripped, but the rest of the memory is loaded contigiously:</p>
+
+<p>```
+gef➤  info file
+Symbols from &ldquo;/home/x/rumprun-packages/php5/bin/php.bin&rdquo;.
+Remote serial target in gdb-specific protocol:
+Debugging a target over a serial line.</p>
+
+<pre><code>    While running this, GDB does not access memory from...
+</code></pre>
+
+<p>Local exec file:</p>
+
+<pre><code>    `/home/x/rumprun-packages/php5/bin/php.bin', file type elf64-x86-64.
+    Entry point: 0x104000
+    0x0000000000100000 - 0x0000000000101020 is .bootstrap
+    0x0000000000102000 - 0x00000000008df31c is .text
+    0x00000000008df31c - 0x00000000008df321 is .init
+    0x00000000008df340 - 0x0000000000bba9f0 is .rodata
+    0x0000000000bba9f0 - 0x0000000000cfbcd0 is .eh_frame
+    0x0000000000cfbcd0 - 0x0000000000cfbd28 is link_set_sysctl_funcs
+    0x0000000000cfbd28 - 0x0000000000cfbd50 is link_set_bufq_strats
+    0x0000000000cfbd50 - 0x0000000000cfbde0 is link_set_modules
+    0x0000000000cfbde0 - 0x0000000000cfbf18 is link_set_rump_components
+    0x0000000000cfbf18 - 0x0000000000cfbf60 is link_set_domains
+    0x0000000000cfbf60 - 0x0000000000cfbf88 is link_set_evcnts
+    0x0000000000cfbf88 - 0x0000000000cfbf90 is link_set_dkwedge_methods
+    0x0000000000cfbf90 - 0x0000000000cfbfd0 is link_set_prop_linkpools
+    0x0000000000cfbfd0 - 0x0000000000cfbfe0 is .initfini
+    0x0000000000cfc000 - 0x0000000000d426cc is .data
+    0x0000000000d426d0 - 0x0000000000d426d8 is .got
+    0x0000000000d426d8 - 0x0000000000d426f0 is .got.plt
+    0x0000000000d426f0 - 0x0000000000d42710 is .tbss
+    0x0000000000d42700 - 0x0000000000e57320 is .bss
+</code></pre>
+
+<p>```</p>
+
+<p>This means you should be able to just run simple linear scan, looking for the <code>mysys</code> table. A basic heuristic should be fine, 8 byte syscall number, 8 byte address. In the PHP5 interpreter, this table has 67 entries, giving it a big, fat footprint:</p>
+
+<p><code>
+gef➤  x/6g mysys
+0xaeea60 &lt;mysys&gt;:       0x0000000000000003      0x000000000080b790 -- &lt;sys_read&gt;
+0xaeea70 &lt;mysys+16&gt;:    0x0000000000000004      0x000000000080b9d0 -- &lt;sys_write&gt;
+0xaeea80 &lt;mysys+32&gt;:    0x0000000000000006      0x000000000080c8e0 -- &lt;sys_close&gt;
+...
+</code></p>
+
+<p>There is probably a chain of pointers in the initial constant 0x10410 bytes you could also follow, but this approach should work fine.</p>
+
+<h1>Hypervisor fuzzing</h1>
+
+<p>After playing with these for a while, I had another idea: rather than using unikernels to host userland services, I think there is a really cool opportunity to write a hypervisor fuzzer in a unikernel. Consider:
+You have all the benefits of a POSIX userland only you’re in ring0. You don’t need to export your data to userland to get easy and familiar IO functions.
+Unikernels boot really, really fast. As in under 1 second. This should allow for pretty quick state clearing.</p>
+
+<p>This is definitely an area of interesting future work I’d like to come back to.</p>
+
+<h1>Final Suggestions</h1>
+
+<p>If you develop unikernels:</p>
+
+<ul>
+<li>Populate the randomness for stack cookies.</li>
+<li>Load at a random location for some semblance of ASLR.</li>
+<li>Is there a way you can enforce memory permissions? Some form of NX would go a long way.</li>
+<li>If you can’t, some control flow integrity stuff might be a good idea? Haven’t really thought this through or tried it.</li>
+<li>Take as many lessons from grsec as possible.</li>
+</ul>
+
+
+<p>If you’re exploiting unikernels:</p>
+
+<ul>
+<li>Have fun.</li>
+</ul>
+
+
+<p>If you’re exploiting hypervisors:</p>
+
+<ul>
+<li>Unikernels might provide a cool platform to easily play in ring0.</li>
+</ul>
+
+
+<h2>Thanks</h2>
+
+<p>For feedback, bugs used, or editing
+<a href="https://twitter.com/seanhn">@seanhn</a>, <a href="https://twitter.com/hugospns">@hugospns</a>, <a href="https://twitter.com/0vercl0k">@0vercl0k</a>, <a href="https://twitter.com/darkarnium">@darkarnium</a>, other quite helpful anonymous types.</p>
+]]></content>
+  </entry>
+  
+</feed>

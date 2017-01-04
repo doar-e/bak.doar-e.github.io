@@ -4,7 +4,7 @@
   <title><![CDATA[Category: clang | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/clang/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2016-11-28T07:24:51-08:00</updated>
+  <updated>2016-12-21T19:34:34-08:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -22,7 +22,7 @@
 
 <p>About three years ago, the LLVM framework started to pique my interest for a lot of different reasons. This collection of industrial strength compiler technology, as <a href="http://llvm.org/pubs/2008-10-04-ACAT-LLVM-Intro.pdf">Latner</a> said in 2008, was designed in a very modular way. It also looked like it had a lot of interesting features that could be used in a lot of (different) domains: code-optimization (think <a href="https://github.com/JonathanSalwan/Tigress_protection">deobfuscation</a>), (architecture independent) <a href="https://github.com/0vercl0k/articles/blob/master/Obfuscation%20of%20steel%20meet%20Kryptonite.pdf">code obfuscation</a>, static code instrumentation (think <a href="https://github.com/google/sanitizers/wiki">sanitizers</a>), <a href="http://clang-analyzer.llvm.org/index.html">static analysis</a>, for runtime software exploitation mitigations (think <a href="http://clang.llvm.org/docs/ControlFlowIntegrity.html">cfi</a>, <a href="http://clang.llvm.org/docs/SafeStack.html">safestack</a>), power a fuzzing framework (think <a href="http://llvm.org/docs/LibFuzzer.html">libFuzzer</a>), ..you name it.</p>
 
-<p>A lot of the power that came with this giant library was partly because it would operate in mainly three stages, and you were free to hook your code in any of those: front-end, mid-end, back-end. Other strengths included: the high number of back-ends, the documentation, the C/C++ APIs, the community, ease of use compared to than gcc (see below from kcc&rsquo;s <a href="https://gcc.gnu.org/wiki/cauldron2012?action=AttachFile&amp;do=get&amp;target=kcc.pdf">presentation</a>), etc.</p>
+<p>A lot of the power that came with this giant library was partly because it would operate in mainly three stages, and you were free to hook your code in any of those: front-end, mid-end, back-end. Other strengths included: the high number of back-ends, the documentation, the C/C++ APIs, the community, ease of use compared to gcc (see below from kcc&rsquo;s <a href="https://gcc.gnu.org/wiki/cauldron2012?action=AttachFile&amp;do=get&amp;target=kcc.pdf">presentation</a>), etc.</p>
 
 <p><img class="center" src="/images/token_capture_via_llvm_based_static_analysis_pass/llvmvsgcc.png" title="GCC from a newcomer&rsquo;s perspective" ></p>
 
@@ -65,7 +65,7 @@
 
 <p>..we build the dictionary at compile time. The idea behind this, is to have another pass hooking the build process, is looking for tokens at <em>compile</em> time and is building a dictionary ready to use for your first fuzz run. Thanks to LLVM this can be written with less than 400 lines of code. It is also easy to read, easy to write and is architecture independent as it is even running before the back-end.</p>
 
-<p>This is the the problem that I will walk you through in this post, AKA yet-another-example-of-llvm-pass. Here we are anyway, an occasion to get back at blogging one might even say!</p>
+<p>This is the problem that I will walk you through in this post, AKA yet-another-example-of-llvm-pass. Here we are anyway, an occasion to get back at blogging one might even say!</p>
 
 <p>Before diving in, here what we actually want the pass to do:</p>
 
@@ -81,8 +81,6 @@
 <p>In case you are already very familiar with LLVM and its pass mechanism, here is <a href="https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/afl-llvm-tokencap-pass.so.cc">afl-llvm-tokencap-pass.so.cc</a> and the <a href="https://github.com/0vercl0k/stuffz/blob/master/llvm-funz/afl-2.31b.patch">afl.patch</a> &ndash; it is about 300 lines of C++ and is pretty straightforward to understand.</p>
 
 <p>Now, for all the others that would like a walk-through the source code let&rsquo;s do it.</p>
-
-<p>But before diving in it, let&rsquo;s put down what</p>
 
 <h2>AFLTokenCap class</h2>
 

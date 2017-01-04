@@ -9,7 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction About three years ago, the LLVM framework started to pique my interest for a lot of different reasons. This collection of industrial &hellip;">
+  <meta name="description" content="Intro Below is a collection of notes regarding unikernels. I had originally prepared this stuff to submit to EkoParty’s CFP, but ended up not wanting &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -94,6 +94,62 @@
   <header>
   
     
+      <h1 class="entry-title"><a href="/blog/2016/12/21/happy-unikernels/">Happy Unikernels</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2016-12-21T18:59:00-08:00" pubdate data-updated="true">Dec 21<span>st</span>, 2016</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Intro</h1>
+
+<p>Below is a collection of notes regarding unikernels. I had originally prepared this stuff to submit to EkoParty’s CFP, but ended up not wanting to devote time to stabilizing PHP7’s heap structures and I lost interest in the rest of the project before it was complete. However, there are still some cool takeaways I figured I could write down. Maybe they’ll come in handy? If so, please let let me know.</p>
+
+<p>Unikernels are a continuation of turning everything into a container or VM. Basically, as many VMs currently just run one userland application, the idea is that we can simplify our entire software stack by removing the userland/kernelland barrier and essentially compiling our usermode process into the kernel. This is, in the implementation I looked at, done with a NetBSD kernel and a variety of either <a href="https://github.com/rumpkernel/rumprun-packages">native or lightly-patched POSIX applications</a>  (bonus: there is significant lag time between upstream fixes and rump package fixes, just like every other containerized solution).</p>
+
+<p>While I don’t necessarily think that conceptually unikernels are a good idea (attack surface reduction vs mitigation removal), I do think people will start more widely deploying them shortly and I was curious what memory corruption exploitation would look like inside of them, and more generally what your payload options are like.</p>
+
+<p>All of the following is based off of two unikernel programs, nginx and php5 and only makes use of public vulnerabilities. I am happy to provide all referenced code (in varying states of incompleteness), on request.</p>
+
+<div class='entry-content-toc'></div>
+
+
+
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2016/12/21/happy-unikernels/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+  
+    
       <h1 class="entry-title"><a href="/blog/2016/11/27/clang-and-passes/">Token Capture via an Llvm-based Analysis Pass</a></h1>
       
       
@@ -122,7 +178,7 @@
 
 <p>About three years ago, the LLVM framework started to pique my interest for a lot of different reasons. This collection of industrial strength compiler technology, as <a href="http://llvm.org/pubs/2008-10-04-ACAT-LLVM-Intro.pdf">Latner</a> said in 2008, was designed in a very modular way. It also looked like it had a lot of interesting features that could be used in a lot of (different) domains: code-optimization (think <a href="https://github.com/JonathanSalwan/Tigress_protection">deobfuscation</a>), (architecture independent) <a href="https://github.com/0vercl0k/articles/blob/master/Obfuscation%20of%20steel%20meet%20Kryptonite.pdf">code obfuscation</a>, static code instrumentation (think <a href="https://github.com/google/sanitizers/wiki">sanitizers</a>), <a href="http://clang-analyzer.llvm.org/index.html">static analysis</a>, for runtime software exploitation mitigations (think <a href="http://clang.llvm.org/docs/ControlFlowIntegrity.html">cfi</a>, <a href="http://clang.llvm.org/docs/SafeStack.html">safestack</a>), power a fuzzing framework (think <a href="http://llvm.org/docs/LibFuzzer.html">libFuzzer</a>), ..you name it.</p>
 
-<p>A lot of the power that came with this giant library was partly because it would operate in mainly three stages, and you were free to hook your code in any of those: front-end, mid-end, back-end. Other strengths included: the high number of back-ends, the documentation, the C/C++ APIs, the community, ease of use compared to than gcc (see below from kcc&rsquo;s <a href="https://gcc.gnu.org/wiki/cauldron2012?action=AttachFile&amp;do=get&amp;target=kcc.pdf">presentation</a>), etc.</p>
+<p>A lot of the power that came with this giant library was partly because it would operate in mainly three stages, and you were free to hook your code in any of those: front-end, mid-end, back-end. Other strengths included: the high number of back-ends, the documentation, the C/C++ APIs, the community, ease of use compared to gcc (see below from kcc&rsquo;s <a href="https://gcc.gnu.org/wiki/cauldron2012?action=AttachFile&amp;do=get&amp;target=kcc.pdf">presentation</a>), etc.</p>
 
 <p><img class="center" src="/images/token_capture_via_llvm_based_static_analysis_pass/llvmvsgcc.png" title="GCC from a newcomer's perspective" ></p>
 
@@ -683,60 +739,6 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
 
     </article>
   
-  
-    <article>
-      
-  <header>
-  
-    
-      <h1 class="entry-title"><a href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Breaking Kryptonite&#8217;s Obfuscation: A Static Analysis Approach Relying on Symbolic Execution</a></h1>
-      
-      
-    
-      <p class="meta">
-        
-
-
-
-
-
-
-
-
-  
-
-
-<time datetime="2013-09-16T11:47:00-07:00" pubdate data-updated="true">Sep 16<span>th</span>, 2013</time>
-        
-      </p>
-    
-  </header>
-
-
-  <div class="entry-content"><h1>Introduction</h1>
-
-<p><em>Kryptonite</em> was a proof-of-concept I built to obfuscate codes at the LLVM intermediate representation level. The idea was to use semantic-preserving transformations in order to not break the original program. One of the main idea was for example to build a home-made 32 bits adder to replace the <em>add</em> LLVM instruction. Instead of having a single asm instruction generated at the end of the pipeline, you will end up with a ton of assembly codes doing only an addition. If you never read my article, and you are interested in it here it is: <a href="http://0vercl0k.tuxfamily.org/bl0g/?p=260">Obfuscation of steel: meet my Kryptonite</a>.</p>
-
-<p><img class="center" src="/images/breaking_kryptonite_s_obfuscation_with_symbolic_execution/home-made-adder.png"></p>
-
-<p>In this post I wanted to show you how we can manage to break that obfuscation with symbolic execution. We are going to write a really tiny symbolic execution engine with IDAPy, and we will use Z3Py to simplify all our equations. Note that a friend of mine <a href="https://twitter.com/elvanderb">@elvanderb</a> used a similar approach (more generic though) to simplify some parts of the <a href="http://download.tuxfamily.org/overclokblog/Obfuscation%20of%20steel%3a%20meet%20my%20Kryptonite/binaries/">crackme</a> ; but he didn&rsquo;t wanted to publish it, so here is my blog post about it!</p>
-
-<div class='entry-content-toc'></div>
-
-
-
-
-</div>
-  
-  
-    <footer>
-      <a rel="full-article" href="/blog/2013/09/16/breaking-kryptonites-obfuscation-with-symbolic-execution/">Read on &rarr;</a>
-    </footer>
-  
-
-
-    </article>
-  
   <div class="pagination">
     
       <a class="prev" href="/blog/page/2/">&larr; Older</a>
@@ -752,6 +754,10 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
   <ul id="recent_posts">
     
       <li class="post">
+        <a href="/blog/2016/12/21/happy-unikernels/">happy unikernels</a>
+      </li>
+    
+      <li class="post">
         <a href="/blog/2016/11/27/clang-and-passes/">Token capture via an llvm-based analysis pass</a>
       </li>
     
@@ -765,10 +771,6 @@ All right, let&rsquo;s move on to the first part: this one will focus the essent
     
       <li class="post">
         <a href="/blog/2014/10/11/taiming-a-wild-nanomite-protected-mips-binary-with-symbolic-execution-no-such-crackme/">Taming a wild nanomite-protected MIPS binary with symbolic execution: No Such Crackme</a>
-      </li>
-    
-      <li class="post">
-        <a href="/blog/2014/09/06/dissection-of-quarkslabs-2014-security-challenge/">Dissection of Quarkslab&#8217;s 2014 security challenge</a>
       </li>
     
   </ul>
