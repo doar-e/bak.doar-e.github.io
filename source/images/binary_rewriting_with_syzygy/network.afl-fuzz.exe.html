@@ -1,0 +1,547 @@
+<!doctype html>
+<html>
+<head>
+  <title>Diary of a reverse engineer - syzygy</title>
+  <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/vis/4.20.1/vis-network.min.js'></script>
+  <link type='text/css' href='https://cdnjs.cloudflare.com/ajax/libs/vis/4.20.1/vis-network.min.css' rel='stylesheet'/>
+  <style type='text/css'>
+    #container {
+      width: 100%;
+      height: 100%;
+      position: fixed; 
+      border: 1px solid lightgray;
+    }
+  </style>
+</head>
+<body>
+<p>
+  afl-fuzz.exe.
+</p>
+
+<div id='container'>
+</div>
+
+<script type='text/javascript'>
+'use strict';
+var normal_color = 'black';
+var expandable_node_color = 'red';
+var semi_expandable_node_color = 'orange';
+
+var visible_edges = undefined;
+var visible_nodes = undefined;
+
+var nodes = new vis.DataSet([
+  { id : 225, label : "ArgvQuote", title : 'RVA: 00001000<br>Size: 276<br>Level: 5<br>Compiland: afl-fuzz.obj', group : 5, value : 276 },
+  { id : 101, label : "DF", title : 'RVA: 00001120<br>Size: 122<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 122 },
+  { id : 53, label : "DFL_ck_alloc_nozero", title : 'RVA: 000011A0<br>Size: 145<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 145 },
+  { id : 1, label : "DFL_ck_free", title : 'RVA: 00001240<br>Size: 193<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 193 },
+  { id : 142, label : "DFL_ck_memdup", title : 'RVA: 00001310<br>Size: 177<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 177 },
+  { id : 67, label : "DFL_ck_realloc", title : 'RVA: 000013D0<br>Size: 429<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 429 },
+  { id : 2, label : "DFL_ck_strdup", title : 'RVA: 00001660<br>Size: 180<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 180 },
+  { id : 54, label : "DFL_ck_realloc_block", title : 'RVA: 00001580<br>Size: 216<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 216 },
+  { id : 219, label : "IsProcessorFeaturePresent", title : 'RVA: 00011F06<br>Size: 6<br>Level: 4<br>Compiland: Unknown', group : 4, value : 6 },
+  { id : 42, label : "memcpy", title : 'RVA: 00011E5E<br>Size: 6<br>Level: 2<br>Compiland: Unknown', group : 2, value : 6 },
+  { id : 214, label : "_register_onexit_function", title : 'RVA: 00011E88<br>Size: 6<br>Level: 4<br>Compiland: Unknown', group : 4, value : 6 },
+  { id : 215, label : "_crt_atexit", title : 'RVA: 00011E8E<br>Size: 6<br>Level: 4<br>Compiland: Unknown', group : 4, value : 6 },
+  { id : 192, label : "_except1", title : 'RVA: 00011E9A<br>Size: 6<br>Level: 3<br>Compiland: Unknown', group : 3, value : 6 },
+  { id : 45, label : "memset", title : 'RVA: 00011E64<br>Size: 6<br>Level: 2<br>Compiland: Unknown', group : 2, value : 6 },
+  { id : 13, label : "fix_up_banner", title : 'RVA: 000042D0<br>Size: 187<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 187 },
+  { id : 11, label : "find_start_position", title : 'RVA: 00004170<br>Size: 162<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 162 },
+  { id : 87, label : "fscanf", title : 'RVA: 00004550<br>Size: 36<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 36 },
+  { id : 16, label : "get_core_count", title : 'RVA: 00008F80<br>Size: 476<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 476 },
+  { id : 21, label : "load_extras", title : 'RVA: 00009920<br>Size: 1375<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 1375 },
+  { id : 210, label : "minimize_bits", title : 'RVA: 0000BF30<br>Size: 149<br>Level: 4<br>Compiland: afl-fuzz.obj', group : 4, value : 149 },
+  { id : 22, label : "perform_dry_run", title : 'RVA: 0000C120<br>Size: 1272<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 1272 },
+  { id : 23, label : "pivot_inputs", title : 'RVA: 0000C620<br>Size: 396<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 396 },
+  { id : 14, label : "fix_up_sync", title : 'RVA: 00004390<br>Size: 393<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 393 },
+  { id : 15, label : "fuzz_one", title : 'RVA: 00004580<br>Size: 18932<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 18932 },
+  { id : 63, label : "mark_as_det_done", title : 'RVA: 0000B2D0<br>Size: 173<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 173 },
+  { id : 19, label : "init_count_class16", title : 'RVA: 000094A0<br>Size: 68<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 68 },
+  { id : 0, label : "main", title : 'RVA: 0000A3A0<br>Size: 3877<br>Level: 0<br>Compiland: afl-fuzz.obj', group : 0, value : 3877 },
+  { id : 74, label : "hash32", title : 'RVA: 00009430<br>Size: 107<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 107 },
+  { id : 57, label : "load_extras_file", title : 'RVA: 00009E80<br>Size: 1308<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 1308 },
+  { id : 89, label : "mark_as_redundant", title : 'RVA: 0000B380<br>Size: 300<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 300 },
+  { id : 62, label : "link_or_copy", title : 'RVA: 000094F0<br>Size: 661<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 661 },
+  { id : 160, label : "has_new_bits", title : 'RVA: 00009390<br>Size: 149<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 149 },
+  { id : 75, label : "maybe_add_auto", title : 'RVA: 0000B4B0<br>Size: 766<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 766 },
+  { id : 123, label : "maybe_delete_out_dir", title : 'RVA: 0000B7B0<br>Size: 1334<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 1334 },
+  { id : 105, label : "maybe_update_plot_file", title : 'RVA: 0000BCF0<br>Size: 472<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 472 },
+  { id : 17, label : "get_cur_time", title : 'RVA: 00009160<br>Size: 45<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 45 },
+  { id : 18, label : "getopt", title : 'RVA: 000092C0<br>Size: 194<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 194 },
+  { id : 9, label : "detect_file_args", title : 'RVA: 00003E80<br>Size: 243<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 243 },
+  { id : 116, label : "fprintf", title : 'RVA: 00004520<br>Size: 36<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 36 },
+  { id : 20, label : "load_auto", title : 'RVA: 00009790<br>Size: 396<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 396 },
+  { id : 49, label : "get_runnable_processes", title : 'RVA: 00009190<br>Size: 292<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 292 },
+  { id : 10, label : "extract_client_params", title : 'RVA: 00003F80<br>Size: 495<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 495 },
+  { id : 12, label : "find_timeout", title : 'RVA: 00004220<br>Size: 165<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 165 },
+  { id : 118, label : "destroy_target_process", title : 'RVA: 00003C30<br>Size: 586<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 586 },
+  { id : 144, label : "memcmp_nocase", title : 'RVA: 0000BED0<br>Size: 85<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 85 },
+  { id : 64, label : "nuke_resume_dir", title : 'RVA: 0000BFD0<br>Size: 324<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 324 },
+  { id : 68, label : "UR", title : 'RVA: 00001E30<br>Size: 105<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 105 },
+  { id : 205, label : "argv_to_cmd", title : 'RVA: 000020A0<br>Size: 406<br>Level: 4<br>Compiland: afl-fuzz.obj', group : 4, value : 406 },
+  { id : 69, label : "calculate_score", title : 'RVA: 00002240<br>Size: 758<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 758 },
+  { id : 71, label : "common_fuzz_stuff", title : 'RVA: 00002D70<br>Size: 239<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 239 },
+  { id : 146, label : "delete_files", title : 'RVA: 00003850<br>Size: 385<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 385 },
+  { id : 60, label : "check_map_coverage", title : 'RVA: 00002C40<br>Size: 71<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 71 },
+  { id : 70, label : "choose_block_len", title : 'RVA: 00002C90<br>Size: 146<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 146 },
+  { id : 7, label : "destroy_extras", title : 'RVA: 000039E0<br>Size: 315<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 315 },
+  { id : 73, label : "could_be_interest", title : 'RVA: 00003040<br>Size: 290<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 290 },
+  { id : 143, label : "compare_extras_use_d", title : 'RVA: 00002E80<br>Size: 17<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 17 },
+  { id : 59, label : "calibrate_case", title : 'RVA: 00002540<br>Size: 909<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 909 },
+  { id : 55, label : "DMS", title : 'RVA: 00001A60<br>Size: 805<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 805 },
+  { id : 4, label : "check_cpu_governor", title : 'RVA: 00002980<br>Size: 517<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 517 },
+  { id : 72, label : "could_be_arith", title : 'RVA: 00002EE0<br>Size: 345<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 345 },
+  { id : 6, label : "cull_queue", title : 'RVA: 00003760<br>Size: 237<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 237 },
+  { id : 109, label : "__local_stdio_printf_options", title : 'RVA: 00001EA0<br>Size: 6<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 6 },
+  { id : 187, label : "compare_filename", title : 'RVA: 00002EA0<br>Size: 55<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 55 },
+  { id : 47, label : "alloc_printf", title : 'RVA: 00001FF0<br>Size: 169<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 169 },
+  { id : 3, label : "check_asan_opts", title : 'RVA: 000028D0<br>Size: 167<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 167 },
+  { id : 176, label : "classify_counts", title : 'RVA: 00002D30<br>Size: 61<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 61 },
+  { id : 56, label : "compare_extras_len", title : 'RVA: 00002E60<br>Size: 17<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 17 },
+  { id : 8, label : "destroy_queue", title : 'RVA: 00003B20<br>Size: 262<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 262 },
+  { id : 99, label : "DI", title : 'RVA: 00001720<br>Size: 830<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 830 },
+  { id : 102, label : "DTD", title : 'RVA: 00001D90<br>Size: 148<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 148 },
+  { id : 111, label : "add_to_queue", title : 'RVA: 00001EC0<br>Size: 297<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 297 },
+  { id : 107, label : "__local_stdio_scanf_options", title : 'RVA: 00001EB0<br>Size: 6<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 6 },
+  { id : 103, label : "count_bits", title : 'RVA: 00003170<br>Size: 97<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 97 },
+  { id : 5, label : "check_crash_handling", title : 'RVA: 00002B90<br>Size: 170<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 170 },
+  { id : 156, label : "count_bytes", title : 'RVA: 000031E0<br>Size: 76<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 76 },
+  { id : 104, label : "count_non_255_bytes", title : 'RVA: 00003230<br>Size: 105<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 105 },
+  { id : 177, label : "create_target_process", title : 'RVA: 000032A0<br>Size: 1214<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 1214 },
+  { id : 31, label : "setup_stdio_file", title : 'RVA: 0000E0F0<br>Size: 153<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 153 },
+  { id : 44, label : "sprintf", title : 'RVA: 0000F8D0<br>Size: 50<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 50 },
+  { id : 35, label : "sync_fuzzers", title : 'RVA: 0000F940<br>Size: 1469<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 1469 },
+  { id : 95, label : "run_target", title : 'RVA: 0000CC50<br>Size: 487<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 487 },
+  { id : 32, label : "show_init_stats", title : 'RVA: 0000E190<br>Size: 1084<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 1084 },
+  { id : 33, label : "show_stats", title : 'RVA: 0000E5D0<br>Size: 4592<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 4592 },
+  { id : 113, label : "shuffle_ptrs", title : 'RVA: 0000F7C0<br>Size: 163<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 163 },
+  { id : 34, label : "sscanf", title : 'RVA: 0000F910<br>Size: 38<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 38 },
+  { id : 24, label : "printf", title : 'RVA: 0000C7B0<br>Size: 48<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 48 },
+  { id : 26, label : "read_testcases", title : 'RVA: 0000C910<br>Size: 798<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 798 },
+  { id : 182, label : "write_crash_readme", title : 'RVA: 00010570<br>Size: 142<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 142 },
+  { id : 97, label : "write_to_testcase", title : 'RVA: 00010910<br>Size: 546<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 546 },
+  { id : 38, label : "write_bitmap", title : 'RVA: 00010410<br>Size: 341<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 341 },
+  { id : 39, label : "write_stats_file", title : 'RVA: 00010600<br>Size: 773<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 773 },
+  { id : 37, label : "watchdog_timer", title : 'RVA: 000103A0<br>Size: 97<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 97 },
+  { id : 185, label : "write_with_gap", title : 'RVA: 00010B40<br>Size: 775<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 775 },
+  { id : 28, label : "save_cmdline", title : 'RVA: 0000D000<br>Size: 168<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 168 },
+  { id : 96, label : "save_if_interesting", title : 'RVA: 0000D0B0<br>Size: 1305<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 1305 },
+  { id : 181, label : "simplify_trace", title : 'RVA: 0000F870<br>Size: 95<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 95 },
+  { id : 25, label : "read_bitmap", title : 'RVA: 0000C7E0<br>Size: 301<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 301 },
+  { id : 125, label : "remove_shm", title : 'RVA: 0000CC30<br>Size: 25<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 25 },
+  { id : 27, label : "save_auto", title : 'RVA: 0000CE40<br>Size: 439<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 439 },
+  { id : 29, label : "setup_dirs_fds", title : 'RVA: 0000D7F0<br>Size: 1660<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 1660 },
+  { id : 76, label : "trim_case", title : 'RVA: 0000FF00<br>Size: 831<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 831 },
+  { id : 30, label : "setup_shm", title : 'RVA: 0000DE70<br>Size: 625<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 625 },
+  { id : 161, label : "update_bitmap_score", title : 'RVA: 00010240<br>Size: 296<br>Level: 3<br>Compiland: afl-fuzz.obj', group : 3, value : 296 },
+  { id : 112, label : "scandir_sorted", title : 'RVA: 0000D5D0<br>Size: 544<br>Level: 2<br>Compiland: afl-fuzz.obj', group : 2, value : 544 },
+  { id : 36, label : "usage", title : 'RVA: 00010370<br>Size: 34<br>Level: 1<br>Compiland: afl-fuzz.obj', group : 1, value : 34 },
+  { id : 218, label : "__raise_securityfailure", title : 'RVA: 00011BCE<br>Size: 40<br>Level: 4<br>Compiland: gs_report.obj', group : 4, value : 40 },
+  { id : 211, label : "_allmul", title : 'RVA: 000110C0<br>Size: 52<br>Level: 4<br>Compiland: llmul.obj', group : 4, value : 52 },
+  { id : 50, label : "__security_check_cookie", title : 'RVA: 000110AF<br>Size: 17<br>Level: 2<br>Compiland: _secchk_.obj', group : 2, value : 17 },
+  { id : 79, label : "_aulldiv", title : 'RVA: 00011100<br>Size: 104<br>Level: 2<br>Compiland: ulldiv.obj', group : 2, value : 104 },
+  { id : 51, label : "_ftoui3", title : 'RVA: 00011240<br>Size: 887<br>Level: 2<br>Compiland: _ftol3_.obj', group : 2, value : 887 },
+  { id : 126, label : "atexit", title : 'RVA: 0001109A<br>Size: 21<br>Level: 2<br>Compiland: utility.obj', group : 2, value : 21 },
+  { id : 169, label : "_aulldvrm", title : 'RVA: 00011170<br>Size: 149<br>Level: 3<br>Compiland: ulldvrm.obj', group : 3, value : 149 },
+  { id : 194, label : "_onexit", title : 'RVA: 0001105F<br>Size: 59<br>Level: 3<br>Compiland: utility.obj', group : 3, value : 59 },
+  { id : 138, label : "_chkstk", title : 'RVA: 00011210<br>Size: 45<br>Level: 3<br>Compiland: chkstk.obj', group : 3, value : 45 },
+  { id : 189, label : "__report_gsfailure", title : 'RVA: 00011BF6<br>Size: 251<br>Level: 3<br>Compiland: gs_report.obj', group : 3, value : 251 },
+]);
+
+var edges = new vis.DataSet([
+  { from : 0, to : 1 },
+  { from : 0, to : 2 },
+  { from : 0, to : 3 },
+  { from : 0, to : 4 },
+  { from : 0, to : 5 },
+  { from : 0, to : 6 },
+  { from : 0, to : 7 },
+  { from : 0, to : 8 },
+  { from : 0, to : 9 },
+  { from : 0, to : 10 },
+  { from : 0, to : 11 },
+  { from : 0, to : 12 },
+  { from : 0, to : 13 },
+  { from : 0, to : 14 },
+  { from : 0, to : 15 },
+  { from : 0, to : 16 },
+  { from : 0, to : 17 },
+  { from : 0, to : 18 },
+  { from : 0, to : 19 },
+  { from : 0, to : 20 },
+  { from : 0, to : 21 },
+  { from : 0, to : 22 },
+  { from : 0, to : 23 },
+  { from : 0, to : 24 },
+  { from : 0, to : 25 },
+  { from : 0, to : 26 },
+  { from : 0, to : 27 },
+  { from : 0, to : 28 },
+  { from : 0, to : 29 },
+  { from : 0, to : 30 },
+  { from : 0, to : 31 },
+  { from : 0, to : 32 },
+  { from : 0, to : 33 },
+  { from : 0, to : 34 },
+  { from : 0, to : 35 },
+  { from : 0, to : 36 },
+  { from : 0, to : 37 },
+  { from : 0, to : 38 },
+  { from : 0, to : 39 },
+  { from : 2, to : 42 },
+  { from : 13, to : 44 },
+  { from : 13, to : 45 },
+  { from : 11, to : 47 },
+  { from : 16, to : 49 },
+  { from : 16, to : 50 },
+  { from : 16, to : 51 },
+  { from : 21, to : 53 },
+  { from : 21, to : 54 },
+  { from : 21, to : 55 },
+  { from : 21, to : 56 },
+  { from : 21, to : 57 },
+  { from : 22, to : 59 },
+  { from : 22, to : 60 },
+  { from : 23, to : 62 },
+  { from : 23, to : 63 },
+  { from : 23, to : 64 },
+  { from : 15, to : 67 },
+  { from : 15, to : 68 },
+  { from : 15, to : 69 },
+  { from : 15, to : 70 },
+  { from : 15, to : 71 },
+  { from : 15, to : 72 },
+  { from : 15, to : 73 },
+  { from : 15, to : 74 },
+  { from : 15, to : 75 },
+  { from : 15, to : 76 },
+  { from : 17, to : 79 },
+  { from : 4, to : 87 },
+  { from : 6, to : 89 },
+  { from : 35, to : 95 },
+  { from : 35, to : 96 },
+  { from : 35, to : 97 },
+  { from : 32, to : 99 },
+  { from : 33, to : 101 },
+  { from : 33, to : 102 },
+  { from : 33, to : 103 },
+  { from : 33, to : 104 },
+  { from : 33, to : 105 },
+  { from : 34, to : 107 },
+  { from : 24, to : 109 },
+  { from : 26, to : 111 },
+  { from : 26, to : 112 },
+  { from : 26, to : 113 },
+  { from : 39, to : 116 },
+  { from : 37, to : 118 },
+  { from : 29, to : 123 },
+  { from : 30, to : 125 },
+  { from : 30, to : 126 },
+  { from : 57, to : 138 },
+  { from : 75, to : 142 },
+  { from : 75, to : 143 },
+  { from : 75, to : 144 },
+  { from : 123, to : 146 },
+  { from : 60, to : 156 },
+  { from : 59, to : 160 },
+  { from : 59, to : 161 },
+  { from : 102, to : 169 },
+  { from : 95, to : 176 },
+  { from : 95, to : 177 },
+  { from : 96, to : 181 },
+  { from : 96, to : 182 },
+  { from : 76, to : 185 },
+  { from : 112, to : 187 },
+  { from : 50, to : 189 },
+  { from : 51, to : 192 },
+  { from : 126, to : 194 },
+  { from : 177, to : 205 },
+  { from : 161, to : 210 },
+  { from : 161, to : 211 },
+  { from : 194, to : 214 },
+  { from : 194, to : 215 },
+  { from : 189, to : 218 },
+  { from : 189, to : 219 },
+  { from : 205, to : 225 },
+]);
+
+function set_normal_node_color(node) {
+  node['color'] = {
+    border : normal_color,
+    hover : {
+      border : normal_color
+    },
+    highlight : {
+      border : normal_color
+    }
+  };
+  return node;
+}
+
+function set_semi_expandable_node_color(node) {
+  node['color'] = {
+    border : semi_expandable_node_color,
+    hover : {
+      border : semi_expandable_node_color
+    },
+    highlight : {
+      border : semi_expandable_node_color
+    }
+  };
+  return node;
+}
+
+function has(l, v) {
+  var found = false;
+  l.forEach(function (e) {
+    if(e.id == v.id) {
+      found = true;
+    }
+  });
+  return found;
+}
+
+function set_expandable_node_color(node) {
+  node['color'] = {
+    border : expandable_node_color,
+    hover : {
+      border : expandable_node_color
+    },
+    highlight : {
+      border : expandable_node_color
+    }
+  };
+  return node;
+}
+
+function get_subgraph_nodes_(node, visited_nodes) {
+  if(has(visited_nodes, node)) {
+    return;
+  }
+
+  visited_nodes.push(node);
+  var edges = get_visible_from_edges(node);
+  if(edges.length == 0) {
+    return;
+  }
+
+  edges.forEach(function (edge) {
+    var dest_node = visible_nodes.get(edge.to);
+    if(has(visited_nodes, dest_node) == false) {
+      get_subgraph_nodes_(dest_node, visited_nodes)
+    }
+  });
+}
+
+function get_subgraph_nodes(node) {
+  var subgraph_nodes = [];
+  get_subgraph_nodes_(
+    node,
+    subgraph_nodes
+  );
+  return subgraph_nodes;
+}
+
+function get_all_from_edges(node) {
+  return edges.get({
+    filter : function (edge) {
+      return edge.from == node.id;
+    }
+  });
+}
+
+function get_visible_to_edges(node) {
+  return visible_edges.get({
+    filter : function (edge) {
+      return (edge.hidden == false && edge.to == node.id);
+    }
+  });
+}
+
+function get_visible_from_edges(node) {
+  return visible_edges.get({
+    filter : function (edge) {
+      return (edge.hidden == false && edge.from == node.id);
+    }
+  });
+}
+
+function is_leaf(node) {
+  return get_all_from_edges(node).length == 0;
+}
+
+function is_expandable(node) {
+  var all_from_edges = get_all_from_edges(node);
+  if(all_from_edges.length == 0) {
+    return false;
+  }
+
+  var visible_from_edges = get_visible_from_edges(node);
+  return all_from_edges.length > visible_from_edges.length;
+}
+
+function main() {
+  // Make all the nodes hidden but 'main'.
+  nodes.forEach(function (node) {
+    if(node.label == 'main') {
+      node.hidden = false;
+      set_expandable_node_color(node);
+    } else {
+      node.hidden = true;
+      set_normal_node_color(node); 
+    }
+    nodes.update(node);
+  })
+
+  edges.forEach(function (edge) {
+    edge.hidden = true;
+    edges.update(edge);
+  })
+
+  // Building a view for the non hidden nodes.
+  visible_nodes = new vis.DataView(nodes, {
+    filter : function (item) {
+      return item.hidden == false;
+    }
+  });
+
+  // Building a view for the non hidden edges.
+  visible_edges = new vis.DataView(edges, {
+    filter : function (item) {
+      return item.hidden == false;
+    }
+  });
+
+  var container = document.getElementById('container');
+  var data = {
+    nodes : visible_nodes,
+    edges : visible_edges
+  };
+
+  var options = {
+    nodes : {
+      shape : 'dot',
+      borderWidth : 2,
+      shadow : true
+    },
+    edges : {
+      shadow : true,
+      arrows : {
+        to : {
+          enabled : false
+        }
+      }
+    },
+    interaction : {
+      multiselect : true,
+      hover : true,
+      keyboard : true
+    },
+    physics : {
+      enabled: true,
+      barnesHut : {
+        gravitationalConstant : -10000
+      },
+    }
+  };
+
+  var network = new vis.Network(container, data, options);
+  network.on('doubleClick', function (e) {
+    var selected_node_id = e.nodes[0];
+    if(selected_node_id == undefined) {
+      return;
+    }
+
+    var selected_node = visible_nodes.get(selected_node_id);
+    var nodes_to_update = [];
+    var edges_to_update = [];
+
+    if(is_expandable(selected_node)) {
+      var connected_edges = get_all_from_edges(selected_node);
+      connected_edges.forEach(function (connected_edge) {
+        if(connected_edge.hidden == false) {
+          return;
+        }
+
+        // Make the connected edges visible.
+        connected_edge.hidden = false;
+
+        var to_node = nodes.get(connected_edge.to);
+        if(to_node != null && to_node.hidden == true) {
+          to_node.hidden = false;
+
+          // Change the node color only if:
+          //  - it's not a leaf as it means it cannot be 'expanded',
+          //  - if the node is invisible, as we don't want to change
+          //    the color of a node that is already on the screen.
+          if(get_all_from_edges(to_node).length > 0) {
+            set_expandable_node_color(to_node);
+          }
+
+          // Keep track of the node we updated.
+          nodes_to_update.push(to_node);
+        }
+      });
+
+      // The selected node is no longer expandable.
+      set_normal_node_color(selected_node);
+      nodes_to_update.push(selected_node);
+      edges_to_update = edges_to_update.concat(connected_edges);
+    } else if(is_leaf(selected_node)) {
+      // If the node is a leaf we just hide the selected node
+      selected_node.hidden = true;
+      nodes_to_update.push(selected_node);
+      edges_to_update = get_visible_to_edges(selected_node);
+
+      // Update the nodes as expandable now
+      edges_to_update.forEach(function (edge) {
+        edge.hidden = true;
+
+        var from_node = visible_nodes.get(edge.from);
+        if(get_visible_from_edges(from_node).length > 1) {
+          set_semi_expandable_node_color(from_node);
+        } else {
+          set_expandable_node_color(from_node);
+        }
+        nodes_to_update.push(from_node);
+      })
+    } else {
+      // Get all the nodes connected to the selected node
+      var nodes_to_hide = get_subgraph_nodes(selected_node);
+      var edges_to_hide = [];
+
+      // Also add the selected node to hide self referencing edge
+      nodes_to_hide.push(selected_node);
+      nodes_to_hide.forEach(function (node_to_hide) {
+        var visible_from_edges = get_visible_from_edges(node_to_hide); 
+        edges_to_hide = edges_to_hide.concat(visible_from_edges);
+
+        // Also hide the node while we're at it.
+        node_to_hide.hidden = true;
+        nodes_to_update.push(node_to_hide);
+      });
+
+      // Hide all the edges.
+      edges_to_hide.forEach(function (edge_to_hide) {
+        edge_to_hide.hidden = true;
+      });
+
+      // Make the selected node visible.
+      selected_node.hidden = false;
+      set_expandable_node_color(selected_node);
+
+      nodes_to_update.push(selected_node);
+      nodes_to_update = nodes_to_update.concat(nodes_to_hide);
+      edges_to_update = edges_to_update.concat(edges_to_hide);
+    }
+
+    // Update the data sets.
+    nodes.update(nodes_to_update);
+    edges.update(edges_to_update);
+  })
+}
+
+main();
+</script>
+</body>
+</html>
