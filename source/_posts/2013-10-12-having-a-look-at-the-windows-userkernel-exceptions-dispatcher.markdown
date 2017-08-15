@@ -51,7 +51,7 @@ That's why I divided this post in two big parts:
 <!--more-->
 
 # Lights on *ntdll!KiUserExceptionDispatcher*
-The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the [SEH](http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85).aspx)/[UEF](http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85).aspx) mechanisms ; though I'm going to focus on Windows 7 x86 because that's the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too many details, just enough to write a working exception sentinel PoC later.
+The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the [SEH](http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85\).aspx)/[UEF](http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85\).aspx) mechanisms ; though I'm going to focus on Windows 7 x86 because that's the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too many details, just enough to write a working exception sentinel PoC later.
 
 
 ## nt!KiTrap*
