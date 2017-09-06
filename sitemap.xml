@@ -28,7 +28,7 @@
         <loc>
             http://doar-e.github.io/blog/2013/10/12/having-a-look-at-the-windows-userkernel-exceptions-dispatcher/
         </loc>
-        <lastmod>2015-01-16T11:26:23-08:00</lastmod>
+        <lastmod>2017-08-14T22:34:21-07:00</lastmod>
     </url>
     <url>
         <loc>
@@ -77,16 +77,20 @@
         <lastmod>2016-12-21T19:34:34-08:00</lastmod>
     </url>
     <url>
+        <loc>http://doar-e.github.io/blog/2017/08/05/binary-rewriting-with-syzygy/</loc>
+        <lastmod>2017-09-06T00:01:09-07:00</lastmod>
+    </url>
+    <url>
         <loc>http://doar-e.github.io/about/</loc>
         <lastmod>2016-12-21T19:22:03-08:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/blog/archives/</loc>
-        <lastmod>2016-12-21T19:34:34-08:00</lastmod>
+        <lastmod>2017-09-06T00:01:09-07:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/</loc>
-        <lastmod>2016-12-21T19:34:34-08:00</lastmod>
+        <lastmod>2017-09-06T00:01:09-07:00</lastmod>
     </url>
     <url>
         <loc>http://doar-e.github.io/presentations/</loc>

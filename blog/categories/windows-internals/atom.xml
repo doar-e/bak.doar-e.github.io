@@ -4,7 +4,7 @@
   <title><![CDATA[Category: windows internals | Diary of a reverse-engineer]]></title>
   <link href="http://doar-e.github.io/blog/categories/windows-internals/atom.xml" rel="self"/>
   <link href="http://doar-e.github.io/"/>
-  <updated>2016-12-21T19:34:34-08:00</updated>
+  <updated>2017-09-06T06:47:31-07:00</updated>
   <id>http://doar-e.github.io/</id>
   <author>
     <name><![CDATA[Axel Souchet, Jonathan Salwan, Jérémy Fetiveau]]></name>
@@ -74,7 +74,7 @@ EFLAGS: 0x00010246</p>
 
 <h1>Lights on <em>ntdll!KiUserExceptionDispatcher</em></h1>
 
-<p>The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85">SEH</a>.aspx)/<a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85">UEF</a>.aspx) mechanisms ; though I&rsquo;m going to focus on Windows 7 x86 because that&rsquo;s the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too many details, just enough to write a working exception sentinel PoC later.</p>
+<p>The purpose of this part is to be sure to understand how exceptions are given back to userland in order to be handled (or not) by the <a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms680657(v=vs.85).aspx">SEH</a>/<a href="http://msdn.microsoft.com/en-us/library/windows/desktop/ms681401(v=vs.85).aspx">UEF</a> mechanisms ; though I&rsquo;m going to focus on Windows 7 x86 because that&rsquo;s the OS I run in my VM. The other objective of this part is to give you the big picture, I mean we are not going into too many details, just enough to write a working exception sentinel PoC later.</p>
 
 <h2>nt!KiTrap*</h2>
 
