@@ -9,7 +9,7 @@
   <meta name="author" content="Axel Souchet, Jonathan Salwan, Jérémy Fetiveau">
 
   
-  <meta name="description" content="Introduction The purpose of this little post is to create a piece of code able to monitor exceptions raised in a process (a bit like gynvael&rsquo;s &hellip;">
+  <meta name="description" content="Introduction I am currently playing with pool-based memory corruption vulnerabilities. That’s why I wanted to program a PoC exploit for the &hellip;">
   
 
   <!-- http://t.co/dKP3o1e -->
@@ -87,6 +87,66 @@
     <div id="content">
       <div class="blog-index">
   
+  
+  
+    <article>
+      
+  <header>
+  
+    
+      <h1 class="entry-title"><a href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">First Dip Into the Kernel Pool : MS10-058</a></h1>
+      
+      
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-03-11T02:52:37-07:00" pubdate data-updated="true">Mar 11<span>th</span>, 2014</time>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h1>Introduction</h1>
+
+<p>I am currently playing with pool-based memory corruption vulnerabilities. That’s why I wanted to program a PoC exploit for the vulnerability presented by Tarjei Mandt during his first talk “Kernel Pool Exploitation on Windows 7” <a href="http://www.mista.nu/research/MANDT-kernelpool-PAPER.pdf">[3]</a>. I think it&rsquo;s a good exercise to start learning about pool overflows.</p>
+
+<h1>Forewords</h1>
+
+<p>If you want to experiment with this vulnerability, you should read <a href="http://www.itsecdb.com/oval/definition/oval/gov.nist.USGCB.patch/def/11689/MS10-058-Vulnerabilities-in-TCP-IP-Could-Allow-Elevation-of.html">[1]</a> and be sure to have a vulnerable system. I tested my exploit on a VM with Windows 7 32 bits with tcpip.sys 6.1.7600.16385. The Microsoft bulletin dealing with this vulnerability is MS10-058. It has been found by Matthieu Suiche <a href="http://technet.microsoft.com/fr-fr/security/bulletin/ms10-058">[2]</a> and was used as an example on Tarjei Mandt’s paper <a href="http://www.mista.nu/research/MANDT-kernelpool-PAPER.pdf">[3]</a>.</p>
+
+<h1>Triggering the flaw</h1>
+
+<p>An integer overflow in <em>tcpip!IppSortDestinationAddresses</em> allows to allocate a wrong-sized non-paged pool memory chunk. Below you can see the diff between the vulnerable version and the patched version.</p>
+
+<p><img class="center" src="/images/MS10-058/diff.png"></p>
+
+<div class='entry-content-toc'></div>
+
+
+
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/03/11/first-dip-into-the-kernel-pool-ms10-058/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
   
   
     <article>
@@ -443,6 +503,10 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
   <ul id="recent_posts">
     
       <li class="post">
+        <a href="/blog/2017/12/01/debugger-data-model/">Debugger data model, Javascript & x64 exception handling</a>
+      </li>
+    
+      <li class="post">
         <a href="/blog/2017/08/05/binary-rewriting-with-syzygy/">Binary rewriting with syzygy, Pt. I</a>
       </li>
     
@@ -458,10 +522,6 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
         <a href="/blog/2015/08/18/keygenning-with-klee/">Keygenning with KLEE</a>
       </li>
     
-      <li class="post">
-        <a href="/blog/2015/02/08/spotlight-on-an-unprotected-aes128-whitebox-implementation/">Spotlight on an unprotected AES128 white-box implementation</a>
-      </li>
-    
   </ul>
 </section>
 
@@ -475,7 +535,7 @@ Then, I relaunch my binary and try to reproduce the bug: same actions and <stron
     </div>
   </div>
   <footer role="contentinfo"><p>
-  Copyright &copy; 2017 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
+  Copyright &copy; 2018 -  Axel Souchet, Jonathan Salwan, Jérémy Fetiveau <br/>
   <span class="credit">Powered by <a href="http://octopress.org">Octopress</a> + <a href="https://github.com/ioveracker/mnml">mnml</a>.
 	  
   </span>
